@@ -1,0 +1,17 @@
+.DS_Store
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.log
+
+# functions (Python)
+functions/venv/
+functions/__pycache__/
+functions/**/__pycache__/
+functions/.env
+
+# web (future React/Vite app)
+web/node_modules/
+web/dist/*
+!web/dist/index.html
