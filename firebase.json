@@ -17,7 +17,16 @@
     {
       "source": "functions",
       "codebase": "default",
-      "runtime": "python312"
+      "runtime": "python312",
+      "ignore": [
+        "venv",
+        "__pycache__",
+        ".pytest_cache",
+        "tests",
+        "requirements-dev.txt",
+        "*.pyc",
+        ".git"
+      ]
     }
   ],
   "emulators": {

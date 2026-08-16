@@ -1,0 +1,13 @@
+{
+  "table":            { "footprint": [3, 2], "owned": 2 },
+  "throne":           { "footprint": [1, 1], "owned": 1 },
+  "alchemists_bench": { "footprint": [3, 2], "owned": 1 },
+  "treasure_chest":   { "footprint": [1, 1], "owned": 3 },
+  "tomb":             { "footprint": [3, 2], "owned": 1 },
+  "sorcerers_table":  { "footprint": [3, 2], "owned": 1 },
+  "bookcase":         { "footprint": [3, 1], "owned": 2 },
+  "rack":             { "footprint": [3, 2], "owned": 1 },
+  "fireplace":        { "footprint": [3, 1], "owned": 1 },
+  "weapons_rack":     { "footprint": [3, 1], "owned": 1 },
+  "cupboard":         { "footprint": [3, 1], "owned": 1 }
+}

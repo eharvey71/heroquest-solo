@@ -11,30 +11,26 @@ Three layers, separated so the AI generator only writes layer 3:
 
 ## 1. Static board data (`board.json`)
 
-The official board: 26×19 grid, fixed walls, 21 rooms + corridors.
+The official board: 26×19 grid, fixed walls, 22 rooms + corridor squares.
+No doorways or stairway are stored here — see the amendment in CLAUDE.md:
+the 1989 board has no printed doors, so both are quest-owned (section 3).
 
 ```json
 {
   "width": 26,
   "height": 19,
   "rooms": [
-    {
-      "id": "R1",
-      "squares": [[1,1],[2,1],[3,1],[1,2],[2,2],[3,2]],
-      "doorways": [
-        { "id": "D1", "squares": [[3,2],[4,2]], "facing": "E" }
-      ]
-    }
+    { "id": "R1", "label": "wood parquet", "squares": [[1,1],[2,1],[3,1],[1,2],[2,2],[3,2]] }
   ],
-  "corridors": [
-    { "id": "C1", "squares": [[0,0],[0,1]] }
-  ],
-  "stairway": { "room": "R12", "squares": [[12,9],[13,9],[12,10],[13,10]] }
+  "corridorSquares": [[0,0],[0,1]]
 }
 ```
 
-- Doorways are *potential* door locations; a quest decides which are used.
 - Coordinates: `[x, y]`, origin top-left, x → right, y → down.
+- Every square belongs to exactly one area: one room's `squares`, or
+  `corridorSquares`. No square appears in two areas (verified against
+  the actual file). "Area" is the unit reachability and doors operate
+  on — see section 3's door notes.
 
 ## 2. Static rules data (`monsters.json`, NA 1989 stats)
 
@@ -70,7 +66,10 @@ Named bosses reference a base type with stat overrides (see quest schema).
   "blockedSquares": [[12, 4], [12, 5]],
   "startingRoom": "stairway",
   "doors": [
-    { "doorwayId": "D1", "state": "closed | locked | secret" }
+    { "id": "D1", "squares": [[3, 2], [4, 2]], "state": "open | closed | locked | secret" }
+  ],
+  "corridorTraps": [
+    { "type": "pit | falling_block", "pos": [6, 0] }
   ],
   "rooms": {
     "R3": {
@@ -97,6 +96,24 @@ Named bosses reference a base type with stat overrides (see quest schema).
   "completionText": "Read-aloud victory text"
 }
 ```
+
+Doors are quest-owned (see amendment below): each door names the two
+adjacent squares its wall edge sits between, not a board-catalog id —
+the board has no printed doorways to reference. `squares` order doesn't
+matter; the pair must be orthogonally adjacent and in two different
+areas (two rooms, or a room and the corridor). Corridor-to-corridor
+edges never need a door — the corridor is one open network.
+
+`corridorTraps` is a top-level list, parallel to a room's `traps`, for
+the "at most 3 in corridors total" cap in
+quest-generator-design.md section 5 — traps placed in the corridor
+rather than inside a room.
+
+If the objective is only reachable through a secret door (no route
+through open/closed/locked doors), the quest must set
+`objective.secretPathHint: { "room": "R_id", "text": "..." }`, where
+`room` is itself reachable without any secret door. Without a valid
+hint, an objective reachable only via secret door fails validation.
 
 Notes:
 - Empty rooms simply omitted from `rooms` — searches there use the treasure deck.

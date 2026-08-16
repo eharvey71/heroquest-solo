@@ -1,0 +1,46 @@
+{
+  "id": "quest-fixture-good-1h-short",
+  "title": "The Gauntlet of Karg Hall",
+  "backstory": "A single scout has slipped past the chaos horde massing in Karg Hall and returned with grim news: their captain has claimed the eastern vault for himself, and his elite guard has doubled in number since last you heard word from that quarter. No reinforcements are coming before the horde marches, so the task falls to you alone. Move fast, strike hard, and do not linger in any one room longer than you must. The captain and his guard will not scatter easily, and every moment you spend fighting through his warband is a moment the horde spends preparing to move against the village behind you. Finish this quickly and finish it alone.",
+  "objective": {
+    "type": "kill_boss",
+    "description": "Kill the chaos captain holding the eastern vault.",
+    "target": { "monsterId": "M5" }
+  },
+  "wanderingMonster": "fimir",
+  "stairway": { "room": "R6", "pos": [14, 1] },
+  "blockedSquares": [],
+  "startingRoom": "stairway",
+  "doors": [
+    { "id": "D1", "squares": [[16, 1], [17, 1]], "state": "open" },
+    { "id": "D2", "squares": [[20, 1], [21, 1]], "state": "closed" },
+    { "id": "D3", "squares": [[21, 4], [21, 5]], "state": "locked" }
+  ],
+  "rooms": {
+    "R7": {
+      "revealText": "Two chaos warriors stand guard over a stack of crates, blades already drawn.",
+      "monsters": [
+        { "id": "M1", "type": "chaos_warrior", "pos": [17, 1] },
+        { "id": "M2", "type": "chaos_warrior", "pos": [17, 2] }
+      ],
+      "traps": [
+        { "type": "pit", "pos": [18, 3] }
+      ]
+    },
+    "R8": {
+      "revealText": "A gargoyle crouches motionless on a plinth beside a lone chaos warrior, waiting for the fight to begin.",
+      "monsters": [
+        { "id": "M3", "type": "gargoyle", "pos": [22, 1] },
+        { "id": "M4", "type": "chaos_warrior", "pos": [22, 2] }
+      ]
+    },
+    "R10": {
+      "revealText": "The chaos captain holds the vault chamber, a fimir bodyguard at his flank.",
+      "monsters": [
+        { "id": "M5", "type": "chaos_warrior", "name": "Captain Threx", "pos": [22, 5] },
+        { "id": "M6", "type": "fimir", "pos": [22, 6] }
+      ]
+    }
+  },
+  "completionText": "Captain Threx falls alone in his vault, no reinforcements close enough to hear his last shout. You take what the horde was counting on and slip back toward the stairs before the rest of the warband realizes their captain is dead."
+}

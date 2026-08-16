@@ -1,0 +1,195 @@
+"""Balance checks: monster budget, per-room caps, boss depth, trap caps,
+wandering monster, furniture/door physical caps.
+
+Corresponds to design/quest-generator-design.md section 5 "Balance" and
+CLAUDE.md's Balance system + Physical component caps.
+"""
+
+from __future__ import annotations
+
+from collections import Counter, deque
+
+from .catalogs import Catalogs
+from .reachability import NON_SECRET_STATES, _door_edges, _objective_target_room
+
+# CLAUDE.md Balance system: budget ratio by hero count, calibrated baseline 120.
+HERO_BUDGET_RATIO = {4: 1.00, 3: 0.85, 2: 0.70, 1: 0.55}
+BASELINE_BUDGET = 120
+BUDGET_TOLERANCE = 0.10
+HARD_DIFFICULTY_MULTIPLIER = 1.15
+
+# generator-prompt.md ROOM_CAP: total monsters allowed in one room.
+ROOM_CAP_BY_HERO_COUNT = {4: 4, 3: 3, 2: 3, 1: 2}
+
+# generator-prompt.md MIN_DEPTH: door-hops from stairway room to objective room.
+MIN_DEPTH_BY_SIZE = {"short": 3, "full": 5}
+
+# WANDERING_CONSTRAINT: for 1-2 heroes, wandering monster cost <= fimir.
+WANDERING_MAX_COST_LOW_HERO_COUNT = 8
+
+DOOR_TOTAL_CAP = 21
+DOOR_CLOSED_LOCKED_CAP = 5
+CORRIDOR_TRAP_CAP = 3
+ROOM_TRAP_CAP = 1
+
+
+def _monster_threat_cost(monster: dict, catalog_entry: dict) -> int:
+    """Base threat cost + extra threat from stat overrides.
+
+    generator-prompt.md: "overrides add its extra threat: +1 per added
+    body or attack die" — only increases to attack/body count (a weaker
+    override isn't a discount; defend/mind/move overrides don't affect
+    cost). This is the documented cost model, not an inference.
+    """
+    cost = catalog_entry["threatCost"]
+    overrides = monster.get("overrides", {})
+    for stat in ("attack", "body"):
+        if stat in overrides:
+            cost += max(0, overrides[stat] - catalog_entry[stat])
+    return cost
+
+
+def _room_area_graph(catalogs: Catalogs, quest: dict) -> dict:
+    """area -> set of areas reachable by exactly one non-secret door."""
+    board = catalogs.board
+    graph: dict = {}
+    for edge in _door_edges(quest, NON_SECRET_STATES):
+        a, b = tuple(edge)
+        area_a, area_b = board.area_of.get(a), board.area_of.get(b)
+        if area_a is None or area_b is None or area_a == area_b:
+            continue
+        graph.setdefault(area_a, set()).add(area_b)
+        graph.setdefault(area_b, set()).add(area_a)
+    return graph
+
+
+def _door_hop_depth(catalogs: Catalogs, quest: dict, start_room: str, target_room: str):
+    graph = _room_area_graph(catalogs, quest)
+    if start_room == target_room:
+        return 0
+    seen = {start_room}
+    q = deque([(start_room, 0)])
+    while q:
+        area, depth = q.popleft()
+        for n in graph.get(area, ()):
+            if n in seen:
+                continue
+            if n == target_room:
+                return depth + 1
+            seen.add(n)
+            q.append((n, depth + 1))
+    return None  # unreachable via primary doors; reachability check reports this
+
+
+def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
+    errors = []
+    hero_count = params["heroCount"]
+    difficulty = params.get("difficulty", "standard")
+    size = params.get("size", "full")
+
+    quest_rooms = quest.get("rooms", {})
+
+    # -- monster budget + per-room caps --
+    total_cost = 0
+    for room_id, room in quest_rooms.items():
+        monsters = room.get("monsters", [])
+        type_counts = Counter(m.get("type") for m in monsters)
+        for mtype, count in type_counts.items():
+            entry = catalogs.monsters.get(mtype)
+            if entry is None:
+                continue  # geometry check already reported unknown type
+            room_cap = entry["roomCap"]
+            if count > room_cap:
+                errors.append(
+                    f"{room_id} has {count} {mtype}(s), exceeding the owned-mini cap of {room_cap}"
+                )
+
+        room_cap_total = ROOM_CAP_BY_HERO_COUNT[hero_count]
+        if len(monsters) > room_cap_total:
+            errors.append(
+                f"{room_id} has {len(monsters)} monsters, exceeding the "
+                f"{hero_count}-hero per-room cap of {room_cap_total}"
+            )
+
+        for m in monsters:
+            entry = catalogs.monsters.get(m.get("type"))
+            if entry is not None:
+                total_cost += _monster_threat_cost(m, entry)
+
+    ratio = HERO_BUDGET_RATIO[hero_count]
+    target = BASELINE_BUDGET * ratio
+    if difficulty == "hard":
+        target *= HARD_DIFFICULTY_MULTIPLIER
+    low, high = target * (1 - BUDGET_TOLERANCE), target * (1 + BUDGET_TOLERANCE)
+    if not (low <= total_cost <= high):
+        errors.append(
+            f"monster budget is {total_cost}, outside the {hero_count}-hero "
+            f"{difficulty} target range {low:.0f}-{high:.0f} (target {target:.0f})"
+        )
+
+    # -- boss/objective depth --
+    stair_room = quest.get("stairway", {}).get("room")
+    objective_room = _objective_target_room(quest, catalogs.board)
+    if stair_room in catalogs.board.room_squares and objective_room in catalogs.board.room_squares:
+        min_depth = MIN_DEPTH_BY_SIZE.get(size, MIN_DEPTH_BY_SIZE["full"])
+        depth = _door_hop_depth(catalogs, quest, stair_room, objective_room)
+        if depth is not None and depth < min_depth:
+            if depth <= 1:
+                errors.append(
+                    f"objective room {objective_room} is adjacent to the stairway room {stair_room} "
+                    f"(must be at least {min_depth} doors deep)"
+                )
+            else:
+                errors.append(
+                    f"objective room {objective_room} is only {depth} door(s) from the stairway "
+                    f"room {stair_room}, needs at least {min_depth}"
+                )
+
+    # -- traps --
+    for room_id, room in quest_rooms.items():
+        traps = room.get("traps", [])
+        if len(traps) > ROOM_TRAP_CAP:
+            errors.append(f"{room_id} has {len(traps)} traps, exceeding the cap of {ROOM_TRAP_CAP} per room")
+
+    corridor_traps = quest.get("corridorTraps", [])
+    if len(corridor_traps) > CORRIDOR_TRAP_CAP:
+        errors.append(
+            f"quest has {len(corridor_traps)} corridor traps, exceeding the cap of {CORRIDOR_TRAP_CAP}"
+        )
+
+    # -- wandering monster --
+    wandering = quest.get("wanderingMonster")
+    if wandering not in catalogs.monsters:
+        errors.append(f"wanderingMonster '{wandering}' is not a known monster type")
+    elif hero_count <= 2:
+        cost = catalogs.monsters[wandering]["threatCost"]
+        if cost > WANDERING_MAX_COST_LOW_HERO_COUNT:
+            errors.append(
+                f"wanderingMonster '{wandering}' costs {cost}, exceeding the "
+                f"{WANDERING_MAX_COST_LOW_HERO_COUNT}-cost cap for {hero_count}-hero quests"
+            )
+
+    # -- furniture owned-piece caps (whole quest, furniture doesn't recycle) --
+    furniture_counts = Counter()
+    for room in quest_rooms.values():
+        for f in room.get("furniture", []):
+            furniture_counts[f.get("type")] += 1
+    for ftype, count in furniture_counts.items():
+        entry = catalogs.furniture.get(ftype)
+        if entry is None:
+            continue  # geometry check already reported unknown type
+        if count > entry["owned"]:
+            errors.append(f"quest uses {count} '{ftype}' pieces, exceeding the owned count of {entry['owned']}")
+
+    # -- door physical caps --
+    doors = quest.get("doors", [])
+    if len(doors) > DOOR_TOTAL_CAP:
+        errors.append(f"quest declares {len(doors)} doors, exceeding the owned count of {DOOR_TOTAL_CAP}")
+    closed_locked = sum(1 for d in doors if d.get("state") in ("closed", "locked"))
+    if closed_locked > DOOR_CLOSED_LOCKED_CAP:
+        errors.append(
+            f"quest declares {closed_locked} closed/locked doors, exceeding the owned count of "
+            f"{DOOR_CLOSED_LOCKED_CAP}"
+        )
+
+    return errors

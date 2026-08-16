@@ -1,0 +1,80 @@
+{
+  "id": "quest-fixture-good-4h-full",
+  "title": "The Warlord's Ledger",
+  "backstory": "Word has reached the village that a chaos warlord has taken residence in the old keep north of the river, hoarding a ledger said to name every noble who has ever paid tribute to the forces of darkness. The baron wants that ledger burned before it can be used as a weapon against his court. He has hired you to cut through the warlord's guards, breach the inner chamber, and destroy the boss before dawn. Move quickly. Every hour you delay, the warlord's scouts push closer to the village walls, and the ledger's secrets spread further into hands that would use them against the innocent. Enter, kill the warlord, and take the ledger before it is too late for everyone who trusted you with this task.",
+  "objective": {
+    "type": "kill_boss",
+    "description": "Slay Vorlag the Cruel and destroy the ledger he guards.",
+    "target": { "monsterId": "M17" }
+  },
+  "wanderingMonster": "skeleton",
+  "stairway": { "room": "R1", "pos": [1, 1] },
+  "blockedSquares": [[3, 3]],
+  "startingRoom": "stairway",
+  "doors": [
+    { "id": "D1", "squares": [[4, 1], [5, 1]], "state": "open" },
+    { "id": "D2", "squares": [[8, 1], [9, 1]], "state": "open" },
+    { "id": "D3", "squares": [[8, 4], [9, 4]], "state": "closed" },
+    { "id": "D4", "squares": [[4, 4], [5, 4]], "state": "open" },
+    { "id": "D5", "squares": [[1, 8], [1, 9]], "state": "open" },
+    { "id": "D6", "squares": [[4, 9], [4, 10]], "state": "locked" }
+  ],
+  "corridorTraps": [
+    { "type": "falling_block", "pos": [0, 0] }
+  ],
+  "rooms": {
+    "R2": {
+      "revealText": "Guttering torches line a barracks room. Orc and goblin gear is stacked against the walls, ready for a fight.",
+      "monsters": [
+        { "id": "M1", "type": "orc", "pos": [6, 1] },
+        { "id": "M2", "type": "orc", "pos": [6, 2] },
+        { "id": "M3", "type": "goblin", "pos": [6, 3] },
+        { "id": "M4", "type": "goblin", "pos": [7, 1] }
+      ]
+    },
+    "R3": {
+      "revealText": "Bone dust coats the floor of this narrow hall. Something here has been dead a very long time, and it is not resting quietly.",
+      "monsters": [
+        { "id": "M5", "type": "skeleton", "pos": [10, 1] },
+        { "id": "M6", "type": "skeleton", "pos": [10, 2] },
+        { "id": "M7", "type": "zombie", "pos": [10, 3] },
+        { "id": "M8", "type": "zombie", "pos": [11, 1] }
+      ],
+      "furniture": [
+        { "type": "treasure_chest", "pos": [10, 4] }
+      ],
+      "traps": [
+        { "type": "pit", "pos": [9, 5] }
+      ]
+    },
+    "R5": {
+      "revealText": "A damp burial chamber, wrappings and old orc banners scattered across the floor.",
+      "monsters": [
+        { "id": "M9", "type": "mummy", "pos": [6, 4] },
+        { "id": "M10", "type": "mummy", "pos": [6, 5] },
+        { "id": "M11", "type": "orc", "pos": [6, 6] },
+        { "id": "M12", "type": "orc", "pos": [7, 4] }
+      ]
+    },
+    "R4": {
+      "revealText": "A fimir warband has made camp here, swamp mud tracked across the flagstones.",
+      "monsters": [
+        { "id": "M13", "type": "fimir", "pos": [2, 4] },
+        { "id": "M14", "type": "fimir", "pos": [2, 5] },
+        { "id": "M15", "type": "fimir", "pos": [2, 6] },
+        { "id": "M16", "type": "goblin", "pos": [3, 4] }
+      ]
+    },
+    "R12": {
+      "revealText": "Vorlag the Cruel stands over a stone tomb, ledger in hand, a gargoyle perched at his side.",
+      "monsters": [
+        { "id": "M17", "type": "chaos_warrior", "name": "Vorlag the Cruel", "pos": [2, 10], "overrides": { "attack": 5, "body": 4 } },
+        { "id": "M18", "type": "gargoyle", "pos": [2, 11] }
+      ],
+      "furniture": [
+        { "type": "tomb", "pos": [1, 12], "orientation": "N", "contains": { "treasure": "special" } }
+      ]
+    }
+  },
+  "completionText": "The warlord falls, and with him the ledger's threat. You gather the burning pages as the keep's remaining guards scatter into the night. The baron's court is safe, for now, and word of your victory will travel faster than the warlord's scouts ever could have."
+}
