@@ -10,10 +10,11 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
 
 Live-game endpoints: create_game seeds a games/ doc from a quest;
 resolve_movement, open_door (a hard movement stop resolved as its own
-action), end_turn (flips phase hero->zargon),
-roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
-record_hero_defense (log-only shield reporting) operate on it
-afterward.
+action), search_treasure (once-per-room, may spawn+attack the
+rulebook wandering-monster card), end_turn (flips phase
+hero->zargon), roll_zargon_turn_type/resolve_zargon_turn,
+resolve_hero_attack, and record_hero_defense (log-only shield
+reporting) operate on it afterward.
 """
 
 import anthropic
@@ -28,6 +29,7 @@ from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_d
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
+from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
 from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
@@ -444,6 +446,120 @@ def open_door(req: https_fn.CallableRequest) -> dict:
     }
 
 
+def _next_wandering_monster_id(existing_ids: set) -> str:
+    """Both wandering-monster mechanics (turn-roll and treasure-card,
+    CLAUDE.md's "Zargon engine details") assign fresh ids from the same
+    "W{n}" namespace -- they're both spawns outside the quest's static
+    monster roster.
+    """
+    i = 1
+    while f"W{i}" in existing_ids:
+        i += 1
+    return f"W{i}"
+
+
+@firestore.transactional
+def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wandering_monster_drawn):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    result = resolve_treasure_search(
+        board=_catalogs.board,
+        catalogs=_catalogs,
+        quest=quest,
+        game_state=game_state,
+        hero_id=hero_id,
+        room_id=room_id,
+        wandering_monster_drawn=wandering_monster_drawn,
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates: dict = {f"searched.{room_id}.treasure": True, "log": existing_log + new_log_entries}
+
+    if result.spawned_monster:
+        existing_ids = set(game_state.get("monsters", {}).keys())
+        new_monster_id = _next_wandering_monster_id(existing_ids)
+        spawn = result.spawned_monster
+        catalog_entry = _catalogs.monsters.get(spawn["type"], {})
+        updates[f"monsters.{new_monster_id}"] = to_firestore_coords(
+            {
+                "type": spawn["type"],
+                "pos": list(spawn["pos"]),
+                "currentBody": catalog_entry.get("body", 1),
+                "alive": True,
+            }
+        )
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def search_treasure(req: https_fn.CallableRequest) -> dict:
+    """The owner draws from the real treasure deck (entirely physical
+    -- the app never learns what was drawn) and reports only whether
+    the wandering-monster card came up, via wanderingMonsterDrawn.
+    Enforces one treasure search per room (CLAUDE.md). If the card was
+    drawn, spawns the quest's wandering-monster type adjacent to the
+    searching hero and rolls its attack immediately -- rulebook-
+    mandated, see engine/treasure.py. The hero then defends with their
+    own physical dice and reports shields via record_hero_defense, same
+    as any other monster attack.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    room_id = data.get("roomId")
+    wandering_monster_drawn = data.get("wanderingMonsterDrawn", False)
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(room_id, str) or not room_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="roomId is required")
+    if not isinstance(wandering_monster_drawn, bool):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="wanderingMonsterDrawn must be a boolean"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wandering_monster_drawn)
+    except RoomNotFoundError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=str(e)) from e
+    except InvalidTreasureSearchError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "roomId": result.room_id,
+        "spawnedMonster": result.spawned_monster,
+        "monsterAttack": (
+            {
+                "monsterName": result.monster_attack.monster_name,
+                "heroName": result.monster_attack.hero_name,
+                "diceRolled": result.monster_attack.dice_rolled,
+                "skulls": result.monster_attack.skulls,
+            }
+            if result.monster_attack
+            else None
+        ),
+        "log": result.log,
+    }
+
+
 VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
 
 
@@ -517,10 +633,7 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
 
     if result.spawned_monster:
         existing_ids = set(game_state.get("monsters", {}).keys())
-        i = 1
-        while f"W{i}" in existing_ids:
-            i += 1
-        new_monster_id = f"W{i}"
+        new_monster_id = _next_wandering_monster_id(existing_ids)
         spawn = result.spawned_monster
         catalog_entry = _catalogs.monsters.get(spawn["type"], {})
         updates[f"monsters.{new_monster_id}"] = to_firestore_coords(

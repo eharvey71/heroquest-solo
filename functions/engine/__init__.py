@@ -1,4 +1,4 @@
-from . import combat, create_game, dice, doors, end_turn, hero_movement, movement, targeting, turn, zargon_turn
+from . import combat, create_game, dice, doors, end_turn, hero_movement, movement, targeting, treasure, turn, zargon_turn
 
 __all__ = [
     "dice",
@@ -9,6 +9,7 @@ __all__ = [
     "movement",
     "hero_movement",
     "targeting",
+    "treasure",
     "turn",
     "zargon_turn",
 ]
