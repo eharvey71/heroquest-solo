@@ -7,8 +7,13 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
    sees an unvalidated quest.
 2. The Zargon rules engine (movement, target choice, combat resolution):
    deterministic code only. The LLM is never in the rules path.
-   resolve_movement is the first live-game endpoint; target
-   selection/combat endpoints are later tasks.
+
+Live-game endpoints: create_game seeds a games/ doc from a quest;
+resolve_movement, roll_zargon_turn_type/resolve_zargon_turn, and
+resolve_hero_attack operate on it afterward. Still missing: an "end
+turn" endpoint to flip phase hero->zargon (resolve_zargon_turn is only
+reachable today by hand-editing phase), and record_hero_defense
+(log-only shield reporting).
 """
 
 import anthropic
@@ -17,6 +22,7 @@ from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
+from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
@@ -131,6 +137,67 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     )
 
     return {"questId": doc_ref.id}
+
+
+def _parse_create_game_request(data) -> tuple[str, list]:
+    if not isinstance(data, dict):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="request data must be an object"
+        )
+
+    quest_id = data.get("questId")
+    heroes = data.get("heroes")
+
+    if not isinstance(quest_id, str) or not quest_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="questId is required")
+    if not isinstance(heroes, list) or not (1 <= len(heroes) <= 4):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroes must be an array of 1-4 entries"
+        )
+    ids = set()
+    for h in heroes:
+        if not isinstance(h, dict) or not isinstance(h.get("id"), str) or not h["id"]:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="each hero needs a string 'id'"
+            )
+        if h["id"] in ids:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"duplicate hero id '{h['id']}'"
+            )
+        ids.add(h["id"])
+
+    return quest_id, heroes
+
+
+@https_fn.on_call()
+def create_game(req: https_fn.CallableRequest) -> dict:
+    """Seeds a new games/ doc from a generated quest: heroes placed on
+    the stairway, the full monster roster loaded at full body points
+    (fog of war governs what's actually shown, not what's tracked),
+    only the stairway room revealed, phase="hero", turn=1. See
+    functions/engine/create_game.py for the pure initialization logic.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to start a game")
+
+    quest_id, heroes = _parse_create_game_request(req.data)
+
+    db = firestore.client()
+    quest_snap = db.collection("quests").document(quest_id).get()
+    if not quest_snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
+    quest = from_firestore_coords(quest_snap.to_dict())
+
+    try:
+        game_state = build_initial_game_state(quest=quest, catalogs=_catalogs, heroes=heroes)
+    except InvalidRosterError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
+
+    game_state["questId"] = quest_id
+    doc_ref = db.collection("games").document()
+    doc_ref.set({**to_firestore_coords(game_state), "createdAt": firestore.SERVER_TIMESTAMP})
+
+    return {"gameId": doc_ref.id}
 
 
 def _parse_movement_request(data) -> tuple[str, str, list]:
