@@ -11,10 +11,12 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
 Live-game endpoints: create_game seeds a games/ doc from a quest;
 resolve_movement, open_door (a hard movement stop resolved as its own
 action), search_treasure (once-per-room, may spawn+attack the
-rulebook wandering-monster card), end_turn (flips phase
-hero->zargon), roll_zargon_turn_type/resolve_zargon_turn,
-resolve_hero_attack, and record_hero_defense (log-only shield
-reporting) operate on it afterward.
+rulebook wandering-monster card), search_traps_and_secret_doors
+(once-per-room, fully digital -- reveals what's already in the quest
+data), end_turn (flips phase hero->zargon),
+roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
+record_hero_defense (log-only shield reporting) operate on it
+afterward.
 """
 
 import anthropic
@@ -29,6 +31,9 @@ from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_d
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
+from engine.trap_search import InvalidTrapSearchError
+from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
+from engine.trap_search import resolve_trap_search
 from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
@@ -556,6 +561,86 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
             if result.monster_attack
             else None
         ),
+        "log": result.log,
+    }
+
+
+@firestore.transactional
+def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, room_id):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    result = resolve_trap_search(board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id, room_id=room_id)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates: dict = {f"searched.{room_id}.traps": True, "log": existing_log + new_log_entries}
+
+    if result.found_traps:
+        traps_triggered = set(game_state.get("trapsTriggered", []))
+        traps_triggered.update(t.trap_id for t in result.found_traps)
+        updates["trapsTriggered"] = sorted(traps_triggered)
+
+    for d in result.found_secret_doors:
+        updates[f"doors.{d.door_id}"] = "closed"
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def search_traps_and_secret_doors(req: https_fn.CallableRequest) -> dict:
+    """Searches the hero's current room for hazards -- a separate
+    button from search_treasure per CLAUDE.md's interface list. Fully
+    digital: unlike treasure, traps and secret doors are quest-owned
+    data the app already has, so this reveals whatever's actually
+    there rather than drawing from a physical deck. Enforces one
+    search per room. See functions/engine/trap_search.py for the pure
+    resolution logic and its scoping notes (room traps + bordering
+    secret doors only -- corridor traps and furniture traps are out of
+    scope for this button).
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    room_id = data.get("roomId")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(room_id, str) or not room_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="roomId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, room_id)
+    except TrapSearchRoomNotFoundError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=str(e)) from e
+    except InvalidTrapSearchError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "roomId": result.room_id,
+        "foundTraps": [
+            {"trapId": t.trap_id, "type": t.trap_type, "pos": list(t.pos), "placementInstruction": t.placement_instruction}
+            for t in result.found_traps
+        ],
+        "foundSecretDoors": [
+            {"doorId": d.door_id, "squares": [list(s) for s in d.squares], "placementInstruction": d.placement_instruction}
+            for d in result.found_secret_doors
+        ],
         "log": result.log,
     }
 
