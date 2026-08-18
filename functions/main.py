@@ -7,9 +7,8 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
    sees an unvalidated quest.
 2. The Zargon rules engine (movement, target choice, combat resolution):
    deterministic code only. The LLM is never in the rules path.
-
-The Zargon engine (movement, target choice, combat) is not implemented
-yet — that's a later task.
+   resolve_movement is the first live-game endpoint; target
+   selection/combat endpoints are later tasks.
 """
 
 import anthropic
@@ -17,6 +16,8 @@ from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from firestore_coords import from_firestore_coords, to_firestore_coords
 from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
 from validator.catalogs import load_catalogs
 
@@ -41,25 +42,6 @@ VALID_SIZES = {"short", "full"}
 def health_check(req: https_fn.CallableRequest) -> dict:
     """Trivial callable to confirm the Functions deploy pipeline works."""
     return {"status": "ok", "service": "heroquest-zargon"}
-
-
-def _coords_to_maps(value):
-    """Firestore rejects arrays whose direct elements are also arrays
-    ("Property array contains an invalid nested entity") — hit in
-    practice on `doors[].squares` ([[x1,y1],[x2,y2]]) and
-    `blockedSquares` ([[x,y],...]). Convert every [x,y] coordinate pair
-    to {"x": x, "y": y} so those become arrays-of-maps, which Firestore
-    allows. This only runs at the Firestore write boundary — the
-    canonical [x,y] array format (validator, fixtures, quest-schema.md)
-    is untouched everywhere else.
-    """
-    if isinstance(value, list):
-        if len(value) == 2 and all(isinstance(v, int) for v in value):
-            return {"x": value[0], "y": value[1]}
-        return [_coords_to_maps(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _coords_to_maps(v) for k, v in value.items()}
-    return value
 
 
 def _parse_generation_params(data) -> dict:
@@ -137,7 +119,7 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     doc_ref = firestore.client().collection("quests").document()
     doc_ref.set(
         {
-            **_coords_to_maps(result.quest),
+            **to_firestore_coords(result.quest),
             "generationParams": params,
             "validationWarnings": result.validation.warnings,
             "attempts": result.attempts,
@@ -146,3 +128,117 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     )
 
     return {"questId": doc_ref.id}
+
+
+def _parse_movement_request(data) -> tuple[str, str, list]:
+    if not isinstance(data, dict):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="request data must be an object"
+        )
+
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    path = data.get("path")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(path, list) or not path:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="path must be a non-empty array"
+        )
+
+    return game_id, hero_id, path
+
+
+@firestore.transactional
+def _apply_movement(transaction, db, game_ref, hero_id, path):
+    game_snap = game_ref.get(transaction=transaction)
+    if not game_snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="game not found")
+    game_state = from_firestore_coords(game_snap.to_dict())
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    quest_id = game_state.get("questId")
+    if not quest_id:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="game has no questId"
+        )
+    quest_snap = db.collection("quests").document(quest_id).get(transaction=transaction)
+    if not quest_snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
+    quest = from_firestore_coords(quest_snap.to_dict())
+
+    result = resolve_hero_movement(
+        board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id, path=path
+    )
+
+    heroes = game_state.get("heroes", [])
+    for h in heroes:
+        if h["id"] == hero_id:
+            h["pos"] = list(result.final_pos)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+
+    transaction.update(
+        game_ref,
+        {
+            "heroes": to_firestore_coords(heroes),
+            "revealed.rooms": sorted(result.revealed_rooms),
+            "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
+            "trapsTriggered": sorted(result.traps_triggered),
+            "log": existing_log + new_log_entries,
+        },
+    )
+
+    return result
+
+
+@https_fn.on_call()
+def resolve_movement(req: https_fn.CallableRequest) -> dict:
+    """Resolves a hero's traced movement path (from BoardView's
+    onConfirmMove) against live game state: trap triggers mid-move,
+    progressive fog-of-war reveal, and a hard stop at a closed door --
+    opening one is its own button per CLAUDE.md's interface list, not
+    something movement does automatically. See
+    functions/engine/hero_movement.py for the pure resolution logic;
+    this is just the Firestore read/write shell around it.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to move a hero")
+
+    game_id, hero_id, path = _parse_movement_request(req.data)
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_movement(transaction, db, game_ref, hero_id, path)
+    except IllegalMovementError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "finalPos": list(result.final_pos),
+        "pathTaken": [list(p) for p in result.path_taken],
+        "stoppedReason": result.stopped_reason,
+        "stoppedAtDoorId": result.stopped_at_door_id,
+        "newlyRevealedRooms": result.newly_revealed_rooms,
+        "triggeredTraps": [
+            {
+                "trapId": t.trap_id,
+                "type": t.trap_type,
+                "pos": list(t.pos),
+                "placementInstruction": t.placement_instruction,
+            }
+            for t in result.triggered_traps
+        ],
+        "log": result.log,
+    }

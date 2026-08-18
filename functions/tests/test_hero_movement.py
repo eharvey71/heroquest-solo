@@ -1,0 +1,217 @@
+"""Hero movement resolution tests, against real board.json geometry.
+
+R1 (x:1-4,y:1-3) <-D1(4,1)/(5,1)-> R2 (x:5-8,y:1-3), same fixture door
+used across the engine test suite. (3,0)/(4,0)/(5,0) are real corridor
+squares north of R1/R2 (verified against board.json).
+"""
+
+import pytest
+
+from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+
+D1 = {"id": "D1", "squares": [[4, 1], [5, 1]], "state": "closed"}
+
+
+def _quest(**overrides):
+    quest = {"doors": [D1], "blockedSquares": [], "rooms": {}, "corridorTraps": []}
+    quest.update(overrides)
+    return quest
+
+
+def _game_state(**overrides):
+    state = {
+        "heroes": [{"id": "barbarian", "pos": [2, 2], "active": True}],
+        "monsters": {},
+        "revealed": {"rooms": ["R1"], "corridorSquares": []},
+        "doors": {"D1": "open"},
+        "trapsTriggered": [],
+    }
+    state.update(overrides)
+    return state
+
+
+def test_full_path_through_open_door_reveals_room(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state()
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (6, 2)
+    assert result.stopped_reason is None
+    assert result.newly_revealed_rooms == ["R2"]
+    assert "R2" in result.revealed_rooms
+    assert result.path_taken == [tuple(p) for p in path]
+
+
+def test_trap_triggers_mid_move_and_movement_continues(catalogs):
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": [{"type": "pit", "pos": [6, 1]}]}})
+    game_state = _game_state()
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.stopped_reason is None  # trap does not halt movement
+    assert result.final_pos == (6, 2)
+    assert len(result.triggered_traps) == 1
+    trap = result.triggered_traps[0]
+    assert trap.trap_id == "R2-T1"
+    assert trap.trap_type == "pit"
+    assert trap.pos == (6, 1)
+    assert trap.placement_instruction == "Place the pit trap tile at square [6,1]."
+    assert "R2-T1" in result.traps_triggered
+
+
+def test_already_triggered_trap_does_not_refire(catalogs):
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": [{"type": "pit", "pos": [6, 1]}]}})
+    game_state = _game_state(trapsTriggered=["R2-T1"])
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.triggered_traps == []
+
+
+def test_stops_at_closed_door_threshold(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(doors={"D1": "closed"})
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (4, 1)
+    assert result.stopped_reason == "closed_door"
+    assert result.stopped_at_door_id == "D1"
+    assert result.newly_revealed_rooms == []
+
+
+def test_stops_at_locked_door(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(doors={"D1": "locked"})
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (4, 1)
+    assert result.stopped_reason == "locked_door"
+
+
+def test_stops_before_a_monster(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(monsters={"M1": {"pos": [5, 1], "currentBody": 1, "alive": True}})
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (4, 1)
+    assert result.stopped_reason == "monster_blocked"
+
+
+def test_dead_monster_does_not_block(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(monsters={"M1": {"pos": [5, 1], "currentBody": 0, "alive": False}})
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (6, 1)
+    assert result.stopped_reason is None
+
+
+def test_stops_before_a_blocked_square(catalogs):
+    board = catalogs.board
+    quest = _quest(blockedSquares=[[3, 2]])
+    game_state = _game_state()
+    path = [[2, 2], [3, 2], [4, 2]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (2, 2)
+    assert result.stopped_reason == "blocked_square"
+
+
+def test_progressive_corridor_reveal(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(
+        heroes=[{"id": "barbarian", "pos": [3, 0], "active": True}],
+        revealed={"rooms": [], "corridorSquares": [[3, 0]]},
+    )
+    path = [[3, 0], [4, 0], [5, 0]]
+
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.final_pos == (5, 0)
+    assert result.newly_revealed_corridor_squares == [(4, 0), (5, 0)]
+    assert (4, 0) in result.revealed_corridor_squares and (5, 0) in result.revealed_corridor_squares
+
+
+def test_rejects_path_not_starting_at_hero_position(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state()
+    with pytest.raises(IllegalMovementError):
+        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[3, 2], [4, 2]])
+
+
+def test_rejects_non_adjacent_step(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state()
+    with pytest.raises(IllegalMovementError):
+        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [4, 4]])
+
+
+def test_rejects_unknown_hero(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state()
+    with pytest.raises(IllegalMovementError):
+        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="wizard", path=[[2, 2]])
+
+
+def test_rejects_ending_on_another_heros_square(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(
+        heroes=[
+            {"id": "barbarian", "pos": [2, 2], "active": True},
+            {"id": "wizard", "pos": [3, 2], "active": True},
+        ]
+    )
+    with pytest.raises(IllegalMovementError):
+        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [3, 2]])
+
+
+def test_heroes_may_pass_through_each_other_but_not_end_there(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state(
+        heroes=[
+            {"id": "barbarian", "pos": [2, 2], "active": True},
+            {"id": "wizard", "pos": [3, 2], "active": True},
+        ]
+    )
+    # passes through wizard's square (3,2) but ends elsewhere -- legal
+    result = resolve_hero_movement(
+        board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [3, 2], [4, 2]]
+    )
+    assert result.final_pos == (4, 2)
+    assert result.stopped_reason is None
+
+
+def test_single_square_path_is_a_no_op(catalogs):
+    board = catalogs.board
+    quest = _quest()
+    game_state = _game_state()
+    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2]])
+    assert result.final_pos == (2, 2)
+    assert result.path_taken == [(2, 2)]
+    assert result.stopped_reason is None
