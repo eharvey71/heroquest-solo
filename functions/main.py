@@ -9,7 +9,8 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
    deterministic code only. The LLM is never in the rules path.
 
 Live-game endpoints: create_game seeds a games/ doc from a quest;
-resolve_movement, end_turn (flips phase hero->zargon),
+resolve_movement, open_door (a hard movement stop resolved as its own
+action), end_turn (flips phase hero->zargon),
 roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
 record_hero_defense (log-only shield reporting) operate on it
 afterward.
@@ -23,6 +24,7 @@ from firebase_functions.params import SecretParam
 from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
+from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
@@ -368,6 +370,78 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
     return {"phase": result.new_phase}
+
+
+@firestore.transactional
+def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    result = resolve_open_door(
+        board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id, door_id=door_id
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates = {f"doors.{door_id}": result.new_state, "log": existing_log + new_log_entries}
+
+    if result.revealed_room is not None:
+        revealed_rooms = set(game_state.get("revealed", {}).get("rooms", []))
+        revealed_rooms.add(result.revealed_room)
+        updates["revealed.rooms"] = sorted(revealed_rooms)
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def open_door(req: https_fn.CallableRequest) -> dict:
+    """Opens a closed door the hero is standing at -- its own button
+    per CLAUDE.md's interface list, separate from movement (which hard
+    stops at a closed door rather than auto-opening it). Reveals the
+    far room immediately, matching how a human Zargon populates a room
+    as soon as the door swings open. See functions/engine/doors.py for
+    the pure resolution logic (including why locked/secret doors are
+    explicitly out of scope for this button).
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    door_id = data.get("doorId")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(door_id, str) or not door_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="doorId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_open_door(transaction, db, game_ref, hero_id, door_id)
+    except DoorNotFoundError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=str(e)) from e
+    except InvalidDoorOpenError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "doorId": result.door_id,
+        "newState": result.new_state,
+        "revealedRoom": result.revealed_room,
+        "placementInstruction": result.placement_instruction,
+        "log": result.log,
+    }
 
 
 VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
