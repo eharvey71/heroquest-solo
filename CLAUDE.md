@@ -84,6 +84,47 @@ The Trial ~119, Rescue of Sir Ragnar ~104, The Fire Mage ~148,
 Targets: 4H 120 / 3H 102 / 2H 84 / 1H 66, all +/-10%; hard +15%.
 Named bosses (Verag, Balur, Gulthor...) priced as base type + override cost.
 
+## Zargon engine details (settled — see functions/engine/)
+Combat die (confirmed against the owner's physical die): 6 faces = 3
+skull, 2 white shield, 1 black shield. Skull = hit for whichever side
+is attacking. Shields are NOT interchangeable: white shield only
+blocks for a defending HERO, black shield only blocks for a defending
+MONSTER — this is why monster defend stats lean on higher dice counts
+rather than good per-die odds (1-in-6 vs a hero's 2-in-6).
+
+Guard objectives (cunning turn): a monster stationed in the
+objective's own room holds position rather than chasing. Trigger to
+engage is hero IN the guard's room, OR standing at an open doorway
+into it (can see in without having stepped inside) — NOT mere grid
+adjacency to the monster's own square. ("Holds until adjacent" was
+tried and rejected: it let a hero walk in, search the room, and loot
+around a guard that never woke up.) Plain grid adjacency across a wall
+with no door there does not count as a sightline.
+
+Cunning-turn targeting ("focus-fire lowest-threat-to-kill hero") needs
+hero BP, which is physical-only (see boundary above). Resolved as a
+one-time prompt: when a cunning turn rolls and more than one hero is
+in play, the app asks "which hero is lowest on BP?" and uses the
+answer for that turn only — never stored as ongoing state.
+
+Two distinct wandering-monster mechanics, different placement rules —
+do not conflate them:
+- **Treasure-card wandering** (drawn during a physical treasure
+  search, the "wandering monster?" button): rulebook-mandated, not a
+  design choice. Appears ADJACENT to the searching hero and attacks
+  immediately. Nearest free square if every adjacent square is
+  occupied.
+- **Turn-roll wandering** (the Zargon Deck's `wandering` turn type,
+  no searcher involved): spawns at the nearest unrevealed
+  doorway/corridor edge to the party (the "frontier"). Stairway is
+  the fallback ONLY when no frontier exists yet (e.g. turn 1) —
+  spawning at the stairway by default was tried and rejected: late in
+  a quest it lands far behind cleared territory and spends several
+  turns just walking back to relevance.
+
+Both wandering cases emit a "place the [type] mini at square [x,y]"
+instruction, same convention as trap/secret-door reveals.
+
 ## Open items / first tasks
 1. Firebase project skeleton (Hosting + Firestore + Functions, Python).
 2. Validator module (geometry, BFS reachability from stairway, budget,
