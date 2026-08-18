@@ -6,6 +6,7 @@ from engine.movement import passable_door_edges, revealed_squares
 from engine.targeting import (
     TURN_WEIGHTS_BY_HERO_COUNT,
     _frontier_squares,
+    guard_engaged_by,
     guard_should_engage,
     needs_cunning_target_prompt,
     roll_turn_type,
@@ -146,6 +147,23 @@ def test_guard_does_not_engage_when_hero_is_elsewhere(catalogs):
     edges = passable_door_edges([D1], {"D1": "open"})
     heroes = [{"id": "wizard", "pos": [8, 3]}]  # in R2, nowhere near the R1 door
     assert guard_should_engage(board, "R1", edges, heroes) is False
+
+
+def test_guard_engaged_by_returns_the_actual_intruder_not_first_hero_listed(catalogs):
+    board = catalogs.board
+    edges = passable_door_edges([D1], {"D1": "open"})
+    heroes = [
+        {"id": "barbarian", "pos": [8, 3]},  # far away in R2, not a threat
+        {"id": "wizard", "pos": [1, 1]},  # actually in R1 with the guard
+    ]
+    assert guard_engaged_by(board, "R1", edges, heroes) == "wizard"
+
+
+def test_guard_engaged_by_none_when_nobody_can_see_it(catalogs):
+    board = catalogs.board
+    edges = passable_door_edges([D1], {"D1": "open"})
+    heroes = [{"id": "barbarian", "pos": [8, 3]}]
+    assert guard_engaged_by(board, "R1", edges, heroes) is None
 
 
 # -- treasure-card wandering monster: rulebook-mandated placement --

@@ -16,7 +16,10 @@ from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.targeting import needs_cunning_target_prompt, roll_turn_type
+from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
 from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
 from validator.catalogs import load_catalogs
@@ -152,27 +155,35 @@ def _parse_movement_request(data) -> tuple[str, str, list]:
     return game_id, hero_id, path
 
 
-@firestore.transactional
-def _apply_movement(transaction, db, game_ref, hero_id, path):
-    game_snap = game_ref.get(transaction=transaction)
+def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
+    """Shared read: a live game doc plus the quest it references. Used
+    by every endpoint that touches game state, transactional or not.
+    """
+    game_snap = game_ref.get(transaction=transaction) if transaction is not None else game_ref.get()
     if not game_snap.exists:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="game not found")
     game_state = from_firestore_coords(game_snap.to_dict())
+
+    quest_id = game_state.get("questId")
+    if not quest_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="game has no questId")
+    quest_ref = db.collection("quests").document(quest_id)
+    quest_snap = quest_ref.get(transaction=transaction) if transaction is not None else quest_ref.get()
+    if not quest_snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
+    quest = from_firestore_coords(quest_snap.to_dict())
+
+    return game_state, quest
+
+
+@firestore.transactional
+def _apply_movement(transaction, db, game_ref, hero_id, path):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
         )
-
-    quest_id = game_state.get("questId")
-    if not quest_id:
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="game has no questId"
-        )
-    quest_snap = db.collection("quests").document(quest_id).get(transaction=transaction)
-    if not quest_snap.exists:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
-    quest = from_firestore_coords(quest_snap.to_dict())
 
     result = resolve_hero_movement(
         board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id, path=path
@@ -240,5 +251,244 @@ def resolve_movement(req: https_fn.CallableRequest) -> dict:
             }
             for t in result.triggered_traps
         ],
+        "log": result.log,
+    }
+
+
+VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
+
+
+@https_fn.on_call()
+def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
+    """Rolls Zargon's turn type (the digital Zargon Deck) for a game.
+    Read-only -- does not touch game state. Split from resolve_zargon_turn
+    because a cunning roll sometimes needs a human answer ("which hero
+    is lowest on BP?") before it can be resolved, and that answer can't
+    be collected inside one atomic call. The client pins the rolled
+    type and passes it to resolve_zargon_turn rather than this function
+    re-rolling it, which could silently change the outcome between
+    asking and answering.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    game_state, quest = _load_game_and_quest(db, game_ref)
+
+    generation_params = quest.get("generationParams", {})
+    hero_count = generation_params.get("heroCount")
+    difficulty = generation_params.get("difficulty", "standard")
+    if hero_count not in (1, 2, 3, 4):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="quest has no valid heroCount"
+        )
+
+    turn_type = roll_turn_type(hero_count, difficulty)
+    heroes = game_state.get("heroes", [])
+    needs_prompt = turn_type == "cunning" and needs_cunning_target_prompt(heroes)
+
+    return {
+        "turnType": turn_type,
+        "needsCunningPrompt": needs_prompt,
+        "heroes": [{"id": h["id"], "name": h.get("name", h["id"])} for h in heroes] if needs_prompt else [],
+    }
+
+
+@firestore.transactional
+def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "zargon":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not Zargon's phase"
+        )
+
+    result = resolve_zargon_turn_engine(
+        board=_catalogs.board,
+        catalogs=_catalogs,
+        quest=quest,
+        game_state=game_state,
+        turn_type=turn_type,
+        lowest_bp_hero_id=lowest_bp_hero_id,
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates: dict = {"log": existing_log + new_log_entries, "phase": "hero", "turn": turn + 1}
+
+    for monster_id, new_pos in result.updated_monster_positions.items():
+        updates[f"monsters.{monster_id}.pos"] = to_firestore_coords(list(new_pos))
+
+    if result.spawned_monster:
+        existing_ids = set(game_state.get("monsters", {}).keys())
+        i = 1
+        while f"W{i}" in existing_ids:
+            i += 1
+        new_monster_id = f"W{i}"
+        spawn = result.spawned_monster
+        catalog_entry = _catalogs.monsters.get(spawn["type"], {})
+        updates[f"monsters.{new_monster_id}"] = to_firestore_coords(
+            {
+                "type": spawn["type"],
+                "pos": list(spawn["pos"]),
+                "currentBody": catalog_entry.get("body", 1),
+                "alive": True,
+            }
+        )
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
+    """Resolves Zargon's turn given an ALREADY-ROLLED turn type from
+    roll_zargon_turn_type. Advances every active monster (movement +
+    attack, or a guard's hold/engage decision on a cunning turn), or
+    spawns a fresh wandering monster at the frontier nearest the party.
+    Hands the phase back to "hero" and advances the turn counter. See
+    functions/engine/zargon_turn.py for the pure resolution logic.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    turn_type = data.get("turnType")
+    lowest_bp_hero_id = data.get("lowestBpHeroId")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if turn_type not in VALID_TURN_TYPES:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"turnType must be one of {sorted(VALID_TURN_TYPES)}"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id)
+    except ValueError as e:
+        # select_cunning_target raises this for a missing/invalid answer
+        # -- a client that skipped roll_zargon_turn_type's prompt signal.
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
+
+    return {
+        "turnType": result.turn_type,
+        "monsterResults": [
+            {
+                "monsterId": mr.monster_id,
+                "monsterName": mr.monster_name,
+                "action": mr.action,
+                "endPos": list(mr.turn_result.end_pos) if mr.turn_result else None,
+                "attackedHeroName": mr.turn_result.attack.hero_name if mr.turn_result and mr.turn_result.attack else None,
+                "skulls": mr.turn_result.attack.skulls if mr.turn_result and mr.turn_result.attack else None,
+            }
+            for mr in result.monster_results
+        ],
+        "spawnedMonster": result.spawned_monster,
+        "log": result.log,
+    }
+
+
+@firestore.transactional
+def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    monster_def = _monster_defs(quest).get(monster_id)
+    if monster_def is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"monster '{monster_id}' not found in quest")
+
+    monster_state = game_state.get("monsters", {}).get(monster_id)
+    if monster_state is None or not monster_state.get("alive"):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=f"monster '{monster_id}' is not alive"
+        )
+
+    catalog_entry = _catalogs.monsters.get(monster_def["type"])
+    if catalog_entry is None:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=f"unknown monster type '{monster_def['type']}'"
+        )
+    overrides = monster_def.get("overrides", {})
+    defend_dice = overrides.get("defend", catalog_entry["defend"])
+    monster_name = monster_def.get("name") or monster_def["type"]
+
+    result = resolve_hero_attack_engine(
+        monster_name=monster_name,
+        monster_defend_dice=defend_dice,
+        skulls=skulls,
+        current_body=monster_state["currentBody"],
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+
+    transaction.update(
+        game_ref,
+        {
+            f"monsters.{monster_id}.currentBody": result.body_points_after,
+            f"monsters.{monster_id}.alive": not result.defeated,
+            "log": existing_log + [{"turn": turn, "text": result.log}],
+        },
+    )
+
+    return result
+
+
+@https_fn.on_call()
+def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
+    """A hero has rolled their own attack dice physically and reports
+    the skull count via the "attack [target]" button. Rolls the
+    monster's defend dice digitally (Zargon's dice) and applies the
+    resulting damage -- the only direction combat touches stored state,
+    per CLAUDE.md's "app applies results to monsters only".
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    monster_id = data.get("monsterId")
+    skulls = data.get("skulls")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(monster_id, str) or not monster_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="monsterId is required")
+    if not isinstance(skulls, int) or isinstance(skulls, bool) or skulls < 0:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="skulls must be a non-negative integer"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    result = _apply_hero_attack(transaction, db, game_ref, monster_id, skulls)
+
+    return {
+        "monsterName": result.monster_name,
+        "diceRolled": result.dice_rolled,
+        "blocks": result.blocks,
+        "skullsFaced": result.skulls_faced,
+        "damage": result.damage,
+        "bodyPointsBefore": result.body_points_before,
+        "bodyPointsAfter": result.body_points_after,
+        "defeated": result.defeated,
         "log": result.log,
     }

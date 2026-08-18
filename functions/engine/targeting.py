@@ -103,12 +103,12 @@ def should_guard(monster_room_id: str, objective_room_id: str) -> bool:
     return monster_room_id == objective_room_id
 
 
-def guard_should_engage(
+def guard_engaged_by(
     board: Board,
     monster_room_id: str,
     door_edges: set[frozenset],
     heroes: list[dict],
-) -> bool:
+) -> str | None:
     """A guard wakes when a hero is IN its room, or standing right at an
     open doorway into it (can see in, even without stepping inside) --
     not merely "adjacent to the monster's exact square". That narrower
@@ -117,19 +117,33 @@ def guard_should_engage(
     Plain grid adjacency across a wall (no door there) intentionally
     does NOT count -- that's not a sightline, just two squares that
     happen to share an edge on the grid.
+
+    Returns the id of the (first) hero who triggered it, or None. A
+    caller resolving a cunning turn should have an engaged guard fight
+    THIS hero -- whoever is actually threatening it -- not the
+    globally focus-fired lowest-BP hero picked for the rest of the pack.
     """
     for hero in heroes:
         hero_pos = tuple(hero["pos"])
         if board.area_of.get(hero_pos) == monster_room_id:
-            return True
+            return hero["id"]
         for edge in door_edges:
             a, b = tuple(edge)
             if hero_pos not in (a, b):
                 continue
             other = b if hero_pos == a else a
             if board.area_of.get(other) == monster_room_id:
-                return True
-    return False
+                return hero["id"]
+    return None
+
+
+def guard_should_engage(
+    board: Board,
+    monster_room_id: str,
+    door_edges: set[frozenset],
+    heroes: list[dict],
+) -> bool:
+    return guard_engaged_by(board, monster_room_id, door_edges, heroes) is not None
 
 
 def _nearest_free_square(board: Board, start: Coord, occupied: set[Coord]) -> Coord | None:
