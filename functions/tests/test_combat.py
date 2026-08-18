@@ -46,7 +46,7 @@ def test_monster_attack_reports_skulls_and_prompts_hero():
 def test_record_hero_defense_never_touches_body_points():
     rng = random.Random(5)
     attack = roll_monster_attack(monster_name="Orc", hero_name="Barbarian", attack_dice=3, rng=rng)
-    log_line = record_hero_defense(hero_name="Barbarian", attack=attack, shields_reported=1)
+    log_line = record_hero_defense(hero_name="Barbarian", skulls_faced=attack.skulls, shields_reported=1)
     # Log-only: no return value beyond the narration string, and the
     # wording makes clear the wound is tracked on the physical sheet.
     assert isinstance(log_line, str)
@@ -54,10 +54,8 @@ def test_record_hero_defense_never_touches_body_points():
 
 
 def test_record_hero_defense_wounds_never_negative():
-    rng = random.Random(6)
-    attack = roll_monster_attack(monster_name="Orc", hero_name="Wizard", attack_dice=1, rng=rng)
     # Over-reporting shields (more than skulls rolled) must not go negative.
-    log_line = record_hero_defense(hero_name="Wizard", attack=attack, shields_reported=99)
+    log_line = record_hero_defense(hero_name="Wizard", skulls_faced=1, shields_reported=99)
     assert "-> 0 wound(s)" in log_line
 
 

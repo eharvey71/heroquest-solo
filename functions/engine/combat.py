@@ -108,13 +108,15 @@ def roll_monster_attack(
     )
 
 
-def record_hero_defense(*, hero_name: str, attack: MonsterAttackRoll, shields_reported: int) -> str:
+def record_hero_defense(*, hero_name: str, skulls_faced: int, shields_reported: int) -> str:
     """Log-only: completes the turn narration with what the hero rolled.
     Never computes or stores hero body points -- that's the physical
-    hero sheet's job, not this app's.
+    hero sheet's job, not this app's. Takes skulls_faced as a plain int
+    (echoed back by the client from the earlier attack roll) rather than
+    a MonsterAttackRoll -- that's the only field this ever used.
     """
-    wounds = max(0, attack.skulls - shields_reported)
+    wounds = max(0, skulls_faced - shields_reported)
     return (
-        f"{hero_name} defends: {shields_reported} shield(s) vs {attack.skulls} skull(s) "
+        f"{hero_name} defends: {shields_reported} shield(s) vs {skulls_faced} skull(s) "
         f"-> {wounds} wound(s) (tracked on hero sheet)."
     )

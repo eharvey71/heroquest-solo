@@ -10,9 +10,9 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
 
 Live-game endpoints: create_game seeds a games/ doc from a quest;
 resolve_movement, end_turn (flips phase hero->zargon),
-roll_zargon_turn_type/resolve_zargon_turn, and resolve_hero_attack
-operate on it afterward. Still missing: record_hero_defense (log-only
-shield reporting).
+roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
+record_hero_defense (log-only shield reporting) operate on it
+afterward.
 """
 
 import anthropic
@@ -20,6 +20,7 @@ from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
@@ -606,3 +607,64 @@ def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
         "defeated": result.defeated,
         "log": result.log,
     }
+
+
+@firestore.transactional
+def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported):
+    game_state = _load_game(game_ref, transaction)
+
+    hero = next((h for h in game_state.get("heroes", []) if h["id"] == hero_id), None)
+    if hero is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"hero '{hero_id}' not found in game")
+
+    log_line = record_hero_defense_engine(
+        hero_name=hero.get("name", hero_id), skulls_faced=skulls_faced, shields_reported=shields_reported
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    transaction.update(game_ref, {"log": existing_log + [{"turn": turn, "text": log_line}]})
+
+    return log_line
+
+
+@https_fn.on_call()
+def record_hero_defense(req: https_fn.CallableRequest) -> dict:
+    """A monster's attack (from resolve_zargon_turn) named this hero as
+    its target. The hero defends with their own physical dice and
+    reports shields via this button purely to complete the turn log's
+    narration -- see engine/combat.py's record_hero_defense: it never
+    computes or stores hero body points, that stays on the physical
+    hero sheet. skullsFaced is the skull count already returned by
+    resolve_zargon_turn's monsterResults for this hero, echoed back by
+    the client rather than re-derived here.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    skulls_faced = data.get("skullsFaced")
+    shields_reported = data.get("shieldsReported")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(skulls_faced, int) or isinstance(skulls_faced, bool) or skulls_faced < 0:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="skullsFaced must be a non-negative integer"
+        )
+    if not isinstance(shields_reported, int) or isinstance(shields_reported, bool) or shields_reported < 0:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="shieldsReported must be a non-negative integer"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    log_line = _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported)
+
+    return {"log": log_line}
