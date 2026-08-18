@@ -1,29 +1,48 @@
-import { useState } from "react";
-import { BoardView } from "./components/BoardView";
-import type { Coord } from "./lib/board";
-import { mockGameState } from "./lib/mockGameState";
+import { useEffect, useState } from "react";
+import { GameSetup } from "./components/GameSetup";
+import { GameView } from "./components/GameView";
+import { ensureSignedIn } from "./lib/firebase";
 import "./App.css";
 
-function App() {
-  const [lastMove, setLastMove] = useState<string | null>(null);
+const GAME_ID_STORAGE_KEY = "heroquest-zargon-game-id";
 
-  const handleConfirmMove = (heroId: string, path: Coord[]) => {
-    // No Zargon engine yet (Task 5) -- this just proves the path reaches
-    // the caller. Real wiring lands when movement resolution exists.
-    setLastMove(`${heroId}: ${path.map(([x, y]) => `(${x},${y})`).join(" -> ")}`);
+function App() {
+  const [signedIn, setSignedIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [gameId, setGameId] = useState<string | null>(() => localStorage.getItem(GAME_ID_STORAGE_KEY));
+
+  useEffect(() => {
+    ensureSignedIn()
+      .then(() => setSignedIn(true))
+      .catch((e) => setAuthError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  const handleGameCreated = (id: string) => {
+    localStorage.setItem(GAME_ID_STORAGE_KEY, id);
+    setGameId(id);
+  };
+
+  const handleNewQuest = () => {
+    localStorage.removeItem(GAME_ID_STORAGE_KEY);
+    setGameId(null);
   };
 
   return (
     <div className="app">
       <h1>HeroQuest Zargon</h1>
-      <p className="hint">
-        Click a hero token, then click or drag across adjacent squares to trace a move.
-      </p>
-      <BoardView gameState={mockGameState} onConfirmMove={handleConfirmMove} />
-      {lastMove && (
-        <p className="last-move">
-          Last confirmed move: <code>{lastMove}</code>
-        </p>
+
+      {authError && <p style={{ color: "#e66" }}>Sign-in failed: {authError}</p>}
+      {!signedIn && !authError && <p className="hint">Signing in...</p>}
+
+      {signedIn && !gameId && <GameSetup onGameCreated={handleGameCreated} />}
+
+      {signedIn && gameId && (
+        <>
+          <GameView gameId={gameId} />
+          <p style={{ marginTop: 16 }}>
+            <button onClick={handleNewQuest}>Start a different quest</button>
+          </p>
+        </>
       )}
     </div>
   );

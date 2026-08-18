@@ -1,0 +1,217 @@
+/**
+ * Typed httpsCallable wrappers for every live-game Cloud Function in
+ * functions/main.py. Field names here are camelCase to match each
+ * endpoint's actual req.data / return shape exactly (verified against
+ * main.py, not guessed) -- Python's snake_case never crosses this
+ * boundary.
+ */
+
+import { type HttpsCallableOptions, httpsCallable } from "firebase/functions";
+import type { Coord } from "./board";
+import { functions } from "./firebase";
+
+function call<Req, Res>(name: string, options?: HttpsCallableOptions) {
+  const callable = httpsCallable<Req, Res>(functions, name, options);
+  return async (data: Req): Promise<Res> => {
+    const result = await callable(data);
+    return result.data;
+  };
+}
+
+// ---- generateQuest ----
+
+export interface GenerateQuestRequest {
+  heroCount: 1 | 2 | 3 | 4;
+  difficulty?: "standard" | "hard";
+  size?: "short" | "full";
+  theme?: string;
+}
+export interface GenerateQuestResponse {
+  questId: string;
+}
+// generate_quest's backend timeout_sec=480 (up to 3 LLM round trips at
+// high effort, ~100s each) -- the JS SDK's own default callable
+// timeout is only 70s, which cuts this off long before the backend
+// would ever time out.
+export const generateQuest = call<GenerateQuestRequest, GenerateQuestResponse>("generate_quest", {
+  timeout: 480_000,
+});
+
+// ---- createGame ----
+
+export interface CreateGameRequest {
+  questId: string;
+  heroes: { id: string; name?: string }[];
+}
+export interface CreateGameResponse {
+  gameId: string;
+}
+export const createGame = call<CreateGameRequest, CreateGameResponse>("create_game");
+
+// ---- resolveMovement ----
+
+export interface ResolveMovementRequest {
+  gameId: string;
+  heroId: string;
+  path: Coord[];
+}
+export interface TriggeredTrap {
+  trapId: string;
+  type: string;
+  pos: Coord;
+  placementInstruction: string;
+}
+export interface ResolveMovementResponse {
+  finalPos: Coord;
+  pathTaken: Coord[];
+  stoppedReason: string | null;
+  stoppedAtDoorId: string | null;
+  newlyRevealedRooms: string[];
+  triggeredTraps: TriggeredTrap[];
+  log: string[];
+}
+export const resolveMovement = call<ResolveMovementRequest, ResolveMovementResponse>("resolve_movement");
+
+// ---- openDoor ----
+
+export interface OpenDoorRequest {
+  gameId: string;
+  heroId: string;
+  doorId: string;
+}
+export interface OpenDoorResponse {
+  doorId: string;
+  newState: string;
+  revealedRoom: string | null;
+  placementInstruction: string;
+  log: string[];
+}
+export const openDoor = call<OpenDoorRequest, OpenDoorResponse>("open_door");
+
+// ---- searchTreasure ----
+
+export interface SearchTreasureRequest {
+  gameId: string;
+  heroId: string;
+  roomId: string;
+  wanderingMonsterDrawn?: boolean;
+}
+export interface MonsterAttack {
+  monsterName: string;
+  heroName: string;
+  diceRolled: number;
+  skulls: number;
+}
+export interface SearchTreasureResponse {
+  roomId: string;
+  spawnedMonster: { type: string; pos: Coord; attacksImmediately: boolean; placementInstruction: string } | null;
+  monsterAttack: MonsterAttack | null;
+  log: string[];
+}
+export const searchTreasure = call<SearchTreasureRequest, SearchTreasureResponse>("search_treasure");
+
+// ---- searchTrapsAndSecretDoors ----
+
+export interface SearchTrapsAndSecretDoorsRequest {
+  gameId: string;
+  heroId: string;
+  roomId: string;
+}
+export interface FoundTrap {
+  trapId: string;
+  type: string;
+  pos: Coord;
+  placementInstruction: string;
+}
+export interface FoundSecretDoor {
+  doorId: string;
+  squares: Coord[];
+  placementInstruction: string;
+}
+export interface SearchTrapsAndSecretDoorsResponse {
+  roomId: string;
+  foundTraps: FoundTrap[];
+  foundSecretDoors: FoundSecretDoor[];
+  log: string[];
+}
+export const searchTrapsAndSecretDoors = call<SearchTrapsAndSecretDoorsRequest, SearchTrapsAndSecretDoorsResponse>(
+  "search_traps_and_secret_doors"
+);
+
+// ---- endTurn ----
+
+export interface EndTurnRequest {
+  gameId: string;
+}
+export interface EndTurnResponse {
+  phase: string;
+}
+export const endTurn = call<EndTurnRequest, EndTurnResponse>("end_turn");
+
+// ---- rollZargonTurnType ----
+
+export interface RollZargonTurnTypeRequest {
+  gameId: string;
+}
+export interface RollZargonTurnTypeResponse {
+  turnType: "normal" | "cunning" | "wandering";
+  needsCunningPrompt: boolean;
+  heroes: { id: string; name: string }[];
+}
+export const rollZargonTurnType = call<RollZargonTurnTypeRequest, RollZargonTurnTypeResponse>("roll_zargon_turn_type");
+
+// ---- resolveZargonTurn ----
+
+export interface ResolveZargonTurnRequest {
+  gameId: string;
+  turnType: "normal" | "cunning" | "wandering";
+  lowestBpHeroId?: string;
+}
+export interface MonsterResult {
+  monsterId: string;
+  monsterName: string;
+  action: string;
+  endPos: Coord | null;
+  attackedHeroName: string | null;
+  skulls: number | null;
+}
+export interface ResolveZargonTurnResponse {
+  turnType: string;
+  monsterResults: MonsterResult[];
+  spawnedMonster: { type: string; pos: Coord; attacksImmediately: boolean; placementInstruction: string } | null;
+  log: string[];
+}
+export const resolveZargonTurn = call<ResolveZargonTurnRequest, ResolveZargonTurnResponse>("resolve_zargon_turn");
+
+// ---- resolveHeroAttack ----
+
+export interface ResolveHeroAttackRequest {
+  gameId: string;
+  monsterId: string;
+  skulls: number;
+}
+export interface ResolveHeroAttackResponse {
+  monsterName: string;
+  diceRolled: number;
+  blocks: number;
+  skullsFaced: number;
+  damage: number;
+  bodyPointsBefore: number;
+  bodyPointsAfter: number;
+  defeated: boolean;
+  log: string;
+}
+export const resolveHeroAttack = call<ResolveHeroAttackRequest, ResolveHeroAttackResponse>("resolve_hero_attack");
+
+// ---- recordHeroDefense ----
+
+export interface RecordHeroDefenseRequest {
+  gameId: string;
+  heroId: string;
+  skullsFaced: number;
+  shieldsReported: number;
+}
+export interface RecordHeroDefenseResponse {
+  log: string;
+}
+export const recordHeroDefense = call<RecordHeroDefenseRequest, RecordHeroDefenseResponse>("record_hero_defense");

@@ -26,10 +26,24 @@ export interface Revealed {
   corridorSquares: Coord[];
 }
 
+export interface LogEntry {
+  turn: number;
+  text: string;
+}
+
 export interface GameState {
   heroes: HeroToken[];
   monsters: MonsterToken[];
   revealed: Revealed;
+  // The renderer (BoardView) only needs the three fields above --
+  // mockGameState.ts omits the rest. A live game (see useLiveGame.ts)
+  // always has them, straight off design/quest-schema.md section 4.
+  questId?: string;
+  phase?: "hero" | "zargon";
+  turn?: number;
+  doors?: Record<string, string>;
+  searched?: Record<string, { treasure?: boolean; traps?: boolean }>;
+  log?: LogEntry[];
 }
 
 /** Expands revealed room ids + explicit corridor squares into the full
