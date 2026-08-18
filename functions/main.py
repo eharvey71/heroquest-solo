@@ -9,11 +9,10 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
    deterministic code only. The LLM is never in the rules path.
 
 Live-game endpoints: create_game seeds a games/ doc from a quest;
-resolve_movement, roll_zargon_turn_type/resolve_zargon_turn, and
-resolve_hero_attack operate on it afterward. Still missing: an "end
-turn" endpoint to flip phase hero->zargon (resolve_zargon_turn is only
-reachable today by hand-editing phase), and record_hero_defense
-(log-only shield reporting).
+resolve_movement, end_turn (flips phase hero->zargon),
+roll_zargon_turn_type/resolve_zargon_turn, and resolve_hero_attack
+operate on it afterward. Still missing: record_hero_defense (log-only
+shield reporting).
 """
 
 import anthropic
@@ -23,6 +22,7 @@ from firebase_functions.params import SecretParam
 
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
+from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
@@ -222,14 +222,21 @@ def _parse_movement_request(data) -> tuple[str, str, list]:
     return game_id, hero_id, path
 
 
-def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
-    """Shared read: a live game doc plus the quest it references. Used
-    by every endpoint that touches game state, transactional or not.
+def _load_game(game_ref, transaction=None) -> dict:
+    """Shared read: just the live game doc. Used by endpoints that don't
+    need the quest it references (e.g. end_turn's phase flip).
     """
     game_snap = game_ref.get(transaction=transaction) if transaction is not None else game_ref.get()
     if not game_snap.exists:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="game not found")
-    game_state = from_firestore_coords(game_snap.to_dict())
+    return from_firestore_coords(game_snap.to_dict())
+
+
+def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
+    """Shared read: a live game doc plus the quest it references. Used
+    by every endpoint that touches game state, transactional or not.
+    """
+    game_state = _load_game(game_ref, transaction)
 
     quest_id = game_state.get("questId")
     if not quest_id:
@@ -320,6 +327,46 @@ def resolve_movement(req: https_fn.CallableRequest) -> dict:
         ],
         "log": result.log,
     }
+
+
+@firestore.transactional
+def _apply_end_turn(transaction, game_ref):
+    game_state = _load_game(game_ref, transaction)
+    result = resolve_end_turn(game_state)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+
+    transaction.update(game_ref, {"phase": result.new_phase, "log": existing_log + new_log_entries})
+    return result
+
+
+@https_fn.on_call()
+def end_turn(req: https_fn.CallableRequest) -> dict:
+    """The heroes are done acting -- flips phase from "hero" to
+    "zargon" so roll_zargon_turn_type/resolve_zargon_turn become
+    reachable. See functions/engine/end_turn.py for the pure logic
+    (and its docstring for the 1-hero-2-actions gap, not enforced yet).
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_end_turn(transaction, game_ref)
+    except NotHeroPhaseError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {"phase": result.new_phase}
 
 
 VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
