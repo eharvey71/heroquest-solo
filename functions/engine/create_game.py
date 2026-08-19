@@ -52,7 +52,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
             catalog_entry = catalogs.monsters.get(m["type"], {})
             overrides = m.get("overrides", {})
             body = overrides.get("body", catalog_entry.get("body", 1))
-            monsters[m["id"]] = {"pos": list(m["pos"]), "currentBody": body, "alive": True}
+            monsters[m["id"]] = {"type": m["type"], "pos": list(m["pos"]), "currentBody": body, "alive": True}
 
     return {
         "questId": None,  # filled in by the caller once the quest doc id is known

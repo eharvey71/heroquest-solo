@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import {
   endTurn,
@@ -12,6 +12,7 @@ import {
   searchTreasure,
 } from "../lib/functionsClient";
 import { useLiveGame } from "../lib/useLiveGame";
+import { type DoorState, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
 
 interface GameViewProps {
@@ -70,6 +71,16 @@ export function GameView({ gameId }: GameViewProps) {
     if (!hero) return;
     setPendingDefenses((prev) => [...prev, { key: `${hero.id}-${Date.now()}-${Math.random()}`, heroId: hero.id, heroName, skulls }]);
   };
+
+  // Door/stairway geometry is quest-owned (fetched once); door
+  // *state* is game-owned (overrides quest.doors' initial state) --
+  // merge them for rendering, same precedence the backend uses (see
+  // doors.py). Stairway placement never changes after quest setup.
+  const { doors: questDoors, stairway } = useQuestMap(game?.questId);
+  const resolvedDoors = useMemo(
+    () => questDoors.map((d) => ({ ...d, state: (game?.doors?.[d.id] as DoorState | undefined) ?? d.state })),
+    [questDoors, game?.doors]
+  );
 
   if (loading) return <p>Loading game...</p>;
   if (error) return <p style={{ color: "#e66" }}>Error: {error}</p>;
@@ -181,7 +192,7 @@ export function GameView({ gameId }: GameViewProps) {
         </span>
       </div>
 
-      <BoardView gameState={game} onConfirmMove={handleConfirmMove} />
+      <BoardView gameState={game} onConfirmMove={handleConfirmMove} doors={resolvedDoors} stairway={stairway} />
 
       {errorMsg && <p style={{ color: "#e66" }}>Error: {errorMsg}</p>}
 

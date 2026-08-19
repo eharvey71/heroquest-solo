@@ -56,11 +56,15 @@ def test_monster_roster_loaded_with_full_body_points(good_quest_4h, catalogs):
     assert game_state["monsters"]["M17"]["alive"] is True
     # M1 (plain orc, no override) gets the catalog base body
     assert game_state["monsters"]["M1"]["currentBody"] == catalogs.monsters["orc"]["body"]
+    assert game_state["monsters"]["M1"]["type"] == "orc"
     # every monster in the quest is present, none omitted for being unrevealed
     quest_monster_ids = {
         m["id"] for room in good_quest_4h["rooms"].values() for m in room.get("monsters", [])
     }
     assert set(game_state["monsters"].keys()) == quest_monster_ids
+    # type is required by clients rendering a monster token (which icon/
+    # letter to show) -- must be present on every entry, not just M1's.
+    assert all("type" in m for m in game_state["monsters"].values())
 
 
 def test_only_stairway_room_revealed(good_quest_4h, catalogs):

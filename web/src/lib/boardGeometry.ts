@@ -30,20 +30,48 @@ export function isOrthogonallyAdjacent(a: Coord, b: Coord): boolean {
   return dx + dy === 1;
 }
 
+/** Normalizes a wall/door edge to a single dedup/lookup key regardless
+ * of which endpoint is given first. */
+export function segmentKey(x1: number, y1: number, x2: number, y2: number): string {
+  return x1 < x2 || y1 < y2 ? `${x1},${y1}-${x2},${y2}` : `${x2},${y2}-${x1},${y1}`;
+}
+
+/** The wall/door edge shared by two orthogonally-adjacent squares --
+ * used both for a door's own rendered line and for excluding that same
+ * edge from the plain wall layer (see BoardTerrain). */
+export function edgeBetween(a: Coord, b: Coord): WallSegment {
+  const [x1, y1] = a;
+  const [x2, y2] = b;
+  if (x1 !== x2) {
+    const x = Math.max(x1, x2);
+    return { x1: x, y1, x2: x, y2: y1 + 1 };
+  }
+  const y = Math.max(y1, y2);
+  return { x1, y1: y, x2: x1 + 1, y2: y };
+}
+
 /**
  * Wall segments visible from the given set of revealed squares. A wall is
  * drawn on the edge between (x,y) and its neighbor whenever the neighbor
  * is off-board or in a different area -- matches how a hero standing in a
  * room sees that room's walls without having opened the far door yet.
+ * excludeKeys skips edges a door already renders (see BoardTerrain) --
+ * a secret door's edge is deliberately never in that set, since it must
+ * stay indistinguishable from a plain wall until found.
  */
-export function wallSegmentsForRevealed(board: Board, revealed: ReadonlySet<string>): WallSegment[] {
+export function wallSegmentsForRevealed(
+  board: Board,
+  revealed: ReadonlySet<string>,
+  excludeKeys?: ReadonlySet<string>
+): WallSegment[] {
   const segments: WallSegment[] = [];
   const seen = new Set<string>();
 
   const addSegment = (x1: number, y1: number, x2: number, y2: number) => {
-    const key = x1 < x2 || y1 < y2 ? `${x1},${y1}-${x2},${y2}` : `${x2},${y2}-${x1},${y1}`;
+    const key = segmentKey(x1, y1, x2, y2);
     if (seen.has(key)) return;
     seen.add(key);
+    if (excludeKeys?.has(key)) return;
     segments.push({ x1, y1, x2, y2 });
   };
 

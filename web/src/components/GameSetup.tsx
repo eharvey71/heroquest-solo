@@ -13,31 +13,40 @@ const CLASSIC_HEROES = [
 ];
 
 export function GameSetup({ onGameCreated }: GameSetupProps) {
-  const [heroCount, setHeroCount] = useState<1 | 2 | 3 | 4>(4);
+  // Which of the 4 classic hero cards are actually in play -- id stays
+  // pinned to the class (barbarian/dwarf/elf/wizard) since that's what
+  // matters for stairway-footprint placement order; only the display
+  // name is player-editable.
+  const [selectedHeroes, setSelectedHeroes] = useState<Set<string>>(new Set(CLASSIC_HEROES.map((h) => h.id)));
+  const [heroNames, setHeroNames] = useState<Record<string, string>>(
+    Object.fromEntries(CLASSIC_HEROES.map((h) => [h.id, h.name]))
+  );
   const [difficulty, setDifficulty] = useState<"standard" | "hard">("standard");
   const [size, setSize] = useState<"short" | "full">("full");
   const [theme, setTheme] = useState("");
-  const [heroNames, setHeroNames] = useState<string[]>(CLASSIC_HEROES.slice(0, 4).map((h) => h.name));
 
   const [questId, setQuestId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleHeroCountChange = (n: 1 | 2 | 3 | 4) => {
-    setHeroCount(n);
-    setHeroNames((prev) => {
-      const next = CLASSIC_HEROES.slice(0, n).map((h) => h.name);
-      for (let i = 0; i < Math.min(n, prev.length); i++) next[i] = prev[i];
+  const heroCount = selectedHeroes.size;
+
+  const toggleHero = (id: string) => {
+    setSelectedHeroes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const handleGenerateQuest = async () => {
+    if (heroCount < 1 || heroCount > 4) return;
     setBusy(true);
     setError(null);
     try {
       const res = await generateQuest({
-        heroCount,
+        heroCount: heroCount as 1 | 2 | 3 | 4,
         difficulty,
         size,
         ...(theme.trim() ? { theme: theme.trim() } : {}),
@@ -55,9 +64,9 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
     setBusy(true);
     setError(null);
     try {
-      const heroes = heroNames.slice(0, heroCount).map((name, i) => ({
-        id: CLASSIC_HEROES[i]?.id ?? `hero${i}`,
-        name,
+      const heroes = CLASSIC_HEROES.filter((h) => selectedHeroes.has(h.id)).map((h) => ({
+        id: h.id,
+        name: heroNames[h.id] || h.name,
       }));
       const res = await createGame({ questId, heroes });
       onGameCreated(res.gameId);
@@ -73,35 +82,40 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
       <h2>Start a Quest</h2>
 
       <fieldset disabled={busy || questId !== null}>
-        <label>
-          Heroes:{" "}
-          <select value={heroCount} onChange={(e) => handleHeroCountChange(Number(e.target.value) as 1 | 2 | 3 | 4)}>
-            {[1, 2, 3, 4].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>{" "}
-        <label>
-          Difficulty:{" "}
-          <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as "standard" | "hard")}>
-            <option value="standard">Standard</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>{" "}
-        <label>
-          Size:{" "}
-          <select value={size} onChange={(e) => setSize(e.target.value as "short" | "full")}>
-            <option value="short">Short</option>
-            <option value="full">Full</option>
-          </select>
-        </label>{" "}
-        <label>
-          Theme (optional): <input value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g. undead crypt" />
-        </label>
+        <div>
+          Heroes in play:{" "}
+          {CLASSIC_HEROES.map((h) => (
+            <label key={h.id} style={{ marginRight: 12 }}>
+              <input type="checkbox" checked={selectedHeroes.has(h.id)} onChange={() => toggleHero(h.id)} /> {h.name}
+            </label>
+          ))}
+          {heroCount === 0 && <span style={{ color: "#e66" }}> pick at least one</span>}
+        </div>
         <div style={{ marginTop: 8 }}>
-          <button onClick={handleGenerateQuest} disabled={busy}>
+          <label>
+            Difficulty:{" "}
+            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as "standard" | "hard")}>
+              <option value="standard">Standard</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>{" "}
+          <label>
+            Size:{" "}
+            <select value={size} onChange={(e) => setSize(e.target.value as "short" | "full")}>
+              <option value="short">Short</option>
+              <option value="full">Full</option>
+            </select>
+          </label>{" "}
+          <label>
+            Theme (optional): <input value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g. undead crypt" />
+          </label>
+        </div>
+        <p className="hint" style={{ maxWidth: 500 }}>
+          Short size aims for a single sitting (fewer rooms, a shorter map to clear); full size is a
+          longer, full-map quest matching the scope of the official quest book adventures.
+        </p>
+        <div>
+          <button onClick={handleGenerateQuest} disabled={busy || heroCount < 1}>
             {busy && !questId ? "Generating..." : "Generate Quest"}
           </button>
         </div>
@@ -113,14 +127,12 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
             Quest ready: <code>{questId}</code>
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 300 }}>
-            {heroNames.slice(0, heroCount).map((name, i) => (
-              <label key={i}>
-                Hero {i + 1}:{" "}
+            {CLASSIC_HEROES.filter((h) => selectedHeroes.has(h.id)).map((h) => (
+              <label key={h.id}>
+                {h.name}'s name:{" "}
                 <input
-                  value={name}
-                  onChange={(e) =>
-                    setHeroNames((prev) => prev.map((n, idx) => (idx === i ? e.target.value : n)))
-                  }
+                  value={heroNames[h.id]}
+                  onChange={(e) => setHeroNames((prev) => ({ ...prev, [h.id]: e.target.value }))}
                 />
               </label>
             ))}

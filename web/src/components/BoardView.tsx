@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
 import { revealedSquareKeys, type GameState } from "../lib/gameState";
+import type { QuestDoor, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
 import { PathOverlay } from "./PathOverlay";
 import { Tokens } from "./Tokens";
@@ -10,9 +11,11 @@ interface BoardViewProps {
   gameState: GameState;
   cellSize?: number;
   onConfirmMove?: (heroId: string, path: Coord[]) => void;
+  doors?: QuestDoor[];
+  stairway?: QuestStairway | null;
 }
 
-export function BoardView({ gameState, cellSize = 28, onConfirmMove }: BoardViewProps) {
+export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stairway }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
 
@@ -96,7 +99,7 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove }: BoardView
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        <BoardTerrain board={staticBoard} cellSize={cellSize} revealed={revealed} />
+        <BoardTerrain board={staticBoard} cellSize={cellSize} revealed={revealed} doors={doors} stairway={stairway} />
         <PathOverlay cellSize={cellSize} path={path} />
         <Tokens
           cellSize={cellSize}
