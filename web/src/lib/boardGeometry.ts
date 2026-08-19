@@ -36,6 +36,15 @@ export function segmentKey(x1: number, y1: number, x2: number, y2: number): stri
   return x1 < x2 || y1 < y2 ? `${x1},${y1}-${x2},${y2}` : `${x2},${y2}-${x1},${y1}`;
 }
 
+/** Normalized lookup key for the edge BETWEEN two adjacent squares,
+ * i.e. the crossing a path step makes. Order-independent, so one door
+ * matches a step taken in either direction. */
+export function crossingKey(a: Coord, b: Coord): string {
+  const ka = squareKey(a[0], a[1]);
+  const kb = squareKey(b[0], b[1]);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
 /** The wall/door edge shared by two orthogonally-adjacent squares --
  * used both for a door's own rendered line and for excluding that same
  * edge from the plain wall layer (see BoardTerrain). */

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
+import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
 import { revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
@@ -35,6 +36,13 @@ export function BoardView({
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
   const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
+  // `doors` arrives with live game state already merged in (GameView's
+  // resolvedDoors), so an entry here is the door's state right now.
+  const doorEdges = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of doors ?? []) map.set(crossingKey(d.squares[0], d.squares[1]), d.state);
+    return map;
+  }, [doors]);
 
   const {
     selectedHeroId,
@@ -54,6 +62,7 @@ export function BoardView({
     monsters: gameState.monsters,
     revealed,
     furniture: furnitureKeys,
+    doorEdges,
   });
 
   const coordFromEvent = useCallback(
