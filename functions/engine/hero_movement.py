@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from validator.catalogs import CORRIDOR, Board, Catalogs
 from validator.geometry import furniture_squares
 
+from .doors import effective_door_state
+
 Coord = tuple[int, int]
 
 
@@ -163,7 +165,7 @@ def resolve_hero_movement(
                 stopped_reason = "no_door"
                 break
             door_id = door["id"]
-            state = door_states.get(door_id, door.get("state"))
+            state = effective_door_state(door, door_states)
             if state in ("locked", "secret"):
                 stopped_reason = "locked_door"
                 stopped_door_id = door_id

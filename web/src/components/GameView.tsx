@@ -76,9 +76,19 @@ export function GameView({ gameId }: GameViewProps) {
   // *state* is game-owned (overrides quest.doors' initial state) --
   // merge them for rendering, same precedence the backend uses (see
   // doors.py). Stairway placement never changes after quest setup.
+  //
+  // The fallback mirrors engine/doors.py's effective_door_state: a
+  // quest-declared "open" means "no lock, no secret", NOT that the door
+  // stands open, so with no game-state entry it reads as closed and
+  // still needs the Open door button.
   const { doors: questDoors, stairway, furniture, narrative } = useQuestMap(game?.questId);
   const resolvedDoors = useMemo(
-    () => questDoors.map((d) => ({ ...d, state: (game?.doors?.[d.id] as DoorState | undefined) ?? d.state })),
+    () =>
+      questDoors.map((d) => {
+        const live = game?.doors?.[d.id] as DoorState | undefined;
+        const fallback: DoorState = d.state === "open" ? "closed" : d.state;
+        return { ...d, state: live ?? fallback };
+      }),
     [questDoors, game?.doors]
   );
   const [narrativeOpen, setNarrativeOpen] = useState(false);

@@ -43,12 +43,29 @@ def test_rejects_hero_not_at_door(good_quest_4h, catalogs):
 
 
 def test_rejects_already_open_door(good_quest_4h, catalogs):
-    # D1 is open in the fixture.
-    game_state = {"heroes": _hero_at((4, 1)), "doors": {}, "revealed": {"rooms": [], "corridorSquares": []}}
+    # "Already open" is a GAME-state fact -- a hero opened it earlier
+    # this quest. Quest data calling a door "open" does not mean it
+    # stands open (see engine/create_game.py._initial_door_states).
+    game_state = {
+        "heroes": _hero_at((4, 1)),
+        "doors": {"D1": "open"},
+        "revealed": {"rooms": [], "corridorSquares": []},
+    }
     with pytest.raises(InvalidDoorOpenError):
         resolve_open_door(
             board=catalogs.board, quest=good_quest_4h, game_state=game_state, hero_id="barbarian", door_id="D1"
         )
+
+
+def test_quest_open_door_still_needs_opening(good_quest_4h, catalogs):
+    # D1 is "open" in the quest fixture and the game doc records no
+    # state for it (a game created before doors were seeded closed).
+    # It must still be openable -- i.e. it is NOT standing open.
+    game_state = {"heroes": _hero_at((4, 1)), "doors": {}, "revealed": {"rooms": [], "corridorSquares": []}}
+    result = resolve_open_door(
+        board=catalogs.board, quest=good_quest_4h, game_state=game_state, hero_id="barbarian", door_id="D1"
+    )
+    assert result.new_state == "open"
 
 
 def test_rejects_locked_door(good_quest_4h, catalogs):

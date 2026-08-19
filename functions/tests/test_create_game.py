@@ -101,3 +101,26 @@ def test_rejects_more_than_four_heroes(good_quest_4h, catalogs):
 def test_rejects_quest_with_no_stairway(catalogs):
     with pytest.raises(InvalidRosterError):
         build_initial_game_state(quest={}, catalogs=catalogs, heroes=[{"id": "barbarian"}])
+
+
+def test_all_passable_doors_start_closed(good_quest_4h, catalogs):
+    # A hero may never walk through a door unannounced -- quest data
+    # marking a door "open" means "not locked, not secret", not "already
+    # standing open on turn 1".
+    game_state = build_initial_game_state(
+        quest=good_quest_4h, catalogs=catalogs, heroes=[{"id": "barbarian", "name": "Barbarian"}]
+    )
+    quest_doors = {d["id"]: d.get("state") for d in good_quest_4h.get("doors", [])}
+    assert quest_doors, "fixture should declare doors"
+    for door_id, quest_state in quest_doors.items():
+        if quest_state in ("locked", "secret"):
+            assert game_state["doors"][door_id] == quest_state  # needs key/spell or a search
+        else:
+            assert game_state["doors"][door_id] == "closed"
+
+
+def test_open_doors_in_quest_data_do_not_leak_into_the_game(good_quest_4h, catalogs):
+    game_state = build_initial_game_state(
+        quest=good_quest_4h, catalogs=catalogs, heroes=[{"id": "barbarian", "name": "Barbarian"}]
+    )
+    assert "open" not in game_state["doors"].values()

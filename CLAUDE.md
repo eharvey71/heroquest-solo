@@ -32,7 +32,10 @@ square. Doors are opened FROM the doorway: a hero stops at a door,
 tells Zargon, and the room is revealed without stepping inside --
 entering first would mean walking onto whatever stands behind it. The
 app derives openable doors from where the hero stands, so no walk-into
-attempt is needed to discover a closed door. Treasure searches use the physical
+attempt is needed to discover a closed door. EVERY door starts closed
+at game creation: quest data marking a door "open" only means "no lock,
+no secret" -- it is not a claim the door stands open on turn 1, and
+taking it literally let heroes walk straight into unrevealed rooms. Treasure searches use the physical
 treasure deck; the app only needs to know if a wandering monster is drawn
 (button for it). One treasure search per HERO per room (owner verified
 against the 1989 rulebook; an earlier "once per room total" reading was

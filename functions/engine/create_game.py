@@ -7,6 +7,9 @@ loaded into the roster at full body points immediately, but fog of war
 governs what a caller actually shows -- see CLAUDE.md's "Room ids, not
 coordinates, drive fog of war" note, and engine/zargon_turn.py's
 existing "is this monster's location currently revealed" gate.
+
+Every door starts CLOSED (see _initial_door_states): no hero passes a
+door until they stop at it and tell Zargon to open it.
 """
 
 from __future__ import annotations
@@ -27,6 +30,30 @@ def _stairway_squares(quest: dict) -> list[Coord]:
         raise InvalidRosterError("quest has no stairway declared")
     x, y = pos
     return [(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)]
+
+
+def _initial_door_states(quest: dict) -> dict:
+    """door_id -> starting state, with every passable door CLOSED.
+
+    The 1989 rules give the hero no way through a door except stopping
+    at it and telling Zargon to open it -- so a door may never start in
+    a state movement can walk straight through. Quest generation marks
+    most doors "open", meaning only "no lock, no secret"; that is a
+    statement about the door's KIND, not about it standing open on turn
+    one, and taking it literally let heroes stroll into unrevealed rooms
+    (and onto whatever waited behind the door).
+
+    Locked and secret doors keep their state: they need a key/spell or a
+    search first, not the open-door button (engine/doors.py).
+    """
+    states = {}
+    for d in quest.get("doors", []):
+        door_id = d.get("id")
+        if not door_id:
+            continue
+        state = d.get("state")
+        states[door_id] = "closed" if state in ("open", "closed", None) else state
+    return states
 
 
 def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[dict]) -> dict:
@@ -63,7 +90,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "heroes": hero_states,
         "monsters": monsters,
         "revealed": {"rooms": [stairway_room], "corridorSquares": []},
-        "doors": {},
+        "doors": _initial_door_states(quest),
         "trapsTriggered": [],
         "searched": {},
         "log": [{"turn": 1, "text": "The party begins their quest."}],

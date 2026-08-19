@@ -35,6 +35,25 @@ class InvalidDoorOpenError(ValueError):
     """
 
 
+def effective_door_state(door: dict, door_states: dict) -> str:
+    """A door's state right now, treating a quest-declared "open" as
+    closed.
+
+    Quest generation marks most doors "open" to mean "no lock, no
+    secret" -- it is not a claim that the door stands open on turn one.
+    Game state seeds every passable door closed
+    (engine/create_game.py), but games created before that carry no
+    door entry at all, so the fallback has to re-assert the rule rather
+    than trust the quest's word: nothing is walkable until a hero stops
+    at it and Zargon opens it.
+    """
+    state = door_states.get(door.get("id"))
+    if state is not None:
+        return state
+    quest_state = door.get("state")
+    return "closed" if quest_state in ("open", "closed", None) else quest_state
+
+
 @dataclass
 class OpenDoorResult:
     door_id: str
@@ -62,8 +81,7 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
     if hero_pos not in squares:
         raise InvalidDoorOpenError(f"hero '{hero_id}' is not standing at door '{door_id}'")
 
-    door_states = game_state.get("doors", {})
-    state = door_states.get(door_id, door.get("state"))
+    state = effective_door_state(door, game_state.get("doors", {}))
 
     if state == "open":
         raise InvalidDoorOpenError(f"door '{door_id}' is already open")
