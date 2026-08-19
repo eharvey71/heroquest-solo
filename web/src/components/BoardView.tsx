@@ -12,19 +12,41 @@ interface BoardViewProps {
   gameState: GameState;
   cellSize?: number;
   onConfirmMove?: (heroId: string, path: Coord[]) => void;
+  onSelectHero?: (heroId: string) => void;
+  onSelectMonster?: (monsterId: string) => void;
   doors?: QuestDoor[];
   stairway?: QuestStairway | null;
   furniture?: QuestFurniture[];
 }
 
-export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stairway, furniture = [] }: BoardViewProps) {
+export function BoardView({
+  gameState,
+  cellSize = 28,
+  onConfirmMove,
+  onSelectHero,
+  onSelectMonster,
+  doors,
+  stairway,
+  furniture = [],
+}: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
 
-  const { selectedHeroId, path, isDragging, selectHero, extendTo, startDragging, stopDragging, clear, canConfirm } =
-    usePathInput({ board: staticBoard, heroes: gameState.heroes, monsters: gameState.monsters });
+  const {
+    selectedHeroId,
+    path,
+    isDragging,
+    selectHero,
+    extendTo,
+    startDragging,
+    stopDragging,
+    clear,
+    canConfirm,
+    endSquareOccupied,
+    blockedHint,
+  } = usePathInput({ board: staticBoard, heroes: gameState.heroes, monsters: gameState.monsters, revealed });
 
   const coordFromEvent = useCallback(
     (e: React.PointerEvent<SVGSVGElement>): Coord | null => {
@@ -53,15 +75,39 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stai
       const heroHere = gameState.heroes.find((h) => squareKey(h.pos[0], h.pos[1]) === key);
       if (heroHere) {
         selectHero(heroHere);
-      } else if (selectedHeroId) {
+        onSelectHero?.(heroHere.id); // keep the action panel's active hero in sync
+      } else if (!selectedHeroId || path.length <= 1) {
+        // Not mid-trace: a tap on a visible monster picks it as the
+        // attack target instead of starting a path (a path can never
+        // pass through a monster square anyway).
+        const monsterHere = gameState.monsters.find(
+          (m) => m.alive && squareKey(m.pos[0], m.pos[1]) === key && revealed.has(key)
+        );
+        if (monsterHere) {
+          onSelectMonster?.(monsterHere.id);
+          return;
+        }
+        if (!selectedHeroId) return; // no active path and nothing clickable here
         extendTo(coord);
       } else {
-        return; // no active path and no hero clicked -- nothing to do
+        extendTo(coord);
       }
       lastCoordKeyRef.current = key;
       startDragging();
     },
-    [coordFromEvent, gameState.heroes, selectHero, selectedHeroId, extendTo, startDragging]
+    [
+      coordFromEvent,
+      gameState.heroes,
+      gameState.monsters,
+      revealed,
+      selectHero,
+      onSelectHero,
+      onSelectMonster,
+      selectedHeroId,
+      path.length,
+      extendTo,
+      startDragging,
+    ]
   );
 
   const handlePointerMove = useCallback(
@@ -72,9 +118,26 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stai
       const key = squareKey(coord[0], coord[1]);
       if (key === lastCoordKeyRef.current) return;
       lastCoordKeyRef.current = key;
+      // A fast drag can skip cells between pointermove events, which
+      // would stall the trace (extendTo only accepts adjacent steps).
+      // Bridge straight-line gaps by feeding the intermediate squares;
+      // diagonal skips stay rejected -- the corner choice is the
+      // player's to make.
+      const last = path[path.length - 1];
+      if (last) {
+        const [lx, ly] = last;
+        const [cx, cy] = coord;
+        if (lx === cx && Math.abs(cy - ly) > 1) {
+          const step = cy > ly ? 1 : -1;
+          for (let y = ly + step; y !== cy; y += step) extendTo([lx, y]);
+        } else if (ly === cy && Math.abs(cx - lx) > 1) {
+          const step = cx > lx ? 1 : -1;
+          for (let x = lx + step; x !== cx; x += step) extendTo([x, ly]);
+        }
+      }
       extendTo(coord);
     },
-    [isDragging, coordFromEvent, extendTo]
+    [isDragging, coordFromEvent, extendTo, path]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -118,7 +181,7 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stai
         />
       </svg>
       {selectedHero && (
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span>
             Moving {selectedHero.name}: {Math.max(path.length - 1, 0)} step(s)
           </span>
@@ -126,6 +189,10 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stai
             Confirm move
           </button>
           <button onClick={clear}>Cancel</button>
+          {blockedHint && <span style={{ color: "#e6a23b" }}>{blockedHint}</span>}
+          {!blockedHint && endSquareOccupied && (
+            <span style={{ color: "#e6a23b" }}>can't end the move on an occupied square</span>
+          )}
         </div>
       )}
     </div>

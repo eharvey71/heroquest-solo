@@ -4,6 +4,13 @@
  * so traps can trigger mid-move and Zargon always knows hero positions.
  * This hook only tracks the path itself -- BoardView owns translating
  * pointer events into board coordinates and drives selectHero/extendTo.
+ *
+ * Only monsters on REVEALED squares block the trace here -- a hidden
+ * monster silently rejecting a step would both feel broken and leak
+ * fog-of-war information (the unexplainably untraceable square IS the
+ * monster's position). The backend still stops the actual move against
+ * every living monster, hidden or not; the client just doesn't
+ * pre-announce it.
  */
 
 import { useCallback, useState } from "react";
@@ -15,16 +22,19 @@ export interface UsePathInputArgs {
   board: Board;
   heroes: HeroToken[];
   monsters: MonsterToken[];
+  revealed: ReadonlySet<string>;
 }
 
-export function usePathInput({ board, heroes, monsters }: UsePathInputArgs) {
+export function usePathInput({ board, heroes, monsters, revealed }: UsePathInputArgs) {
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
   const [path, setPath] = useState<Coord[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [blockedHint, setBlockedHint] = useState<string | null>(null);
 
   const selectHero = useCallback((hero: HeroToken) => {
     setSelectedHeroId(hero.id);
     setPath([hero.pos]);
+    setBlockedHint(null);
   }, []);
 
   const extendTo = useCallback(
@@ -36,21 +46,31 @@ export function usePathInput({ board, heroes, monsters }: UsePathInputArgs) {
         // Stepping back onto an earlier square in the path truncates to
         // there -- lets a player correct course without starting over.
         const existingIndex = prev.findIndex((c) => squareKey(c[0], c[1]) === key);
-        if (existingIndex !== -1) return prev.slice(0, existingIndex + 1);
+        if (existingIndex !== -1) {
+          setBlockedHint(null);
+          return prev.slice(0, existingIndex + 1);
+        }
 
         const last = prev[prev.length - 1];
         if (!isOrthogonallyAdjacent(last, coord)) return prev;
-        if (board.areaOf.get(key) === undefined) return prev; // off-board
+        if (board.areaOf.get(key) === undefined) {
+          setBlockedHint("that square is off the board");
+          return prev;
+        }
         // Monsters block a path outright; heroes may pass through
         // fellow heroes (CLAUDE.md rules edition note), so only
         // monster occupancy is checked mid-path -- the end-square
         // occupancy (by anything) is checked separately in canConfirm.
-        if (monsters.some((m) => m.alive && squareKey(m.pos[0], m.pos[1]) === key)) return prev;
+        if (revealed.has(key) && monsters.some((m) => m.alive && squareKey(m.pos[0], m.pos[1]) === key)) {
+          setBlockedHint("a monster blocks that square -- heroes can't move through monsters");
+          return prev;
+        }
 
+        setBlockedHint(null);
         return [...prev, coord];
       });
     },
-    [board, monsters]
+    [board, monsters, revealed]
   );
 
   const startDragging = useCallback(() => setIsDragging(true), []);
@@ -60,6 +80,7 @@ export function usePathInput({ board, heroes, monsters }: UsePathInputArgs) {
     setSelectedHeroId(null);
     setPath([]);
     setIsDragging(false);
+    setBlockedHint(null);
   }, []);
 
   let endSquareOccupied = false;
@@ -67,7 +88,7 @@ export function usePathInput({ board, heroes, monsters }: UsePathInputArgs) {
     const endKey = squareKey(path[path.length - 1][0], path[path.length - 1][1]);
     endSquareOccupied =
       heroes.some((h) => h.id !== selectedHeroId && squareKey(h.pos[0], h.pos[1]) === endKey) ||
-      monsters.some((m) => m.alive && squareKey(m.pos[0], m.pos[1]) === endKey);
+      monsters.some((m) => m.alive && revealed.has(endKey) && squareKey(m.pos[0], m.pos[1]) === endKey);
   }
 
   const canConfirm = path.length > 1 && !endSquareOccupied;
@@ -82,5 +103,7 @@ export function usePathInput({ board, heroes, monsters }: UsePathInputArgs) {
     stopDragging,
     clear,
     canConfirm,
+    endSquareOccupied,
+    blockedHint,
   };
 }

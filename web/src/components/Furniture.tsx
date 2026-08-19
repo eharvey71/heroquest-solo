@@ -21,10 +21,8 @@ const STROKE = "#c9a24a";
 
 const CATALOG = furnitureCatalog as Record<string, { footprint: number[]; owned: number }>;
 
-function abbreviate(type: string): string {
-  const parts = type.split("_");
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return type.slice(0, 2).toUpperCase();
+function label(type: string): string {
+  return type.replace(/_/g, " ");
 }
 
 export function Furniture({ cellSize, furniture, revealed }: FurnitureProps) {
@@ -42,8 +40,14 @@ export function Furniture({ cellSize, furniture, revealed }: FurnitureProps) {
         if (f.orientation === "E" || f.orientation === "W") [w, h] = [h, w];
         const x = f.pos[0] * cellSize;
         const y = f.pos[1] * cellSize;
+        const name = label(f.type);
+        // Shrink the label until it fits the footprint's width (~0.6em
+        // per character); tiny 1x1 pieces stay readable via the hover
+        // tooltip either way.
+        const fontSize = Math.min(cellSize * 0.28, (w * cellSize - 6) / (name.length * 0.62));
         return (
           <g key={`${f.roomId}-${f.type}-${i}`}>
+            <title>{name}</title>
             <rect
               x={x + 1}
               y={y + 1}
@@ -59,10 +63,10 @@ export function Furniture({ cellSize, furniture, revealed }: FurnitureProps) {
               y={y + (h * cellSize) / 2}
               textAnchor="middle"
               dominantBaseline="central"
-              fontSize={cellSize * 0.24}
+              fontSize={fontSize}
               fill={STROKE}
             >
-              {abbreviate(f.type)}
+              {name}
             </text>
           </g>
         );

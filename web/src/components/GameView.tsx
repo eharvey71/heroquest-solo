@@ -11,6 +11,7 @@ import {
   searchTrapsAndSecretDoors,
   searchTreasure,
 } from "../lib/functionsClient";
+import { revealedSquareKeys } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
@@ -87,6 +88,11 @@ export function GameView({ gameId }: GameViewProps) {
   if (error) return <p style={{ color: "#e66" }}>Error: {error}</p>;
   if (!game) return null;
 
+  // Fog of war: hidden monsters must never appear in the attack list --
+  // the dropdown otherwise leaks every unrevealed room's contents.
+  const revealedKeys = revealedSquareKeys(staticBoard, game.revealed);
+  const targetableMonsters = game.monsters.filter((m) => m.alive && revealedKeys.has(squareKey(m.pos[0], m.pos[1])));
+
   const activeHero = game.heroes.find((h) => h.id === heroId);
   const activeHeroArea = activeHero ? staticBoard.areaOf.get(squareKey(activeHero.pos[0], activeHero.pos[1])) : undefined;
   const activeHeroRoomId = activeHeroArea && activeHeroArea !== CORRIDOR ? activeHeroArea : null;
@@ -103,6 +109,17 @@ export function GameView({ gameId }: GameViewProps) {
     for (const t of result.triggeredTraps) pushLog([`PLACE TILE: ${t.placementInstruction}`]);
     if (result.stoppedReason === "closed_door" && result.stoppedAtDoorId) {
       setPendingDoorId(result.stoppedAtDoorId);
+    } else if (result.stoppedReason) {
+      // A partial move with no visible explanation feels like a bug --
+      // name the obstacle (closed_door has its own flow above).
+      const reasons: Record<string, string> = {
+        locked_door: "Movement stopped: that door won't open from here.",
+        monster_blocked: "Movement stopped: a monster blocks the path.",
+        blocked_square: "Movement stopped: that square is blocked (place the blocked-square tile if not already placed).",
+        no_door: "Movement stopped: there's no door in that wall.",
+        off_board: "Movement stopped: the path left the board.",
+      };
+      pushLog([reasons[result.stoppedReason] ?? `Movement stopped (${result.stoppedReason}).`]);
     }
   };
 
@@ -235,6 +252,8 @@ export function GameView({ gameId }: GameViewProps) {
       <BoardView
         gameState={game}
         onConfirmMove={handleConfirmMove}
+        onSelectHero={setHeroId}
+        onSelectMonster={setAttackMonsterId}
         doors={resolvedDoors}
         stairway={stairway}
         furniture={furniture}
@@ -273,26 +292,24 @@ export function GameView({ gameId }: GameViewProps) {
                 <input type="checkbox" checked={wanderingDrawn} onChange={(e) => setWanderingDrawn(e.target.checked)} />{" "}
                 wandering monster card drawn
               </label>
-              {roomAlreadySearchedTreasure && <span className="hint">(already searched)</span>}
+              {roomAlreadySearchedTreasure && <span className="hint">(this room has been searched -- once per room)</span>}
             </div>
 
             <div>
               <button onClick={handleSearchTraps} disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTraps}>
                 Search traps / secret doors
               </button>
-              {roomAlreadySearchedTraps && <span className="hint">(already searched)</span>}
+              {roomAlreadySearchedTraps && <span className="hint">(this room has been searched -- once per room)</span>}
             </div>
 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
                 <option value="">Attack target...</option>
-                {game.monsters
-                  .filter((m) => m.alive)
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.type} ({m.id}) &mdash; {m.currentBody} BP
-                    </option>
-                  ))}
+                {targetableMonsters.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                  </option>
+                ))}
               </select>
               <label>
                 Skulls: <input type="number" min={0} value={attackSkulls} onChange={(e) => setAttackSkulls(Number(e.target.value))} style={{ width: 48 }} />
