@@ -1,6 +1,11 @@
 """Resolves the "open door" button (CLAUDE.md's interface list: a hard
 stop during movement, opened as its own separate action).
 
+Physically this REPLACES the piece: every door is placed closed, and
+Zargon swaps the closed piece for an open one when a hero opens it
+(the box holds 16 open and 5 closed pieces -- an inventory of pieces,
+not a limit on how many doors a quest may have).
+
 Opening a closed door reveals the far room immediately, matching how a
 human Zargon populates a room as soon as the door swings open -- the
 hero doesn't need to step inside first. This is the same sightline this
@@ -102,7 +107,8 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
         log.append(f"{far_area} revealed.")
 
     placement_instruction = (
-        f"Flip the door tile at squares {list(squares[0])}-{list(squares[1])} from closed to open."
+        f"Replace the closed door piece at squares {list(squares[0])}-{list(squares[1])} "
+        f"with an open door piece."
     )
 
     return OpenDoorResult(

@@ -124,8 +124,18 @@ def test_door_total_count_cap_exceeded(good_quest_4h, good_quest_4h_params, cata
     assert any("exceeding the owned count of 21" in e for e in errors)
 
 
-def test_closed_locked_door_cap_exceeded(good_quest_4h, good_quest_4h_params, catalogs):
+def test_every_door_may_be_closed(good_quest_4h, good_quest_4h_params, catalogs):
+    # All doors start closed in play anyway, and the closed piece is
+    # recycled as soon as Zargon swaps in an open one -- so the count of
+    # closed doors caps nothing physical.
     for d in good_quest_4h["doors"]:
         d["state"] = "closed"
     errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
-    assert any("closed/locked doors, exceeding the owned count of 5" in e for e in errors)
+    assert not any("door" in e for e in errors)
+
+
+def test_locked_door_cap_exceeded(good_quest_4h, good_quest_4h_params, catalogs):
+    for d in good_quest_4h["doors"]:
+        d["state"] = "locked"
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("locked doors, exceeding the cap of 5" in e for e in errors)

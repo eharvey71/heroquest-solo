@@ -35,7 +35,9 @@ app derives openable doors from where the hero stands, so no walk-into
 attempt is needed to discover a closed door. EVERY door starts closed
 at game creation: quest data marking a door "open" only means "no lock,
 no secret" -- it is not a claim the door stands open on turn 1, and
-taking it literally let heroes walk straight into unrevealed rooms. Treasure searches use the physical
+taking it literally let heroes walk straight into unrevealed rooms.
+Opening a door REPLACES the closed piece with an open one (see the
+component notes below). Treasure searches use the physical
 treasure deck; the app only needs to know if a wandering monster is drawn
 (button for it). One treasure search per HERO per room (owner verified
 against the 1989 rulebook; an earlier "once per room total" reading was
@@ -77,7 +79,15 @@ tomb x1, sorcerer's table x1, bookcase x2, rack x1, fireplace x1,
 weapons rack x1, cupboard x1.
 Footprints (w x h): table/alch bench/sorcerer's table/tomb/rack 3x2;
 throne + chest 1x1; bookcase/cupboard/fireplace/weapons rack 3x1.
-Doors: 21 (16 open, 5 closed). Tiles: stairs 2x2, blocked squares,
+Doors: 21 pieces (16 open, 5 closed) -- that is an inventory of
+PIECES, not a cap on closed doors. Every door is placed closed; when a
+hero opens one, Zargon REPLACES the closed piece with an open piece,
+freeing the closed piece for reuse. So closed pieces recycle, open
+pieces accumulate. Quest-declared door state therefore constrains
+nothing physical: only "locked" (needs key/spell) and "secret" (must be
+searched for) carry meaning, and locked is capped at 5 as a difficulty
+knob, not a component count.
+Tiles: stairs 2x2, blocked squares,
 pit traps, falling block traps, secret doors, skulls.
 When the app reveals anything with a physical tile (trap sprung, secret
 door found, blocked square, stairs), it must show a "place tile"
