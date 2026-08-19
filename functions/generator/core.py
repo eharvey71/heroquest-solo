@@ -19,7 +19,7 @@ from validator.core import validate_quest
 from validator.result import ValidationResult
 
 from .client import QuestGenerationTruncated, call_llm
-from .prompt import build_retry_message, build_system_prompt, build_user_message
+from .prompt import build_retry_message, build_system_prompt, build_user_message, pick_stairway_room
 from .repair import apply_auto_repair
 from .schema import build_quest_json_schema
 
@@ -60,7 +60,12 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> Ge
     """
     catalogs = catalogs or load_catalogs()
     schema = build_quest_json_schema(catalogs)
-    system_prompt = build_system_prompt(params, catalogs)
+    # Picked once per generation call, not re-picked per retry -- the
+    # retry loop's contract is "fix ONLY these errors," so the starting
+    # room must stay fixed across attempts within one generate_quest call.
+    stairway_room = pick_stairway_room(catalogs)
+    system_prompt = build_system_prompt(params, catalogs, stairway_room)
+    validation_params = {**params, "stairwayRoom": stairway_room}
 
     message = build_user_message(params)
     last_errors = ["no attempt completed"]
@@ -73,7 +78,7 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> Ge
             continue
 
         apply_auto_repair(quest, params, catalogs)
-        result = validate_quest(quest, params, catalogs)
+        result = validate_quest(quest, validation_params, catalogs)
         if result.ok:
             return GenerationResult(quest=quest, validation=result, attempts=attempt)
         last_errors = result.errors

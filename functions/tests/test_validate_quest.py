@@ -23,3 +23,19 @@ def test_completely_empty_quest_reports_errors_not_crash(catalogs):
     result = validate_quest({}, {"heroCount": 4, "difficulty": "standard", "size": "full"}, catalogs)
     assert not result.ok
     assert any("stairway" in e for e in result.errors)
+
+
+def test_stairway_room_mismatch_rejected_when_pinned(good_quest_4h, good_quest_4h_params, catalogs):
+    # good_quest_4h's stairway is in R1 -- pin a different room and the
+    # mismatch must be caught (generator.prompt.pick_stairway_room's
+    # constraint is only useful if a model ignoring it gets rejected).
+    params = {**good_quest_4h_params, "stairwayRoom": "R7"}
+    result = validate_quest(good_quest_4h, params, catalogs)
+    assert not result.ok
+    assert any("stairway must be placed in room R7" in e for e in result.errors)
+
+
+def test_stairway_room_match_when_pinned_is_fine(good_quest_4h, good_quest_4h_params, catalogs):
+    params = {**good_quest_4h_params, "stairwayRoom": "R1"}
+    result = validate_quest(good_quest_4h, params, catalogs)
+    assert not any("pre-selected" in e for e in result.errors)

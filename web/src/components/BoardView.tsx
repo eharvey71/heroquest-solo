@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
 import { revealedSquareKeys, type GameState } from "../lib/gameState";
-import type { QuestDoor, QuestStairway } from "../lib/useQuestMap";
+import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
+import { Furniture } from "./Furniture";
 import { PathOverlay } from "./PathOverlay";
 import { Tokens } from "./Tokens";
 import { usePathInput } from "../hooks/usePathInput";
@@ -13,9 +14,10 @@ interface BoardViewProps {
   onConfirmMove?: (heroId: string, path: Coord[]) => void;
   doors?: QuestDoor[];
   stairway?: QuestStairway | null;
+  furniture?: QuestFurniture[];
 }
 
-export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stairway }: BoardViewProps) {
+export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stairway, furniture = [] }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
 
@@ -93,13 +95,19 @@ export function BoardView({ gameState, cellSize = 28, onConfirmMove, doors, stai
         ref={svgRef}
         viewBox={`0 0 ${staticBoard.width * cellSize} ${staticBoard.height * cellSize}`}
         width="100%"
-        style={{ maxWidth: staticBoard.width * cellSize, background: "#111", touchAction: "none" }}
+        style={{
+          maxWidth: staticBoard.width * cellSize,
+          background: "#111",
+          touchAction: "none",
+          userSelect: "none",
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
         <BoardTerrain board={staticBoard} cellSize={cellSize} revealed={revealed} doors={doors} stairway={stairway} />
+        <Furniture cellSize={cellSize} furniture={furniture} revealed={revealed} />
         <PathOverlay cellSize={cellSize} path={path} />
         <Tokens
           cellSize={cellSize}

@@ -76,11 +76,12 @@ export function GameView({ gameId }: GameViewProps) {
   // *state* is game-owned (overrides quest.doors' initial state) --
   // merge them for rendering, same precedence the backend uses (see
   // doors.py). Stairway placement never changes after quest setup.
-  const { doors: questDoors, stairway } = useQuestMap(game?.questId);
+  const { doors: questDoors, stairway, furniture, narrative } = useQuestMap(game?.questId);
   const resolvedDoors = useMemo(
     () => questDoors.map((d) => ({ ...d, state: (game?.doors?.[d.id] as DoorState | undefined) ?? d.state })),
     [questDoors, game?.doors]
   );
+  const [narrativeOpen, setNarrativeOpen] = useState(false);
 
   if (loading) return <p>Loading game...</p>;
   if (error) return <p style={{ color: "#e66" }}>Error: {error}</p>;
@@ -192,7 +193,24 @@ export function GameView({ gameId }: GameViewProps) {
         </span>
       </div>
 
-      <BoardView gameState={game} onConfirmMove={handleConfirmMove} doors={resolvedDoors} stairway={stairway} />
+      {narrative && (
+        <div style={{ marginBottom: 12 }}>
+          <button onClick={() => setNarrativeOpen((v) => !v)}>
+            {narrativeOpen ? "Hide" : "Show"} quest story: {narrative.title}
+          </button>
+          {narrativeOpen && (
+            <p style={{ maxWidth: 700, fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+          )}
+        </div>
+      )}
+
+      <BoardView
+        gameState={game}
+        onConfirmMove={handleConfirmMove}
+        doors={resolvedDoors}
+        stairway={stairway}
+        furniture={furniture}
+      />
 
       {errorMsg && <p style={{ color: "#e66" }}>Error: {errorMsg}</p>}
 

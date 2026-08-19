@@ -14,6 +14,17 @@ from generator.core import QuestGenerationFailed, generate_quest
 from generator.repair import _total_budget
 
 
+@pytest.fixture(autouse=True)
+def pin_stairway_room(monkeypatch):
+    """generate_quest now pre-picks a random stairway room and enforces
+    it (see generator/prompt.py's pick_stairway_room) -- these tests are
+    about the retry/repair/truncation pipeline, not room selection, and
+    every fixture quest here declares stairway.room "R1". Pin the pick
+    so a random room doesn't fail these fixtures' own validation.
+    """
+    monkeypatch.setattr("generator.core.pick_stairway_room", lambda catalogs, rng=None: "R1")
+
+
 def _to_wire_format(quest: dict) -> dict:
     """Inverse of generator.client._to_canonical_shape: fixtures are
     written in the canonical {roomId: room} dict shape, but the real API

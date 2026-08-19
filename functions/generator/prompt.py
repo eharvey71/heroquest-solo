@@ -6,6 +6,7 @@ uses, so the prompt and the validator can never disagree about a number.
 from __future__ import annotations
 
 import json
+import random
 
 from validator.balance import (
     BASELINE_BUDGET,
@@ -73,7 +74,32 @@ def _wandering_constraint(hero_count: int) -> str:
     return "any type"
 
 
-def build_system_prompt(params: dict, catalogs: Catalogs) -> str:
+def rooms_with_2x2_fit(catalogs: Catalogs) -> list[str]:
+    """Rooms with at least one contiguous 2x2 sub-block -- the stairway's
+    fixed footprint. Used to pick a valid candidate for pick_stairway_room.
+    """
+    fits = []
+    for room_id, squares in catalogs.board.room_squares.items():
+        if any((x + 1, y) in squares and (x, y + 1) in squares and (x + 1, y + 1) in squares for x, y in squares):
+            fits.append(room_id)
+    return fits
+
+
+def pick_stairway_room(catalogs: Catalogs, rng: random.Random | None = None) -> str:
+    """Randomly pre-selects the starting room and hands it to the model
+    as a hard constraint, rather than leaving "which room is the
+    stairway in" to the model's free choice. In practice the model has
+    a very strong prior toward the first room in the catalog regardless
+    of sampling settings -- every quest generated during testing started
+    in the exact same physical corner of the board. Picking it in code
+    guarantees real variety; the model still designs everything else
+    (room usage, monsters, objective, story) around wherever it lands.
+    """
+    rng = rng or random
+    return rng.choice(rooms_with_2x2_fit(catalogs))
+
+
+def build_system_prompt(params: dict, catalogs: Catalogs, stairway_room: str) -> str:
     hero_count = params["heroCount"]
     difficulty = params.get("difficulty", "standard")
     size = params.get("size", "full")
@@ -130,6 +156,7 @@ Blocked squares: use sparingly (limited tiles).
 - monster budget: total threat cost MUST be {budget_min:.0f}-{budget_max:.0f}
 - max monsters in any one room: {room_cap}
 - theme: {theme}
+- stairway room: {stairway_room} (pre-selected -- see hard constraint 5)
 
 ### HARD CONSTRAINTS
 1. Every position must be a square inside the declared room. No two entities
@@ -144,7 +171,9 @@ Blocked squares: use sparingly (limited tiles).
 4. Secret doors are optional shortcuts, never the only route to the objective.
    If you do make the objective secret-door-only, set
    `objective.secretPathHint` to a room reachable without secret doors.
-5. Place the stairway (2x2) in one room, declared in `stairway`.
+5. The stairway (2x2) MUST be placed in room {stairway_room} -- this room
+   is pre-selected, not your choice. Declare it in `stairway.room` with a
+   `pos` such that the 2x2 footprint fits fully inside that room.
 6. Exactly one wandering monster type. {_wandering_constraint(hero_count)}
 7. Traps: at most 1 per room, at most 3 total in `corridorTraps` (traps placed
    in corridor squares rather than inside a room). Trap types: pit, falling_block.

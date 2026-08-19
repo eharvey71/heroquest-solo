@@ -1,9 +1,9 @@
 /**
- * Door + stairway geometry live on the quest doc (design/quest-schema.md:
- * both are quest-owned, since the 1989 board has no printed doorways or
- * fixed stairway), not the game doc -- game.doors only holds state
- * *overrides* keyed by door id. A quest never changes after generation,
- * so this is a one-time fetch, not a live subscription.
+ * Static, quest-owned content that lives on the quest doc rather than
+ * the (live, mutable) game doc: door/stairway geometry, furniture, and
+ * the narrative text (title/backstory/completionText) the LLM writes
+ * per design/generator-prompt.md's STYLE section. A quest never changes
+ * after generation, so this is a one-time fetch, not a live subscription.
  */
 
 import { doc, getDoc } from "firebase/firestore";
@@ -25,12 +25,52 @@ export interface QuestStairway {
   pos: Coord;
 }
 
+export interface QuestFurniture {
+  type: string;
+  pos: Coord;
+  orientation: "N" | "S" | "E" | "W";
+  roomId: string;
+}
+
+export interface QuestNarrative {
+  title: string;
+  backstory: string;
+  completionText: string;
+}
+
 export interface QuestMap {
   doors: QuestDoor[];
   stairway: QuestStairway | null;
+  furniture: QuestFurniture[];
+  narrative: QuestNarrative | null;
 }
 
-const EMPTY: QuestMap = { doors: [], stairway: null };
+const EMPTY: QuestMap = { doors: [], stairway: null, furniture: [], narrative: null };
+
+interface RawFurniture {
+  type: string;
+  pos: Coord;
+  orientation?: "N" | "S" | "E" | "W";
+}
+
+interface RawQuestDoc {
+  doors?: QuestDoor[];
+  stairway?: QuestStairway;
+  title?: string;
+  backstory?: string;
+  completionText?: string;
+  rooms?: Record<string, { furniture?: RawFurniture[] }>;
+}
+
+function extractFurniture(rooms: RawQuestDoc["rooms"]): QuestFurniture[] {
+  const items: QuestFurniture[] = [];
+  for (const [roomId, room] of Object.entries(rooms ?? {})) {
+    for (const f of room.furniture ?? []) {
+      items.push({ type: f.type, pos: f.pos, orientation: f.orientation ?? "N", roomId });
+    }
+  }
+  return items;
+}
 
 export function useQuestMap(questId: string | undefined): QuestMap {
   const [map, setMap] = useState<QuestMap>(EMPTY);
@@ -43,8 +83,16 @@ export function useQuestMap(questId: string | undefined): QuestMap {
     let cancelled = false;
     getDoc(doc(db, "quests", questId)).then((snap) => {
       if (cancelled || !snap.exists()) return;
-      const raw = fromFirestoreCoords(snap.data()) as { doors?: QuestDoor[]; stairway?: QuestStairway };
-      setMap({ doors: raw.doors ?? [], stairway: raw.stairway ?? null });
+      const raw = fromFirestoreCoords(snap.data()) as RawQuestDoc;
+      setMap({
+        doors: raw.doors ?? [],
+        stairway: raw.stairway ?? null,
+        furniture: extractFurniture(raw.rooms),
+        narrative:
+          raw.title || raw.backstory
+            ? { title: raw.title ?? "", backstory: raw.backstory ?? "", completionText: raw.completionText ?? "" }
+            : null,
+      });
     });
     return () => {
       cancelled = true;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createGame, generateQuest } from "../lib/functionsClient";
+import { useQuestMap } from "../lib/useQuestMap";
 
 interface GameSetupProps {
   onGameCreated: (gameId: string) => void;
@@ -28,6 +29,7 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
   const [questId, setQuestId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { narrative } = useQuestMap(questId ?? undefined);
 
   const heroCount = selectedHeroes.size;
 
@@ -126,6 +128,17 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
           <p>
             Quest ready: <code>{questId}</code>
           </p>
+          {narrative ? (
+            <div style={{ maxWidth: 600, marginBottom: 12 }}>
+              <h3>{narrative.title}</h3>
+              <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+              <p className="hint">
+                This is auto-generated -- read it aloud at the table when you start, nothing else to fill in.
+              </p>
+            </div>
+          ) : (
+            <p className="hint">Loading quest story...</p>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 300 }}>
             {CLASSIC_HEROES.filter((h) => selectedHeroes.has(h.id)).map((h) => (
               <label key={h.id}>
