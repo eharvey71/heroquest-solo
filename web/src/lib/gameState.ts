@@ -40,6 +40,7 @@ export interface GameState {
   // always has them, straight off design/quest-schema.md section 4.
   questId?: string;
   phase?: "hero" | "zargon";
+  status?: "in_progress" | "complete";
   turn?: number;
   doors?: Record<string, string>;
   searched?: Record<string, { treasure?: boolean; traps?: boolean }>;

@@ -16,7 +16,11 @@ rulebook wandering-monster card), search_traps_and_secret_doors
 data), end_turn (flips phase hero->zargon),
 roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
 record_hero_defense (log-only shield reporting) operate on it
-afterward.
+afterward. resolve_movement, open_door, and resolve_hero_attack also
+check engine.objective.check_objective_complete after applying their
+own state change (see _mark_objective_if_complete) -- those are the
+only three actions that can newly satisfy an objective (a monster
+dying, or a room becoming revealed).
 """
 
 import anthropic
@@ -30,6 +34,7 @@ from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.objective import check_objective_complete
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
@@ -260,6 +265,23 @@ def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
     return game_state, quest
 
 
+def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict) -> bool:
+    """Checks engine.objective.check_objective_complete against `game_state`
+    (the caller must have already applied this action's changes to the
+    LOCAL game_state dict -- e.g. the new revealed rooms or a monster's
+    flipped alive flag -- before calling this) and, if newly true, adds
+    status + a completion log line to `updates` in place. Returns
+    whether this call is what completed it, so the caller can decide
+    whether to mention it in the response. A no-op if already complete.
+    """
+    if game_state.get("status") == "complete":
+        return False
+    if not check_objective_complete(quest, game_state):
+        return False
+    updates["status"] = "complete"
+    return True
+
+
 @firestore.transactional
 def _apply_movement(transaction, db, game_ref, hero_id, path):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
@@ -277,21 +299,23 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
     for h in heroes:
         if h["id"] == hero_id:
             h["pos"] = list(result.final_pos)
+    game_state["revealed"]["rooms"] = sorted(result.revealed_rooms)
 
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
 
-    transaction.update(
-        game_ref,
-        {
-            "heroes": to_firestore_coords(heroes),
-            "revealed.rooms": sorted(result.revealed_rooms),
-            "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
-            "trapsTriggered": sorted(result.traps_triggered),
-            "log": existing_log + new_log_entries,
-        },
-    )
+    updates = {
+        "heroes": to_firestore_coords(heroes),
+        "revealed.rooms": sorted(result.revealed_rooms),
+        "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
+        "trapsTriggered": sorted(result.traps_triggered),
+    }
+    if _mark_objective_if_complete(quest, game_state, updates):
+        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    updates["log"] = existing_log + new_log_entries
+
+    transaction.update(game_ref, updates)
 
     return result
 
@@ -395,12 +419,17 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
-    updates = {f"doors.{door_id}": result.new_state, "log": existing_log + new_log_entries}
+    updates = {f"doors.{door_id}": result.new_state}
 
     if result.revealed_room is not None:
         revealed_rooms = set(game_state.get("revealed", {}).get("rooms", []))
         revealed_rooms.add(result.revealed_room)
         updates["revealed.rooms"] = sorted(revealed_rooms)
+        game_state["revealed"]["rooms"] = sorted(revealed_rooms)
+
+    if _mark_objective_if_complete(quest, game_state, updates):
+        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    updates["log"] = existing_log + new_log_entries
 
     transaction.update(game_ref, updates)
     return result
@@ -824,15 +853,18 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
 
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": result.log}]
 
-    transaction.update(
-        game_ref,
-        {
-            f"monsters.{monster_id}.currentBody": result.body_points_after,
-            f"monsters.{monster_id}.alive": not result.defeated,
-            "log": existing_log + [{"turn": turn, "text": result.log}],
-        },
-    )
+    game_state["monsters"][monster_id]["alive"] = not result.defeated
+    updates = {
+        f"monsters.{monster_id}.currentBody": result.body_points_after,
+        f"monsters.{monster_id}.alive": not result.defeated,
+    }
+    if _mark_objective_if_complete(quest, game_state, updates):
+        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    updates["log"] = existing_log + new_log_entries
+
+    transaction.update(game_ref, updates)
 
     return result
 

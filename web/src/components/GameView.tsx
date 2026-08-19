@@ -184,6 +184,22 @@ export function GameView({ gameId }: GameViewProps) {
 
   return (
     <div className="game-view">
+      {game.status === "complete" && narrative && (
+        <div
+          style={{
+            border: "2px solid #e8c34a",
+            borderRadius: 6,
+            padding: 12,
+            marginBottom: 16,
+            background: "#2a230f",
+            maxWidth: 700,
+          }}
+        >
+          <h2 style={{ margin: 0, color: "#e8c34a" }}>Quest Complete!</h2>
+          <p style={{ fontStyle: "italic", color: "#e8dfc8" }}>{narrative.completionText}</p>
+        </div>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <h2>
           Turn {game.turn} &mdash; {game.phase === "hero" ? "Hero phase" : "Zargon's turn"}
@@ -199,7 +215,14 @@ export function GameView({ gameId }: GameViewProps) {
             {narrativeOpen ? "Hide" : "Show"} quest story: {narrative.title}
           </button>
           {narrativeOpen && (
-            <p style={{ maxWidth: 700, fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+            <div style={{ maxWidth: 700 }}>
+              <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+              {narrative.objective && (
+                <p>
+                  <strong>Objective:</strong> {narrative.objective}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}

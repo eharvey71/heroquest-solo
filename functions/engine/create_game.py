@@ -58,6 +58,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "questId": None,  # filled in by the caller once the quest doc id is known
         "turn": 1,
         "phase": "hero",
+        "status": "in_progress",  # -> "complete" once engine.objective.check_objective_complete fires
         "heroes": hero_states,
         "monsters": monsters,
         "revealed": {"rooms": [stairway_room], "corridorSquares": []},

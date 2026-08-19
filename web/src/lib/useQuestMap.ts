@@ -35,6 +35,7 @@ export interface QuestFurniture {
 export interface QuestNarrative {
   title: string;
   backstory: string;
+  objective: string;
   completionText: string;
 }
 
@@ -58,6 +59,7 @@ interface RawQuestDoc {
   stairway?: QuestStairway;
   title?: string;
   backstory?: string;
+  objective?: { description?: string };
   completionText?: string;
   rooms?: Record<string, { furniture?: RawFurniture[] }>;
 }
@@ -90,7 +92,12 @@ export function useQuestMap(questId: string | undefined): QuestMap {
         furniture: extractFurniture(raw.rooms),
         narrative:
           raw.title || raw.backstory
-            ? { title: raw.title ?? "", backstory: raw.backstory ?? "", completionText: raw.completionText ?? "" }
+            ? {
+                title: raw.title ?? "",
+                backstory: raw.backstory ?? "",
+                objective: raw.objective?.description ?? "",
+                completionText: raw.completionText ?? "",
+              }
             : null,
       });
     });

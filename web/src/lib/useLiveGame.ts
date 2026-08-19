@@ -15,6 +15,7 @@ import type { GameState, HeroToken, LogEntry, MonsterToken } from "./gameState";
 interface RawGameDoc {
   questId: string;
   phase: "hero" | "zargon";
+  status?: "in_progress" | "complete";
   turn: number;
   heroes: HeroToken[];
   monsters: Record<string, Omit<MonsterToken, "id">>;
@@ -32,6 +33,7 @@ function toGameState(raw: RawGameDoc): GameState {
     revealed: raw.revealed ?? { rooms: [], corridorSquares: [] },
     questId: raw.questId,
     phase: raw.phase,
+    status: raw.status ?? "in_progress",
     turn: raw.turn,
     doors: raw.doors ?? {},
     searched: raw.searched ?? {},

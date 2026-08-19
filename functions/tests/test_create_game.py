@@ -80,6 +80,7 @@ def test_initial_phase_turn_and_log(good_quest_4h, catalogs):
         quest=good_quest_4h, catalogs=catalogs, heroes=[{"id": "barbarian", "name": "Barbarian"}]
     )
     assert game_state["phase"] == "hero"
+    assert game_state["status"] == "in_progress"
     assert game_state["turn"] == 1
     assert game_state["trapsTriggered"] == []
     assert game_state["searched"] == {}

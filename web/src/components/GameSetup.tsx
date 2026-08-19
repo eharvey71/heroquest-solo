@@ -132,6 +132,11 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
             <div style={{ maxWidth: 600, marginBottom: 12 }}>
               <h3>{narrative.title}</h3>
               <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+              {narrative.objective && (
+                <p>
+                  <strong>Objective:</strong> {narrative.objective}
+                </p>
+              )}
               <p className="hint">
                 This is auto-generated -- read it aloud at the table when you start, nothing else to fill in.
               </p>
