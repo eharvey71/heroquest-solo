@@ -1,5 +1,5 @@
-"""Bidirectional conversion between the canonical [x,y] coordinate pairs
-used throughout validator/generator/engine, and the {"x":, "y":} map
+"""Bidirectional conversion between the canonical [x,y] (or (x,y))
+coordinate pairs used throughout validator/generator/engine, and the {"x":, "y":} map
 representation Firestore actually stores.
 
 Firestore rejects arrays whose direct elements are also arrays (hit in
@@ -18,7 +18,13 @@ from __future__ import annotations
 
 
 def to_firestore_coords(value):
-    if isinstance(value, list):
+    # Tuples count: the engine's coords ARE tuples (Coord = tuple[int,
+    # int]) and reach here whenever a set of them is written out, e.g.
+    # revealed.corridorSquares. Handling only lists left those tuples
+    # untouched, so Firestore saw a list whose elements were arrays --
+    # the exact rejection this module exists to prevent -- and the
+    # callable failed with INTERNAL on the party's first corridor step.
+    if isinstance(value, (list, tuple)):
         if len(value) == 2 and all(isinstance(v, int) for v in value):
             return {"x": value[0], "y": value[1]}
         return [to_firestore_coords(v) for v in value]

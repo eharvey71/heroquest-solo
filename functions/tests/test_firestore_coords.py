@@ -35,3 +35,25 @@ def test_non_coordinate_fields_untouched():
 def test_empty_list_untouched():
     assert to_firestore_coords([]) == []
     assert from_firestore_coords([]) == []
+
+
+def test_tuple_coord_converts_like_a_list():
+    # Engine coords are tuples (Coord = tuple[int, int]); an unconverted
+    # tuple reaches Firestore as a nested array and the write fails.
+    assert to_firestore_coords((4, 1)) == {"x": 4, "y": 1}
+
+
+def test_list_of_tuple_coords_converts_elementwise():
+    # revealed.corridorSquares is written as sorted(set-of-tuples) --
+    # this is the party's-first-corridor-step path that failed INTERNAL.
+    assert to_firestore_coords([(12, 15), (13, 15)]) == [{"x": 12, "y": 15}, {"x": 13, "y": 15}]
+
+
+def test_no_python_tuples_survive_conversion():
+    converted = to_firestore_coords({"revealed": {"corridorSquares": [(1, 2), (3, 4)]}})
+    squares = converted["revealed"]["corridorSquares"]
+    assert all(isinstance(sq, dict) for sq in squares)
+
+
+def test_tuple_round_trips_back_to_list_form():
+    assert from_firestore_coords(to_firestore_coords((7, 9))) == [7, 9]
