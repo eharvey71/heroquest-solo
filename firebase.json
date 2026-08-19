@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "hq-zargon-solo",
     "public": "web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
