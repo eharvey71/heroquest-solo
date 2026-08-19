@@ -5,8 +5,8 @@ section 5 "Reachability".
 Model: every board square is a graph node. Two orthogonally-adjacent
 squares are connected if they're in the same area (a room's interior is
 always open, and corridor is one open network per board.json) or if a
-door sits on that exact edge. blockedSquares are removed from the graph
-entirely. Secret doors are excluded from the "primary" graph (the one a
+door sits on that exact edge. blockedSquares and furniture squares are removed from the
+graph entirely (furniture is impassable -- see geometry.furniture_squares). Secret doors are excluded from the "primary" graph (the one a
 party can reliably walk without searching) but included in the "full"
 graph, matching the design doc's distinction for objective reachability.
 """
@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections import deque
 
 from .catalogs import Catalogs
-from .geometry import _footprint_cells
+from .geometry import footprint_cells, furniture_squares
 
 NON_SECRET_STATES = {"open", "closed", "locked"}
 
@@ -75,8 +75,8 @@ def check_reachability(quest: dict, catalogs: Catalogs) -> list:
     if stair_room not in board.room_squares or "pos" not in stairway:
         return errors  # geometry check already reported this
 
-    start_cells = _footprint_cells(stairway["pos"], (2, 2))
-    blocked = frozenset(tuple(s) for s in quest.get("blockedSquares", []))
+    start_cells = footprint_cells(stairway["pos"], (2, 2))
+    blocked = frozenset(tuple(s) for s in quest.get("blockedSquares", [])) | furniture_squares(quest, catalogs)
 
     primary_edges = _door_edges(quest, NON_SECRET_STATES)
     full_edges = _door_edges(quest, NON_SECRET_STATES | {"secret"})

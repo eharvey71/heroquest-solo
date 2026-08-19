@@ -11,9 +11,13 @@ settled design, not a guess.
 
 Traps do NOT halt movement (documented assumption -- the 1989 rules
 don't stop a hero's move on a sprung pit/falling-block trap, just deal
-damage); the path keeps processing past a trap trigger. Monsters and
-blocked squares DO halt movement, same as a closed door -- partial
-credit for however far the hero got, not a rejected request.
+damage); the path keeps processing past a trap trigger. Monsters,
+furniture, and blocked squares DO halt movement, same as a closed door
+-- partial credit for however far the hero got, not a rejected request.
+
+Heroes may pass through fellow HEROES but nothing else (CLAUDE.md's
+rules-edition note). Furniture is solid: a table or tomb is a physical
+obstruction on the real board, so a traced path can't cross it.
 
 This module never touches hero body points -- physical-only, same
 boundary as everywhere else in this app.
@@ -23,7 +27,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from validator.catalogs import CORRIDOR, Board
+from validator.catalogs import CORRIDOR, Board, Catalogs
+from validator.geometry import furniture_squares
 
 Coord = tuple[int, int]
 
@@ -53,7 +58,9 @@ class HeroMovementResult:
     newly_revealed_corridor_squares: list[Coord] = field(default_factory=list)
     triggered_traps: list[TriggeredTrap] = field(default_factory=list)
     # None means the full requested path was walked without interruption.
-    stopped_reason: str | None = None  # "closed_door" | "locked_door" | "monster_blocked" | "blocked_square"
+    # "closed_door" | "locked_door" | "monster_blocked" | "blocked_square"
+    # | "furniture_blocked" | "no_door" | "off_board"
+    stopped_reason: str | None = None
     stopped_at_door_id: str | None = None
     log: list[str] = field(default_factory=list)
 
@@ -91,6 +98,7 @@ def _door_by_edge(quest_doors: list[dict]) -> dict[frozenset, dict]:
 def resolve_hero_movement(
     *,
     board: Board,
+    catalogs: Catalogs,
     quest: dict,
     game_state: dict,
     hero_id: str,
@@ -116,6 +124,7 @@ def resolve_hero_movement(
     door_states = game_state.get("doors", {})
     traps_triggered = set(game_state.get("trapsTriggered", []))
     blocked_squares = {tuple(s) for s in quest.get("blockedSquares", [])}
+    furniture = furniture_squares(quest, catalogs)
     other_hero_squares = {tuple(h["pos"]) for h in heroes if h["id"] != hero_id}
     monster_squares = {tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")}
 
@@ -137,6 +146,9 @@ def resolve_hero_movement(
             break
         if cur in blocked_squares:
             stopped_reason = "blocked_square"
+            break
+        if cur in furniture:
+            stopped_reason = "furniture_blocked"
             break
         if cur in monster_squares:
             stopped_reason = "monster_blocked"

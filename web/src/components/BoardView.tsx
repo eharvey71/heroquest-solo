@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
+import { furnitureSquareKeys } from "../lib/furniture";
 import { revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
@@ -33,6 +34,7 @@ export function BoardView({
   const lastCoordKeyRef = useRef<string | null>(null);
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
+  const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
 
   const {
     selectedHeroId,
@@ -46,7 +48,13 @@ export function BoardView({
     canConfirm,
     endSquareOccupied,
     blockedHint,
-  } = usePathInput({ board: staticBoard, heroes: gameState.heroes, monsters: gameState.monsters, revealed });
+  } = usePathInput({
+    board: staticBoard,
+    heroes: gameState.heroes,
+    monsters: gameState.monsters,
+    revealed,
+    furniture: furnitureKeys,
+  });
 
   const coordFromEvent = useCallback(
     (e: React.PointerEvent<SVGSVGElement>): Coord | null => {

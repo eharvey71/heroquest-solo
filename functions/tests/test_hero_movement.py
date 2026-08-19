@@ -36,7 +36,7 @@ def test_full_path_through_open_door_reveals_room(catalogs):
     game_state = _game_state()
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (6, 2)
     assert result.stopped_reason is None
@@ -51,7 +51,7 @@ def test_trap_triggers_mid_move_and_movement_continues(catalogs):
     game_state = _game_state()
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.stopped_reason is None  # trap does not halt movement
     assert result.final_pos == (6, 2)
@@ -70,7 +70,7 @@ def test_already_triggered_trap_does_not_refire(catalogs):
     game_state = _game_state(trapsTriggered=["R2-T1"])
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.triggered_traps == []
 
@@ -81,7 +81,7 @@ def test_stops_at_closed_door_threshold(catalogs):
     game_state = _game_state(doors={"D1": "closed"})
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (4, 1)
     assert result.stopped_reason == "closed_door"
@@ -95,7 +95,7 @@ def test_stops_at_locked_door(catalogs):
     game_state = _game_state(doors={"D1": "locked"})
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (4, 1)
     assert result.stopped_reason == "locked_door"
@@ -107,7 +107,7 @@ def test_stops_before_a_monster(catalogs):
     game_state = _game_state(monsters={"M1": {"pos": [5, 1], "currentBody": 1, "alive": True}})
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (4, 1)
     assert result.stopped_reason == "monster_blocked"
@@ -119,7 +119,7 @@ def test_dead_monster_does_not_block(catalogs):
     game_state = _game_state(monsters={"M1": {"pos": [5, 1], "currentBody": 0, "alive": False}})
     path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (6, 1)
     assert result.stopped_reason is None
@@ -131,7 +131,7 @@ def test_stops_before_a_blocked_square(catalogs):
     game_state = _game_state()
     path = [[2, 2], [3, 2], [4, 2]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (2, 2)
     assert result.stopped_reason == "blocked_square"
@@ -146,7 +146,7 @@ def test_progressive_corridor_reveal(catalogs):
     )
     path = [[3, 0], [4, 0], [5, 0]]
 
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (5, 0)
     assert result.newly_revealed_corridor_squares == [(4, 0), (5, 0)]
@@ -158,7 +158,7 @@ def test_rejects_path_not_starting_at_hero_position(catalogs):
     quest = _quest()
     game_state = _game_state()
     with pytest.raises(IllegalMovementError):
-        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[3, 2], [4, 2]])
+        resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=[[3, 2], [4, 2]])
 
 
 def test_rejects_non_adjacent_step(catalogs):
@@ -166,7 +166,7 @@ def test_rejects_non_adjacent_step(catalogs):
     quest = _quest()
     game_state = _game_state()
     with pytest.raises(IllegalMovementError):
-        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [4, 4]])
+        resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [4, 4]])
 
 
 def test_rejects_unknown_hero(catalogs):
@@ -174,7 +174,7 @@ def test_rejects_unknown_hero(catalogs):
     quest = _quest()
     game_state = _game_state()
     with pytest.raises(IllegalMovementError):
-        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="wizard", path=[[2, 2]])
+        resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="wizard", path=[[2, 2]])
 
 
 def test_rejects_ending_on_another_heros_square(catalogs):
@@ -187,7 +187,7 @@ def test_rejects_ending_on_another_heros_square(catalogs):
         ]
     )
     with pytest.raises(IllegalMovementError):
-        resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [3, 2]])
+        resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [3, 2]])
 
 
 def test_heroes_may_pass_through_each_other_but_not_end_there(catalogs):
@@ -201,7 +201,8 @@ def test_heroes_may_pass_through_each_other_but_not_end_there(catalogs):
     )
     # passes through wizard's square (3,2) but ends elsewhere -- legal
     result = resolve_hero_movement(
-        board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2], [3, 2], [4, 2]]
+        board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian",
+        path=[[2, 2], [3, 2], [4, 2]]
     )
     assert result.final_pos == (4, 2)
     assert result.stopped_reason is None
@@ -211,7 +212,33 @@ def test_single_square_path_is_a_no_op(catalogs):
     board = catalogs.board
     quest = _quest()
     game_state = _game_state()
-    result = resolve_hero_movement(board=board, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2]])
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=[[2, 2]])
     assert result.final_pos == (2, 2)
     assert result.path_taken == [(2, 2)]
     assert result.stopped_reason is None
+
+
+def test_furniture_blocks_movement(catalogs):
+    # A bookcase (3x1) anchored at (3,2) covers (3,2)-(5,2); the hero at
+    # (2,2) can't walk onto it -- furniture is solid on the real board.
+    board = catalogs.board
+    quest = _quest(rooms={"R1": {"furniture": [{"type": "bookcase", "pos": [3, 2], "orientation": "N"}]}})
+    game_state = _game_state()
+    result = resolve_hero_movement(
+        board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian",
+        path=[[2, 2], [3, 2], [4, 2]]
+    )
+    assert result.stopped_reason == "furniture_blocked"
+    assert result.final_pos == (2, 2)  # partial credit: stopped before the piece
+
+
+def test_movement_around_furniture_is_fine(catalogs):
+    board = catalogs.board
+    quest = _quest(rooms={"R1": {"furniture": [{"type": "bookcase", "pos": [3, 2], "orientation": "N"}]}})
+    game_state = _game_state()
+    result = resolve_hero_movement(
+        board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian",
+        path=[[2, 2], [2, 1], [3, 1]]
+    )
+    assert result.stopped_reason is None
+    assert result.final_pos == (3, 1)

@@ -25,6 +25,7 @@ import random
 from dataclasses import dataclass, field
 
 from validator.catalogs import CORRIDOR, Board, Catalogs
+from validator.geometry import furniture_squares
 
 from .movement import Coord, passable_door_edges, revealed_squares
 from .targeting import (
@@ -103,11 +104,14 @@ def resolve_zargon_turn(
     revealed = revealed_squares(board, game_state.get("revealed", {}))
     revealed_room_ids = set(game_state.get("revealed", {}).get("rooms", []))
     door_edges = passable_door_edges(quest.get("doors", []), game_state.get("doors", {}))
+    # Furniture is solid for monsters too -- a monster pathing through a
+    # tomb would desync from the physical board (see hero_movement.py).
+    furniture = furniture_squares(quest, catalogs)
 
     if turn_type == "wandering":
         occupied = {tuple(h["pos"]) for h in heroes} | {
             tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
-        }
+        } | furniture
         spawn = spawn_wandering_monster_from_turn_roll(
             board, quest, revealed, quest.get("doors", []), occupied, heroes
         )
@@ -155,7 +159,7 @@ def resolve_zargon_turn(
 
         occupied = set(hero_positions.values()) | {
             p for other_id, p in monster_positions.items() if other_id != monster_id
-        }
+        } | furniture
 
         target_id: str | None
         if turn_type == "cunning" and objective_room_id and should_guard(current_room, objective_room_id):

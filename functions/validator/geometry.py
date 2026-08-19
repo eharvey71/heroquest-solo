@@ -12,7 +12,7 @@ from .result import fmt_pos
 ORIENTATIONS = {"N", "S", "E", "W"}
 
 
-def _footprint_cells(pos, footprint, orientation="N"):
+def footprint_cells(pos, footprint, orientation="N"):
     """Cells occupied by a w x h piece anchored at pos (top-left corner).
 
     E/W orientation swaps width and height; N/S use the footprint as-is.
@@ -25,6 +25,24 @@ def _footprint_cells(pos, footprint, orientation="N"):
         w, h = h, w
     x0, y0 = pos
     return [(x0 + dx, y0 + dy) for dx in range(w) for dy in range(h)]
+
+
+def furniture_squares(quest: dict, catalogs) -> set:
+    """Every board square a furniture piece stands on.
+
+    Furniture is impassable -- heroes and monsters walk around it, never
+    over it -- so the same set feeds movement resolution (engine) and the
+    reachability BFS: a piece parked across a doorway would otherwise
+    seal off a room the validator still believes is reachable.
+    """
+    cells = set()
+    for room in quest.get("rooms", {}).values():
+        for f in room.get("furniture", []):
+            entry = catalogs.furniture.get(f.get("type"))
+            if entry is None or f.get("pos") is None:
+                continue
+            cells.update(footprint_cells(tuple(f["pos"]), entry["footprint"], f.get("orientation", "N")))
+    return cells
 
 
 def check_geometry(quest: dict, catalogs: Catalogs) -> list:
@@ -75,7 +93,7 @@ def check_geometry(quest: dict, catalogs: Catalogs) -> list:
     # -- stairway: 2x2 footprint, fully inside its room, no overlap --
     stair_pos = pos_of(stairway, "stairway") if stairway else None
     if stair_room in board.room_squares and stair_pos is not None:
-        cells = _footprint_cells(stair_pos, (2, 2))
+        cells = footprint_cells(stair_pos, (2, 2))
         for c in cells:
             if c not in board.room_squares[stair_room]:
                 errors.append(
@@ -113,7 +131,7 @@ def check_geometry(quest: dict, catalogs: Catalogs) -> list:
             if orientation not in ORIENTATIONS:
                 errors.append(f"{label} has invalid orientation '{orientation}'")
                 orientation = "N"
-            cells = _footprint_cells(pos, catalogs.furniture[ftype]["footprint"], orientation)
+            cells = footprint_cells(pos, catalogs.furniture[ftype]["footprint"], orientation)
             for c in cells:
                 if c not in board.room_squares[room_id]:
                     errors.append(

@@ -23,8 +23,16 @@ skulls/shields; app applies results to monsters only.
 
 ## Rules edition
 1989 North American HeroQuest. Varied monster body points (see
-monsters.json). Heroes may pass through fellow heroes, not monsters, and
-may not end on an occupied square. Treasure searches use the physical
+monsters.json). Heroes may pass through fellow heroes -- and nothing
+else. Monsters and furniture are both impassable (furniture is a solid
+obstruction on the physical board; furniture squares are also removed
+from the validator's reachability BFS, so a piece can't seal a room the
+validator thinks is reachable). Heroes may not end on an occupied
+square. Doors are opened FROM the doorway: a hero stops at a door,
+tells Zargon, and the room is revealed without stepping inside --
+entering first would mean walking onto whatever stands behind it. The
+app derives openable doors from where the hero stands, so no walk-into
+attempt is needed to discover a closed door. Treasure searches use the physical
 treasure deck; the app only needs to know if a wandering monster is drawn
 (button for it). One treasure search per HERO per room (owner verified
 against the 1989 rulebook; an earlier "once per room total" reading was

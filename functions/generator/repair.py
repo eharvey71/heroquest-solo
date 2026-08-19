@@ -20,7 +20,7 @@ from validator.balance import (
     _monster_threat_cost,
 )
 from validator.catalogs import Catalogs
-from validator.geometry import _footprint_cells
+from validator.geometry import footprint_cells
 
 CLAMP_REPAIR_TOLERANCE = 1  # "1 square outside room", per the design doc
 BUDGET_REPAIR_TOLERANCE = 0.20  # only attempt if within +/-20% of target
@@ -78,7 +78,7 @@ def _occupied_squares_in_room(room: dict, catalogs: Catalogs) -> set:
         entry = catalogs.furniture.get(ftype)
         if entry is None or not (isinstance(pos, (list, tuple)) and len(pos) == 2):
             continue
-        occupied.update(_footprint_cells(tuple(pos), entry["footprint"], f.get("orientation", "N")))
+        occupied.update(footprint_cells(tuple(pos), entry["footprint"], f.get("orientation", "N")))
     return occupied
 
 

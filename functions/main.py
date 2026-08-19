@@ -293,7 +293,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         )
 
     result = resolve_hero_movement(
-        board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id, path=path
+        board=_catalogs.board, catalogs=_catalogs, quest=quest, game_state=game_state, hero_id=hero_id, path=path
     )
 
     heroes = game_state.get("heroes", [])

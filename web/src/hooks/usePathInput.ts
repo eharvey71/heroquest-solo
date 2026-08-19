@@ -11,6 +11,10 @@
  * monster's position). The backend still stops the actual move against
  * every living monster, hidden or not; the client just doesn't
  * pre-announce it.
+ *
+ * Furniture blocks unconditionally: it's quest geometry the player can
+ * already see on the physical board, not hidden information, and it's
+ * solid for the same reason it is server-side.
  */
 
 import { useCallback, useState } from "react";
@@ -23,9 +27,11 @@ export interface UsePathInputArgs {
   heroes: HeroToken[];
   monsters: MonsterToken[];
   revealed: ReadonlySet<string>;
+  /** Squares covered by furniture -- impassable (see lib/furniture.ts). */
+  furniture: ReadonlySet<string>;
 }
 
-export function usePathInput({ board, heroes, monsters, revealed }: UsePathInputArgs) {
+export function usePathInput({ board, heroes, monsters, revealed, furniture }: UsePathInputArgs) {
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
   const [path, setPath] = useState<Coord[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -61,6 +67,10 @@ export function usePathInput({ board, heroes, monsters, revealed }: UsePathInput
         // fellow heroes (CLAUDE.md rules edition note), so only
         // monster occupancy is checked mid-path -- the end-square
         // occupancy (by anything) is checked separately in canConfirm.
+        if (furniture.has(key)) {
+          setBlockedHint("furniture blocks that square -- heroes can't move over it");
+          return prev;
+        }
         if (revealed.has(key) && monsters.some((m) => m.alive && squareKey(m.pos[0], m.pos[1]) === key)) {
           setBlockedHint("a monster blocks that square -- heroes can't move through monsters");
           return prev;
@@ -70,7 +80,7 @@ export function usePathInput({ board, heroes, monsters, revealed }: UsePathInput
         return [...prev, coord];
       });
     },
-    [board, monsters, revealed]
+    [board, monsters, revealed, furniture]
   );
 
   const startDragging = useCallback(() => setIsDragging(true), []);

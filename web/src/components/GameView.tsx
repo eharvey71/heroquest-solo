@@ -31,7 +31,6 @@ export function GameView({ gameId }: GameViewProps) {
   const { game, loading, error } = useLiveGame(gameId);
 
   const [heroId, setHeroId] = useState<string>("");
-  const [pendingDoorId, setPendingDoorId] = useState<string | null>(null);
   const [wanderingDrawn, setWanderingDrawn] = useState(false);
   const [attackMonsterId, setAttackMonsterId] = useState<string>("");
   const [attackSkulls, setAttackSkulls] = useState(0);
@@ -101,6 +100,19 @@ export function GameView({ gameId }: GameViewProps) {
     : false;
   const roomAlreadySearchedTraps = activeHeroRoomId ? game.searched?.[activeHeroRoomId]?.traps : false;
 
+  // The 1989 flow: a hero stops AT a door, tells Zargon, and the door
+  // opens -- revealing the room without stepping inside (which would
+  // otherwise mean walking onto whatever is standing behind it). So any
+  // closed door whose threshold the active hero occupies is openable
+  // right now; no need to attempt walking through it first.
+  const openableDoors = activeHero
+    ? resolvedDoors.filter(
+        (d) =>
+          d.state === "closed" &&
+          d.squares.some((sq) => sq[0] === activeHero.pos[0] && sq[1] === activeHero.pos[1])
+      )
+    : [];
+
   const handleConfirmMove = async (movingHeroId: string, path: Coord[]) => {
     // result.log is already written to the live game.log by the
     // backend (see main.py's _apply_movement) -- the Firestore
@@ -109,13 +121,15 @@ export function GameView({ gameId }: GameViewProps) {
     const result = await runAction(() => resolveMovement({ gameId, heroId: movingHeroId, path }));
     if (!result) return;
     for (const t of result.triggeredTraps) pushLog([`PLACE TILE: ${t.placementInstruction}`]);
-    if (result.stoppedReason === "closed_door" && result.stoppedAtDoorId) {
-      setPendingDoorId(result.stoppedAtDoorId);
-    } else if (result.stoppedReason) {
+    if (result.stoppedReason) {
       // A partial move with no visible explanation feels like a bug --
-      // name the obstacle (closed_door has its own flow above).
+      // name the obstacle. The closed-door case needs no button wiring:
+      // the hero is now standing at that door, so it shows up in
+      // openableDoors on its own.
       const reasons: Record<string, string> = {
+        closed_door: "Movement stopped at a closed door -- use the Open door button.",
         locked_door: "Movement stopped: that door won't open from here.",
+        furniture_blocked: "Movement stopped: furniture blocks the path.",
         monster_blocked: "Movement stopped: a monster blocks the path.",
         blocked_square: "Movement stopped: that square is blocked (place the blocked-square tile if not already placed).",
         no_door: "Movement stopped: there's no door in that wall.",
@@ -125,12 +139,11 @@ export function GameView({ gameId }: GameViewProps) {
     }
   };
 
-  const handleOpenDoor = async () => {
-    if (!pendingDoorId || !heroId) return;
-    const result = await runAction(() => openDoor({ gameId, heroId, doorId: pendingDoorId }));
+  const handleOpenDoor = async (doorId: string) => {
+    if (!heroId) return;
+    const result = await runAction(() => openDoor({ gameId, heroId, doorId }));
     if (!result) return;
     pushLog([`PLACE TILE: ${result.placementInstruction}`]);
-    setPendingDoorId(null);
   };
 
   const handleSearchTreasure = async () => {
@@ -278,11 +291,14 @@ export function GameView({ gameId }: GameViewProps) {
 
         {game.phase === "hero" && (
           <>
-            {pendingDoorId && (
-              <div>
-                <button onClick={handleOpenDoor} disabled={busy}>
-                  Open door {pendingDoorId}
-                </button>
+            {openableDoors.length > 0 && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {openableDoors.map((d) => (
+                  <button key={d.id} onClick={() => handleOpenDoor(d.id)} disabled={busy}>
+                    Open door {d.id}
+                  </button>
+                ))}
+                <span className="hint">(opens from the doorway -- the room is revealed without stepping in)</span>
               </div>
             )}
 

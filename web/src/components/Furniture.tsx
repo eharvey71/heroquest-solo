@@ -6,8 +6,8 @@
  */
 
 import { useMemo } from "react";
-import furnitureCatalog from "../data/furniture.json";
 import { squareKey } from "../lib/board";
+import { furnitureFootprint } from "../lib/furniture";
 import type { QuestFurniture } from "../lib/useQuestMap";
 
 interface FurnitureProps {
@@ -18,8 +18,6 @@ interface FurnitureProps {
 
 const FILL = "#4a3d28";
 const STROKE = "#c9a24a";
-
-const CATALOG = furnitureCatalog as Record<string, { footprint: number[]; owned: number }>;
 
 function label(type: string): string {
   return type.replace(/_/g, " ");
@@ -34,10 +32,9 @@ export function Furniture({ cellSize, furniture, revealed }: FurnitureProps) {
   return (
     <g pointerEvents="none">
       {visible.map((f, i) => {
-        const entry = CATALOG[f.type];
-        if (!entry) return null;
-        let [w, h] = entry.footprint;
-        if (f.orientation === "E" || f.orientation === "W") [w, h] = [h, w];
+        const size = furnitureFootprint(f);
+        if (!size) return null;
+        const [w, h] = size;
         const x = f.pos[0] * cellSize;
         const y = f.pos[1] * cellSize;
         const name = label(f.type);
