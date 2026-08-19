@@ -86,7 +86,10 @@ freeing the closed piece for reuse. So closed pieces recycle, open
 pieces accumulate. Quest-declared door state therefore constrains
 nothing physical: only "locked" (needs key/spell) and "secret" (must be
 searched for) carry meaning, and locked is capped at 5 as a difficulty
-knob, not a component count.
+knob, not a component count. No simultaneity cap is needed and none
+should be built: the owner confirms more than 5 doors are never closed
+on the board at once in real play, so the app does not track closed-
+piece supply or emit "place a closed door" instructions.
 Tiles: stairs 2x2, blocked squares,
 pit traps, falling block traps, secret doors, skulls.
 When the app reveals anything with a physical tile (trap sprung, secret
