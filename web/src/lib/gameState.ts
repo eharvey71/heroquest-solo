@@ -42,6 +42,8 @@ export interface GameState {
   phase?: "hero" | "zargon";
   status?: "in_progress" | "complete";
   turn?: number;
+  /** Lone-hero parties play the hero phase twice per turn (1 | 2). */
+  heroPhaseSegment?: number;
   doors?: Record<string, string>;
   searched?: Record<string, { treasure?: boolean; traps?: boolean }>;
   log?: LogEntry[];

@@ -58,6 +58,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "questId": None,  # filled in by the caller once the quest doc id is known
         "turn": 1,
         "phase": "hero",
+        "heroPhaseSegment": 1,  # lone-hero parties get 2 hero phases per turn; see engine/end_turn.py
         "status": "in_progress",  # -> "complete" once engine.objective.check_objective_complete fires
         "heroes": hero_states,
         "monsters": monsters,

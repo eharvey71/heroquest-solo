@@ -13,7 +13,8 @@ resolve_movement, open_door (a hard movement stop resolved as its own
 action), search_treasure (once-per-room, may spawn+attack the
 rulebook wandering-monster card), search_traps_and_secret_doors
 (once-per-room, fully digital -- reveals what's already in the quest
-data), end_turn (flips phase hero->zargon),
+data), end_turn (flips phase hero->zargon; a lone-hero party gets two
+full hero phases per turn first -- heroPhaseSegment),
 roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
 record_hero_defense (log-only shield reporting) operate on it
 afterward. resolve_movement, open_door, and resolve_hero_attack also
@@ -372,7 +373,10 @@ def _apply_end_turn(transaction, game_ref):
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
 
-    transaction.update(game_ref, {"phase": result.new_phase, "log": existing_log + new_log_entries})
+    transaction.update(
+        game_ref,
+        {"phase": result.new_phase, "heroPhaseSegment": result.new_segment, "log": existing_log + new_log_entries},
+    )
     return result
 
 
@@ -380,8 +384,10 @@ def _apply_end_turn(transaction, game_ref):
 def end_turn(req: https_fn.CallableRequest) -> dict:
     """The heroes are done acting -- flips phase from "hero" to
     "zargon" so roll_zargon_turn_type/resolve_zargon_turn become
-    reachable. See functions/engine/end_turn.py for the pure logic
-    (and its docstring for the 1-hero-2-actions gap, not enforced yet).
+    reachable. Exception: a lone-hero party's first end-turn of the
+    game turn stays in the hero phase and advances heroPhaseSegment to
+    2 (the 1-hero-2-actions balance rule) -- see
+    functions/engine/end_turn.py for the pure logic.
     """
     if req.auth is None:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
@@ -400,7 +406,7 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
     except NotHeroPhaseError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
-    return {"phase": result.new_phase}
+    return {"phase": result.new_phase, "heroPhaseSegment": result.new_segment}
 
 
 @firestore.transactional
@@ -740,7 +746,7 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
-    updates: dict = {"log": existing_log + new_log_entries, "phase": "hero", "turn": turn + 1}
+    updates: dict = {"log": existing_log + new_log_entries, "phase": "hero", "turn": turn + 1, "heroPhaseSegment": 1}
 
     for monster_id, new_pos in result.updated_monster_positions.items():
         updates[f"monsters.{monster_id}.pos"] = to_firestore_coords(list(new_pos))

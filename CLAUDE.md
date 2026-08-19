@@ -73,7 +73,7 @@ instruction naming the tile and square(s).
 ## Balance system (from prior Monte Carlo sim work — "Zargon Deck")
 Monster threat cost ≈ attack + defend + body. Budget by heroCount:
 4 heroes 100% of baseline, 3 -> 85%, 2 -> 70% (+1 healing potion each),
-1 -> 55% (+lone hero takes 2 actions/turn — turn UI must enforce this).
+1 -> 55% (+lone hero takes 2 actions/turn — enforced, see engine details).
 Zargon turn types rolled per turn (replaces physical card deck):
 4H: 72/24/4 normal/cunning/wandering. 3H: 76/20/4. 2H: 80/16/4. 1H: 84/12/4.
 Cunning turn = focus-fire lowest-threat-to-kill hero, guard objectives.
@@ -91,6 +91,19 @@ is attacking. Shields are NOT interchangeable: white shield only
 blocks for a defending HERO, black shield only blocks for a defending
 MONSTER — this is why monster defend stats lean on higher dice counts
 rather than good per-die odds (1-in-6 vs a hero's 2-in-6).
+
+Lone-hero 2-actions rule: an "action" = one FULL move+action cycle
+(a complete hero turn), NOT one button press. Enforced as two hero
+phases per game turn: game state carries heroPhaseSegment (1|2);
+end_turn on segment 1 stays in the hero phase and advances to
+segment 2, on segment 2 hands off to Zargon. UI shows "action N of 2"
+and relabels the end-turn button. Per-press action counting was
+rejected — the app doesn't police turn structure inside the hero
+phase for 2-4 hero parties either (the table does), and the hero
+rolls fresh movement dice each cycle exactly as a second hero would.
+Lone-hero status = roster size at game creation (what the quest
+budget was priced against), not survivor count — a 4-hero party down
+to one survivor does not start double-acting.
 
 Guard objectives (cunning turn): a monster stationed in the
 objective's own room holds position rather than chasing. Trigger to

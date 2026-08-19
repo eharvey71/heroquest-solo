@@ -202,7 +202,12 @@ export function GameView({ gameId }: GameViewProps) {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <h2>
-          Turn {game.turn} &mdash; {game.phase === "hero" ? "Hero phase" : "Zargon's turn"}
+          Turn {game.turn} &mdash;{" "}
+          {game.phase === "hero"
+            ? game.heroes.length === 1
+              ? `Hero phase (action ${game.heroPhaseSegment ?? 1} of 2)`
+              : "Hero phase"
+            : "Zargon's turn"}
         </h2>
         <span className="hint">
           Game <code>{gameId}</code>
@@ -299,7 +304,7 @@ export function GameView({ gameId }: GameViewProps) {
 
             <div>
               <button onClick={handleEndTurn} disabled={busy}>
-                End turn
+                {game.heroes.length === 1 && (game.heroPhaseSegment ?? 1) === 1 ? "End action 1 of 2" : "End turn"}
               </button>
             </div>
           </>

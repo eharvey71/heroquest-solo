@@ -17,6 +17,7 @@ interface RawGameDoc {
   phase: "hero" | "zargon";
   status?: "in_progress" | "complete";
   turn: number;
+  heroPhaseSegment?: number;
   heroes: HeroToken[];
   monsters: Record<string, Omit<MonsterToken, "id">>;
   revealed: GameState["revealed"];
@@ -35,6 +36,7 @@ function toGameState(raw: RawGameDoc): GameState {
     phase: raw.phase,
     status: raw.status ?? "in_progress",
     turn: raw.turn,
+    heroPhaseSegment: raw.heroPhaseSegment ?? 1,
     doors: raw.doors ?? {},
     searched: raw.searched ?? {},
     log: raw.log ?? [],

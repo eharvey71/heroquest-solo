@@ -145,6 +145,7 @@ export interface EndTurnRequest {
 }
 export interface EndTurnResponse {
   phase: string;
+  heroPhaseSegment: number;
 }
 export const endTurn = call<EndTurnRequest, EndTurnResponse>("end_turn");
 
