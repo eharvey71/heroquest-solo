@@ -59,13 +59,34 @@ def test_rejects_unrevealed_room(good_quest_4h, catalogs):
         )
 
 
-def test_rejects_already_searched_room(good_quest_4h, catalogs):
-    game_state = _game_state((1, 1), ["R1"], searched={"R1": {"treasure": True}})
+def test_rejects_hero_searching_same_room_twice(good_quest_4h, catalogs):
+    game_state = _game_state((1, 1), ["R1"], searched={"R1": {"treasureBy": ["barbarian"]}})
     with pytest.raises(InvalidTreasureSearchError):
         resolve_treasure_search(
             board=catalogs.board, catalogs=catalogs, quest=good_quest_4h, game_state=game_state,
             hero_id="barbarian", room_id="R1",
         )
+
+
+def test_second_hero_may_search_a_room_the_first_already_searched(good_quest_4h, catalogs):
+    # 1989 rulebook: the search limit is per HERO per room, not per room.
+    game_state = _game_state((1, 1), ["R1"], searched={"R1": {"treasureBy": ["wizard"]}})
+    result = resolve_treasure_search(
+        board=catalogs.board, catalogs=catalogs, quest=good_quest_4h, game_state=game_state,
+        hero_id="barbarian", room_id="R1",
+    )
+    assert result.room_id == "R1"
+
+
+def test_legacy_per_room_treasure_flag_blocks_nobody(good_quest_4h, catalogs):
+    # Old game docs carry "treasure": True with no searcher recorded --
+    # under the per-hero rule it can't be attributed, so it's ignored.
+    game_state = _game_state((1, 1), ["R1"], searched={"R1": {"treasure": True}})
+    result = resolve_treasure_search(
+        board=catalogs.board, catalogs=catalogs, quest=good_quest_4h, game_state=game_state,
+        hero_id="barbarian", room_id="R1",
+    )
+    assert result.room_id == "R1"
 
 
 def test_wandering_monster_drawn_spawns_and_attacks_immediately(good_quest_4h, catalogs):

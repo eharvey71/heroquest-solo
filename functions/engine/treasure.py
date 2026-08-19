@@ -2,7 +2,9 @@
 
 Treasure itself is entirely physical -- the owner draws from the real
 treasure deck; the app never needs to know what was drawn. The app's
-only jobs: enforce "one treasure search per room" (CLAUDE.md), and
+only jobs: enforce "one treasure search per HERO per room" (1989 NA
+rulebook, corrected from an earlier per-room-total misreading --
+tracked as searched.<room>.treasureBy, a list of hero ids), and
 handle the rulebook-mandated wandering-monster card. If the owner draws
 it, the app spawns the monster adjacent to the searching hero and
 rolls its attack immediately -- "attacks immediately" per
@@ -30,9 +32,9 @@ class RoomNotFoundError(ValueError):
 
 class InvalidTreasureSearchError(ValueError):
     """The search can't happen right now: the hero isn't standing in
-    the room, the room hasn't been revealed yet, or it's already been
-    searched for treasure this quest (CLAUDE.md: one search per room,
-    enforced by the app).
+    the room, the room hasn't been revealed yet, or this hero already
+    searched this room for treasure (1989 rulebook: one search per
+    hero per room, enforced by the app).
     """
 
 
@@ -70,8 +72,11 @@ def resolve_treasure_search(
     if room_id not in game_state.get("revealed", {}).get("rooms", []):
         raise InvalidTreasureSearchError(f"room '{room_id}' has not been revealed yet")
 
-    if game_state.get("searched", {}).get(room_id, {}).get("treasure"):
-        raise InvalidTreasureSearchError(f"room '{room_id}' has already been searched for treasure")
+    # Legacy game docs carry a per-room "treasure": True boolean from
+    # the old (wrong) rule; it records no searcher, so it can't block
+    # anyone under the per-hero rule and is deliberately ignored.
+    if hero_id in game_state.get("searched", {}).get(room_id, {}).get("treasureBy", []):
+        raise InvalidTreasureSearchError(f"hero '{hero_id}' has already searched room '{room_id}' for treasure")
 
     log = [f"{hero_id} searches {room_id} for treasure."]
     spawn = None

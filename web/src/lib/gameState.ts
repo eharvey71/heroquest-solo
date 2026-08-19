@@ -45,7 +45,10 @@ export interface GameState {
   /** Lone-hero parties play the hero phase twice per turn (1 | 2). */
   heroPhaseSegment?: number;
   doors?: Record<string, string>;
-  searched?: Record<string, { treasure?: boolean; traps?: boolean }>;
+  // treasureBy: hero ids that searched this room (one search per hero
+  // per room, 1989 rulebook). treasure: legacy per-room flag from the
+  // old rule -- ignored, kept only so old game docs still parse.
+  searched?: Record<string, { treasure?: boolean; treasureBy?: string[]; traps?: boolean }>;
   log?: LogEntry[];
 }
 

@@ -96,7 +96,9 @@ export function GameView({ gameId }: GameViewProps) {
   const activeHero = game.heroes.find((h) => h.id === heroId);
   const activeHeroArea = activeHero ? staticBoard.areaOf.get(squareKey(activeHero.pos[0], activeHero.pos[1])) : undefined;
   const activeHeroRoomId = activeHeroArea && activeHeroArea !== CORRIDOR ? activeHeroArea : null;
-  const roomAlreadySearchedTreasure = activeHeroRoomId ? game.searched?.[activeHeroRoomId]?.treasure : false;
+  const heroSearchedTreasureHere = activeHeroRoomId
+    ? (game.searched?.[activeHeroRoomId]?.treasureBy ?? []).includes(heroId)
+    : false;
   const roomAlreadySearchedTraps = activeHeroRoomId ? game.searched?.[activeHeroRoomId]?.traps : false;
 
   const handleConfirmMove = async (movingHeroId: string, path: Coord[]) => {
@@ -285,14 +287,16 @@ export function GameView({ gameId }: GameViewProps) {
             )}
 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={handleSearchTreasure} disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTreasure}>
+              <button onClick={handleSearchTreasure} disabled={busy || !activeHeroRoomId || heroSearchedTreasureHere}>
                 Search treasure
               </button>
               <label>
                 <input type="checkbox" checked={wanderingDrawn} onChange={(e) => setWanderingDrawn(e.target.checked)} />{" "}
                 wandering monster card drawn
               </label>
-              {roomAlreadySearchedTreasure && <span className="hint">(this room has been searched -- once per room)</span>}
+              {heroSearchedTreasureHere && (
+                <span className="hint">(this hero already searched this room -- once per hero per room)</span>
+              )}
             </div>
 
             <div>

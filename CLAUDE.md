@@ -26,7 +26,9 @@ skulls/shields; app applies results to monsters only.
 monsters.json). Heroes may pass through fellow heroes, not monsters, and
 may not end on an occupied square. Treasure searches use the physical
 treasure deck; the app only needs to know if a wandering monster is drawn
-(button for it). One treasure search per room, app enforces.
+(button for it). One treasure search per HERO per room (owner verified
+against the 1989 rulebook; an earlier "once per room total" reading was
+wrong), app enforces via searched.<room>.treasureBy.
 
 ## Architecture
 - Frontend: React + SVG/Canvas grid, Firebase Hosting. Renders board,

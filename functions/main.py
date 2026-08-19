@@ -10,8 +10,8 @@ Two responsibilities live here, kept strictly separate (see CLAUDE.md):
 
 Live-game endpoints: create_game seeds a games/ doc from a quest;
 resolve_movement, open_door (a hard movement stop resolved as its own
-action), search_treasure (once-per-room, may spawn+attack the
-rulebook wandering-monster card), search_traps_and_secret_doors
+action), search_treasure (once per hero per room, may spawn+attack
+the rulebook wandering-monster card), search_traps_and_secret_doors
 (once-per-room, fully digital -- reveals what's already in the quest
 data), end_turn (flips phase hero->zargon; a lone-hero party gets two
 full hero phases per turn first -- heroPhaseSegment),
@@ -520,7 +520,10 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
-    updates: dict = {f"searched.{room_id}.treasure": True, "log": existing_log + new_log_entries}
+    updates: dict = {
+        f"searched.{room_id}.treasureBy": firestore.ArrayUnion([hero_id]),
+        "log": existing_log + new_log_entries,
+    }
 
     if result.spawned_monster:
         existing_ids = set(game_state.get("monsters", {}).keys())
@@ -545,7 +548,8 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
     """The owner draws from the real treasure deck (entirely physical
     -- the app never learns what was drawn) and reports only whether
     the wandering-monster card came up, via wanderingMonsterDrawn.
-    Enforces one treasure search per room (CLAUDE.md). If the card was
+    Enforces one treasure search per hero per room (1989 rulebook,
+    see engine/treasure.py). If the card was
     drawn, spawns the quest's wandering-monster type adjacent to the
     searching hero and rolls its attack immediately -- rulebook-
     mandated, see engine/treasure.py. The hero then defends with their
