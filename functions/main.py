@@ -750,6 +750,9 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    # Stamped with the NEW turn number so the log reads as a clean
+    # boundary instead of trailing off the end of Zargon's turn.
+    new_log_entries.append({"turn": turn + 1, "text": f"--- Turn {turn + 1} ---"})
     updates: dict = {"log": existing_log + new_log_entries, "phase": "hero", "turn": turn + 1, "heroPhaseSegment": 1}
 
     for monster_id, new_pos in result.updated_monster_positions.items():

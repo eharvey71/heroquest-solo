@@ -6,7 +6,7 @@ R1 (x:1-4,y:1-3) <-D1(4,1)/(5,1)-> R2 (x:5-8,y:1-3) <-D2(8,1)/(9,1)-> R3
 
 import pytest
 
-from engine.zargon_turn import resolve_zargon_turn
+from engine.zargon_turn import ZARGON_TURN_END, resolve_zargon_turn
 
 D1 = {"id": "D1", "squares": [[4, 1], [5, 1]], "state": "open"}
 D2 = {"id": "D2", "squares": [[8, 1], [9, 1]], "state": "closed"}
@@ -197,3 +197,49 @@ def test_monster_occupancy_respected_within_one_turn(catalogs):
     # cut off. It correctly never attempts to move.
     assert m2_result.action == "no_target"
     assert "M2" not in result.updated_monster_positions
+
+
+def test_turn_log_opens_and_closes_with_zargon(catalogs):
+    # Zargon should be audible at both ends of his turn, not only when a
+    # monster happens to act.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}])
+    game_state = _game_state(monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}})
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert result.log[0].startswith("Zargon's turn")
+    assert result.log[-1] == ZARGON_TURN_END
+
+
+def test_cunning_opening_names_the_focused_hero(catalogs):
+    board, c = catalogs.board, catalogs
+    quest = _quest(
+        monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}],
+        objective={"type": "kill_boss", "description": "x", "target": {"room": "R99"}},
+    )
+    heroes = [
+        {"id": "barbarian", "name": "Barbarian", "pos": [2, 2], "active": True},
+        {"id": "wizard", "name": "Wizard", "pos": [2, 1], "active": True},
+    ]
+    game_state = _game_state(heroes=heroes, monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}})
+
+    result = resolve_zargon_turn(
+        board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="cunning", lowest_bp_hero_id="wizard"
+    )
+
+    assert "Wizard" in result.log[0]
+
+
+def test_quiet_turn_still_narrates(catalogs):
+    # No monsters in play at all -- the turn must still say something, or
+    # it looks like the button did nothing.
+    board, c = catalogs.board, catalogs
+    quest = _quest()
+    game_state = _game_state()
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert len(result.log) == 3
+    assert result.log[0].startswith("Zargon's turn")
+    assert result.log[-1] == ZARGON_TURN_END

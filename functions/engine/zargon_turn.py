@@ -86,6 +86,27 @@ def _objective_room_id(quest: dict, game_state: dict, board: Board) -> str | Non
     return None
 
 
+ZARGON_TURN_OPENING = {
+    "normal": "Zargon's turn. The dungeon stirs...",
+    "cunning": "Zargon's turn. Zargon smiles -- his creatures have picked a target.",
+    "wandering": "Zargon's turn. Something else is prowling these halls...",
+}
+
+ZARGON_TURN_END = "Zargon ends his turn. The heroes may act."
+
+
+def _turn_opening(turn_type: str, focus_hero_name: str | None) -> str:
+    """Static, deterministic narration -- the LLM is never in the rules
+    path (CLAUDE.md). Cunning names the hero being focus-fired, since
+    that is the one Zargon decision the player can't infer from the
+    board alone.
+    """
+    line = ZARGON_TURN_OPENING[turn_type]
+    if turn_type == "cunning" and focus_hero_name:
+        line += f" They close on {focus_hero_name}."
+    return line
+
+
 def resolve_zargon_turn(
     *,
     board: Board,
@@ -115,12 +136,25 @@ def resolve_zargon_turn(
         spawn = spawn_wandering_monster_from_turn_roll(
             board, quest, revealed, quest.get("doors", []), occupied, heroes
         )
+        opening = _turn_opening(turn_type, None)
         if spawn is None:
-            return ZargonTurnResult(turn_type=turn_type, log=["No wandering monster to spawn (quest declares none)."])
+            # Two different reasons, and the log should not blame the
+            # wrong one: the quest may declare no wandering monster at
+            # all, or there may be nowhere legal to place it yet.
+            reason = (
+                "...but nothing answers the call (this quest declares no wandering monster)."
+                if not quest.get("wanderingMonster")
+                else "...but it finds no way in -- nowhere to place it yet."
+            )
+            return ZargonTurnResult(turn_type=turn_type, log=[opening, reason, ZARGON_TURN_END])
         return ZargonTurnResult(
             turn_type=turn_type,
             spawned_monster=spawn,
-            log=[f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}"],
+            log=[
+                opening,
+                f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}",
+                ZARGON_TURN_END,
+            ],
         )
 
     # normal or cunning: validates/raises if a cunning prompt was needed
@@ -219,9 +253,16 @@ def resolve_zargon_turn(
         )
         turn_log.extend(tr.log)
 
+    focus_hero = heroes_by_id.get(resolved_lowest_bp) if resolved_lowest_bp else None
+    opening = _turn_opening(turn_type, focus_hero.get("name", resolved_lowest_bp) if focus_hero else None)
+    if not turn_log:
+        # Every monster is still hidden, or none are left alive -- say so
+        # rather than emitting a turn that looks like it did nothing.
+        turn_log = ["No monster stirs where the party can see."]
+
     return ZargonTurnResult(
         turn_type=turn_type,
         monster_results=results,
         updated_monster_positions=updated_positions,
-        log=turn_log,
+        log=[opening, *turn_log, ZARGON_TURN_END],
     )
