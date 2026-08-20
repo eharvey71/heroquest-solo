@@ -4,7 +4,8 @@ Treasure itself is entirely physical -- the owner draws from the real
 treasure deck; the app never needs to know what was drawn. The app's
 only jobs: enforce "one treasure search per HERO per room" (1989 NA
 rulebook, corrected from an earlier per-room-total misreading --
-tracked as searched.<room>.treasureBy, a list of hero ids), and
+tracked as searched.<room>.treasureBy, a list of hero ids), enforce
+that the room is clear of monsters first, and
 handle the rulebook-mandated wandering-monster card. If the owner draws
 it, the app spawns the monster adjacent to the searching hero and
 rolls its attack immediately -- "attacks immediately" per
@@ -32,9 +33,10 @@ class RoomNotFoundError(ValueError):
 
 class InvalidTreasureSearchError(ValueError):
     """The search can't happen right now: the hero isn't standing in
-    the room, the room hasn't been revealed yet, or this hero already
-    searched this room for treasure (1989 rulebook: one search per
-    hero per room, enforced by the app).
+    the room, the room hasn't been revealed yet, monsters are still in
+    the room, or this hero already searched this room for treasure
+    (1989 rulebook: one search per hero per room, in a room clear of
+    monsters).
     """
 
 
@@ -71,6 +73,14 @@ def resolve_treasure_search(
 
     if room_id not in game_state.get("revealed", {}).get("rooms", []):
         raise InvalidTreasureSearchError(f"room '{room_id}' has not been revealed yet")
+
+    # "You may search a room for treasure only if the room is
+    # uninhabited by monsters" (1989 rulebook, Action 3).
+    if any(
+        m.get("alive") and board.area_of.get(tuple(m["pos"])) == room_id
+        for m in game_state.get("monsters", {}).values()
+    ):
+        raise InvalidTreasureSearchError(f"room '{room_id}' still has monsters in it -- clear them first")
 
     # Legacy game docs carry a per-room "treasure": True boolean from
     # the old (wrong) rule; it records no searcher, so it can't block

@@ -105,10 +105,11 @@ export function GameView({ gameId }: GameViewProps) {
   const activeHero = game.heroes.find((h) => h.id === heroId);
 
   // Hero attacks are WARNED about, never blocked: the app can't see
-  // hero weapons (physical/digital boundary), and a spear attacks
-  // diagonally while a crossbow attacks at range -- only the player
-  // knows what they're holding. Monsters get no such latitude; the
-  // engine requires orthogonal adjacency for them (engine/turn.py).
+  // hero weapons (physical/digital boundary), and the rulebook's staff
+  // and longsword attack diagonally while dagger and crossbow attack at
+  // range -- only the player knows what they're holding. Monsters get no
+  // such latitude; the engine requires orthogonal adjacency for them
+  // (engine/turn.py).
   const attackReach = (m: MonsterToken): "" | "diagonal" | "not adjacent" => {
     if (!activeHero) return "";
     const dx = Math.abs(m.pos[0] - activeHero.pos[0]);
@@ -370,8 +371,8 @@ export function GameView({ gameId }: GameViewProps) {
               {selectedReach && (
                 <span style={{ color: "#e6a23b" }}>
                   {selectedReach === "diagonal"
-                    ? "diagonal \u2014 spear only"
-                    : "not adjacent \u2014 crossbow or spell only"}
+                    ? "diagonal \u2014 staff or longsword only"
+                    : "not adjacent \u2014 dagger, crossbow or spell only"}
                 </span>
               )}
             </div>

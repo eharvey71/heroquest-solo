@@ -157,6 +157,16 @@ non-adjacent target is WARNED about ("diagonal — spear only", "not
 adjacent — crossbow or spell only") and never blocked. Enforcing hero
 adjacency was rejected for exactly this reason.
 
+Searching (1989 rulebook, Actions 3-5, verified against the owner's
+photos): treasure may only be searched in a room UNINHABITED by
+monsters; traps and secret doors only when no monsters are visible
+(approximated as "none in the hero's room" until line of sight is
+modelled). A FOUND trap gets no tile -- "Zargon will NOT put any trap
+tiles out on the board; they are still concealed and unsprung" -- the
+tile goes down only when it is sprung. A found secret door DOES get a
+secret-door tile, and still needs the open-door button afterwards.
+Blocked squares stop monsters as well as heroes.
+
 Monsters may not (1989 rulebook, Zargon's Turn page, verified against
 the owner's photos): search for treasure or secret doors, move or
 attack diagonally, pass over heroes, move through walls, OPEN OR CLOSE

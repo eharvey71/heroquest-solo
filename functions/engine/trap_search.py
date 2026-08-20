@@ -87,15 +87,32 @@ def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id:
     already_known = set(game_state.get("trapsTriggered", []))
     log = [f"{hero_id} searches {room_id} for traps and secret doors."]
 
+    # "You can only search for traps [or secret doors] if there are no
+    # monsters visible to you" (1989 rulebook, Actions 4 and 5). True
+    # visibility is line-of-sight, which the app doesn't model yet;
+    # monsters in the hero's own room is the faithful subset -- it
+    # catches the case the rule exists for (searching while something
+    # is standing over you) without guessing at sightlines.
+    if any(
+        m.get("alive") and board.area_of.get(tuple(m["pos"])) == room_id
+        for m in game_state.get("monsters", {}).values()
+    ):
+        raise InvalidTrapSearchError(f"monsters are still in room '{room_id}' -- a hero can't search while they watch")
+
     found_traps: list[FoundTrap] = []
     trap_lookup = _build_trap_lookup(quest)
     room_trap_prefix = f"{room_id}-T"
     for pos, (trap_id, trap_type) in trap_lookup.items():
         if not trap_id.startswith(room_trap_prefix) or trap_id in already_known:
             continue
-        instruction = f"Place the {trap_type} trap tile at square [{pos[0]},{pos[1]}]."
+        # No tile goes down here. "Zargon will NOT put any trap tiles out
+        # on the board. At this time, they are still concealed and
+        # unsprung" (1989 rulebook, How A Hero Searches For Traps) -- the
+        # tile is placed only when the trap is actually sprung, which
+        # hero_movement handles.
+        instruction = f"Zargon points out the {trap_type} trap at square [{pos[0]},{pos[1]}] -- no tile yet, it is still unsprung."
         found_traps.append(FoundTrap(trap_id=trap_id, trap_type=trap_type, pos=pos, placement_instruction=instruction))
-        log.append(f"{hero_id} finds a {trap_type} trap at [{pos[0]},{pos[1]}]! {instruction}")
+        log.append(f"{hero_id} finds a {trap_type} trap at [{pos[0]},{pos[1]}]. {instruction}")
 
     found_doors: list[FoundSecretDoor] = []
     door_states = game_state.get("doors", {})
@@ -105,7 +122,7 @@ def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id:
         state = door_states.get(d["id"], d.get("state"))
         if state != "secret" or not any(sq in room_squares for sq in squares):
             continue
-        instruction = f"Place the closed door tile at squares {list(squares[0])}-{list(squares[1])}."
+        instruction = f"Place the secret door tile at squares {list(squares[0])}-{list(squares[1])}."
         found_doors.append(FoundSecretDoor(door_id=d["id"], squares=squares, placement_instruction=instruction))
         log.append(f"{hero_id} finds a secret door at {list(squares[0])}-{list(squares[1])}! {instruction}")
 

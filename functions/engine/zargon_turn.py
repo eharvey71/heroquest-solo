@@ -128,11 +128,15 @@ def resolve_zargon_turn(
     # Furniture is solid for monsters too -- a monster pathing through a
     # tomb would desync from the physical board (see hero_movement.py).
     furniture = furniture_squares(quest, catalogs)
+    # "Neither Heroes nor monsters can move through blocked squares"
+    # (1989 rulebook, Blocked Square Tiles). Heroes were already stopped
+    # by these in hero_movement; monsters were walking straight through.
+    impassable = furniture | {tuple(sq) for sq in quest.get("blockedSquares", [])}
 
     if turn_type == "wandering":
         occupied = {tuple(h["pos"]) for h in heroes} | {
             tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
-        } | furniture
+        } | impassable
         spawn = spawn_wandering_monster_from_turn_roll(
             board, quest, revealed, quest.get("doors", []), occupied, heroes
         )
@@ -193,7 +197,7 @@ def resolve_zargon_turn(
 
         occupied = set(hero_positions.values()) | {
             p for other_id, p in monster_positions.items() if other_id != monster_id
-        } | furniture
+        } | impassable
 
         target_id: str | None
         if turn_type == "cunning" and objective_room_id and should_guard(current_room, objective_room_id):

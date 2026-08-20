@@ -243,3 +243,17 @@ def test_quiet_turn_still_narrates(catalogs):
     assert len(result.log) == 3
     assert result.log[0].startswith("Zargon's turn")
     assert result.log[-1] == ZARGON_TURN_END
+
+
+def test_monsters_cannot_cross_blocked_squares(catalogs):
+    # "Neither Heroes nor monsters can move through blocked squares"
+    # (1989 rulebook). (5,1) is the R2 side of D1 -- the only way
+    # through -- so blocking it leaves the orc with no route.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}])
+    quest["blockedSquares"] = [[5, 1]]
+    game_state = _game_state(monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}})
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert result.monster_results[0].action == "no_target"

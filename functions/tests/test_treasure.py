@@ -110,3 +110,25 @@ def test_no_wandering_monster_card_means_no_spawn(good_quest_4h, catalogs):
     )
     assert result.spawned_monster is None
     assert result.monster_attack is None
+
+
+def test_rejects_search_while_monsters_are_in_the_room(good_quest_4h, catalogs):
+    # 1989 rulebook: "you may search a room for treasure only if the
+    # room is uninhabited by monsters".
+    game_state = _game_state((1, 1), ["R1"])
+    game_state["monsters"] = {"M1": {"type": "orc", "pos": [2, 2], "currentBody": 1, "alive": True}}
+    with pytest.raises(InvalidTreasureSearchError):
+        resolve_treasure_search(
+            board=catalogs.board, catalogs=catalogs, quest=good_quest_4h, game_state=game_state,
+            hero_id="barbarian", room_id="R1",
+        )
+
+
+def test_dead_monster_in_room_does_not_block_the_search(good_quest_4h, catalogs):
+    game_state = _game_state((1, 1), ["R1"])
+    game_state["monsters"] = {"M1": {"type": "orc", "pos": [2, 2], "currentBody": 0, "alive": False}}
+    result = resolve_treasure_search(
+        board=catalogs.board, catalogs=catalogs, quest=good_quest_4h, game_state=game_state,
+        hero_id="barbarian", room_id="R1",
+    )
+    assert result.room_id == "R1"
