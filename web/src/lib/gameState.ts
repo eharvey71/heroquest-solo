@@ -10,7 +10,9 @@ export interface HeroToken {
   id: string;
   name: string;
   pos: Coord;
-  active: boolean;
+  /** False once the player reports the hero dead. Absent on games
+   * created before hero death existed -- missing means alive. */
+  alive?: boolean;
 }
 
 export interface MonsterToken {
@@ -40,7 +42,7 @@ export interface GameState {
   // always has them, straight off design/quest-schema.md section 4.
   questId?: string;
   phase?: "hero" | "zargon";
-  status?: "in_progress" | "complete";
+  status?: "in_progress" | "complete" | "lost";
   /** Stage 1 of the ending: objective met, but the party still has to
    * walk back to the stairway (see main._mark_objective_if_complete). */
   objectiveComplete?: boolean;
@@ -62,6 +64,17 @@ export interface GameState {
    * Only found traps appear here; unfound ones stay hidden in quest data. */
   trapsFound?: Record<string, { type: string; pos: Coord }>;
   log?: LogEntry[];
+  /** How many actions can still be rolled back (main.undo_last_action). */
+  undoDepth?: number;
+  /** What the next undo would roll back, e.g. "the hero's move". */
+  undoLabel?: string;
+}
+
+/** Heroes still on the board: the ones that can act, block squares and
+ * draw Zargon's attention. A dead hero keeps its roster entry (party
+ * size is what the quest budget was priced against) but leaves play. */
+export function livingHeroes(heroes: HeroToken[]): HeroToken[] {
+  return heroes.filter((h) => h.alive !== false);
 }
 
 /** Expands revealed room ids + explicit corridor squares into the full

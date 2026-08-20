@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .heroes import find_living_hero, living_heroes
 from validator.catalogs import Board
 
 Coord = tuple[int, int]
@@ -109,10 +110,10 @@ def resolve_trap_action(
     if action not in TRAP_ACTIONS:
         raise InvalidTrapActionError(f"action must be one of {TRAP_ACTIONS}, got '{action}'")
 
-    heroes = game_state.get("heroes", [])
-    hero = next((h for h in heroes if h["id"] == hero_id), None)
+    heroes = living_heroes(game_state)
+    hero = find_living_hero(game_state, hero_id)
     if hero is None:
-        raise InvalidTrapActionError(f"hero '{hero_id}' not found in game state")
+        raise InvalidTrapActionError(f"hero '{hero_id}' is not in this game, or has fallen")
     hero_pos = tuple(hero["pos"])
 
     if trap_id in set(game_state.get("trapsTriggered", [])):

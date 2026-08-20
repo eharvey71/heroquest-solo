@@ -9,8 +9,8 @@ import type { GameState } from "./gameState";
 
 export const mockGameState: GameState = {
   heroes: [
-    { id: "barbarian", name: "Barbarian", pos: [2, 2], active: true },
-    { id: "wizard", name: "Wizard", pos: [3, 2], active: true },
+    { id: "barbarian", name: "Barbarian", pos: [2, 2], alive: true },
+    { id: "wizard", name: "Wizard", pos: [3, 2], alive: true },
   ],
   monsters: [{ id: "M1", type: "orc", pos: [6, 2], currentBody: 1, alive: true }],
   revealed: {

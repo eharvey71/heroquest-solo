@@ -4,17 +4,19 @@ import {
   castSpell,
   endTurn,
   openDoor,
+  recordHeroDeath,
   recordHeroDefense,
   resolveHeroAttack,
   resolveMovement,
   resolveTrapAction,
-  type CombatDieFace,
   resolveZargonTurn,
   rollZargonTurnType,
   searchTrapsAndSecretDoors,
   searchTreasure,
+  type CombatDieFace,
+  undoLastAction,
 } from "../lib/functionsClient";
-import { revealedSquareKeys, type MonsterToken } from "../lib/gameState";
+import { livingHeroes, revealedSquareKeys, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
@@ -54,8 +56,10 @@ export function GameView({ gameId }: GameViewProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (game && (!heroId || !game.heroes.some((h) => h.id === heroId))) {
-      setHeroId(game.heroes[0]?.id ?? "");
+    // A hero who has fallen can't be the active one -- hand the
+    // selection to whoever is still standing.
+    if (game && (!heroId || !livingHeroes(game.heroes).some((h) => h.id === heroId))) {
+      setHeroId(livingHeroes(game.heroes)[0]?.id ?? "");
     }
   }, [game, heroId]);
 
@@ -71,6 +75,17 @@ export function GameView({ gameId }: GameViewProps) {
       setBusy(false);
     }
   }
+
+  const handleHeroDeath = async (id: string, name: string) => {
+    // Body Points are physical, so this is a report, not a deduction --
+    // and it is the one action that can end the quest in a loss.
+    if (!window.confirm(`Report ${name} as dead? The figure comes off the board.`)) return;
+    await runAction(() => recordHeroDeath({ gameId, heroId: id }));
+  };
+
+  const handleUndo = async () => {
+    await runAction(() => undoLastAction({ gameId }));
+  };
 
   const enqueueDefense = (heroName: string, skulls: number) => {
     const hero = game?.heroes.find((h) => h.name === heroName);
@@ -108,7 +123,13 @@ export function GameView({ gameId }: GameViewProps) {
   const revealedKeys = revealedSquareKeys(staticBoard, game.revealed);
   const targetableMonsters = game.monsters.filter((m) => m.alive && revealedKeys.has(squareKey(m.pos[0], m.pos[1])));
 
-  const activeHero = game.heroes.find((h) => h.id === heroId);
+  const heroes = livingHeroes(game.heroes);
+  const fallenHeroes = game.heroes.filter((h) => h.alive === false);
+  // A finished quest -- won or lost -- takes no more actions. Undo still
+  // works, so a misreported death is recoverable.
+  const playable = game.status !== "complete" && game.status !== "lost";
+
+  const activeHero = heroes.find((h) => h.id === heroId);
 
   // Hero attacks are WARNED about, never blocked: the app can't see
   // hero weapons (physical/digital boundary), and the rulebook's staff
@@ -305,6 +326,25 @@ export function GameView({ gameId }: GameViewProps) {
         </div>
       )}
 
+      {game.status === "lost" && (
+        <div
+          style={{
+            border: "2px solid #e05c5c",
+            borderRadius: 6,
+            padding: 12,
+            marginBottom: 16,
+            background: "#2e1414",
+            maxWidth: 700,
+          }}
+        >
+          <h2 style={{ margin: 0, color: "#e05c5c" }}>Quest lost</h2>
+          <p style={{ color: "#f0cccc", margin: "6px 0 0" }}>
+            Every hero has fallen. Zargon holds the dungeon &mdash; start a new game, or undo if that
+            last death was reported by mistake.
+          </p>
+        </div>
+      )}
+
       {/* The objective is only half the quest -- the rulebook ends it at
           the stairway, so say so until a hero actually gets there. */}
       {game.status !== "complete" && game.objectiveComplete && (
@@ -334,8 +374,13 @@ export function GameView({ gameId }: GameViewProps) {
               : "Hero phase"
             : "Zargon's turn"}
         </h2>
-        <span className="hint">
-          Game <code>{gameId}</code>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
+            {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
+          </button>
+          <span className="hint">
+            Game <code>{gameId}</code>
+          </span>
         </span>
       </div>
 
@@ -374,16 +419,27 @@ export function GameView({ gameId }: GameViewProps) {
         <label>
           Active hero:{" "}
           <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
-            {game.heroes.map((h) => (
+            {heroes.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}
               </option>
             ))}
           </select>
-          {activeHeroRoomId && <span className="hint"> in {activeHeroRoomId}</span>}
+          {activeHeroRoomId && <span className="hint"> in {activeHeroRoomId}</span>}{" "}
+          {activeHero && playable && (
+            <button onClick={() => handleHeroDeath(activeHero.id, activeHero.name)} disabled={busy}>
+              {activeHero.name} has fallen
+            </button>
+          )}
         </label>
 
-        {game.phase === "hero" && (
+        {fallenHeroes.length > 0 && (
+          <span className="hint">
+            Fallen: {fallenHeroes.map((h) => h.name).join(", ")} &mdash; off the board, out of Zargon's reach.
+          </span>
+        )}
+
+        {playable && game.phase === "hero" && (
           <>
             {adjacentKnownTraps.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #6a5a3a", padding: 8 }}>
@@ -560,7 +616,7 @@ export function GameView({ gameId }: GameViewProps) {
           </>
         )}
 
-        {game.phase === "zargon" && (
+        {playable && game.phase === "zargon" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {!rolledTurn && (
               <button onClick={handleRollTurnType} disabled={busy}>

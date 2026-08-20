@@ -30,6 +30,7 @@ from validator.geometry import furniture_squares
 from .hero_movement import shareable_squares
 
 from .movement import Coord, passable_door_edges, revealed_squares
+from .heroes import living_heroes
 from .targeting import (
     guard_engaged_by,
     select_cunning_target,
@@ -130,7 +131,9 @@ def resolve_zargon_turn(
     if turn_type not in ("normal", "cunning", "wandering"):
         raise ValueError(f"unknown turn_type '{turn_type}'")
 
-    heroes = game_state.get("heroes", [])
+    # A fallen hero's mini is off the board: no target, no blocker, and
+    # no vote in cunning targeting (engine/heroes.py).
+    heroes = living_heroes(game_state)
     heroes_by_id = {h["id"]: h for h in heroes}
     revealed = revealed_squares(board, game_state.get("revealed", {}))
     revealed_room_ids = set(game_state.get("revealed", {}).get("rooms", []))

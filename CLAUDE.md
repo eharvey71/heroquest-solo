@@ -261,6 +261,30 @@ monsterDefends flag for cards that allow no defence roll. A spell
 aimed at a hero (healing, buffs) touches only physical state, so the
 app logs it, spends the card, and changes nothing else.
 
+HERO DEATH is reported, not deduced: Body Points are physical, so the
+player presses "[hero] has fallen" and the app applies everything that
+follows -- the figure leaves the board, so the square frees up, Zargon
+stops pathing to it and stops asking for its defence rolls, it drops
+out of cunning targeting, and standing on the stairway no longer ends
+the quest. The roster entry STAYS (alive=False, never removed): party
+size at game creation is what the quest budget was priced against and
+what the lone-hero 2-actions rule keys off. A missing alive field means
+alive, so games created before this still load. When the last hero
+falls the status becomes "lost" -- the app's only end state other than
+"complete" -- and a finished quest, won or lost, takes no further
+actions (undo still works, so a misreported death is recoverable).
+
+UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
+action at a time, all the way to the start of the game if need be.
+Every mutating endpoint deep-copies the pre-action state and files it
+under games/{id}/undo/{n} inside its OWN transaction, so an action that
+raises leaves no snapshot and a snapshot never exists without its
+action. Restores are whole-document writes, not merges: undoing has to
+make things DISAPPEAR (a searched room, a spawned wandering monster, a
+sprung trap, revealed corridor) and a field merge can only add or
+overwrite. Each snapshot carries the label of the step beneath it, so
+the button can name what it will undo without a second read.
+
 Not implemented, deliberately:
 - Attack-then-move. The rulebook lets a monster act then move (not
   move-partway-act-move); the engine only does move-then-attack, so
@@ -314,20 +338,10 @@ validator, baseline budget (120), board renderer with fog + path input,
 and the Zargon engine (movement, targeting, turn-type roller, combat
 prompts).
 
+Hero death and undo are built (see the engine details above).
+
 Known gaps, in the owner's priority order:
-1. HERO DEATH is not modelled at all. Heroes die often, and the app has
-   no way to be told: a dead hero keeps a square (impassable to
-   monsters), still draws Zargon's attacks and defence-roll prompts,
-   still counts for "a hero reached the stairway", and still shows in
-   cunning targeting. There is also no quest-LOST state -- status only
-   ever becomes "complete". BP stays physical; the player reports the
-   death, same handoff as skulls and shields. (game state carries a
-   vestigial hero.active field, written once and never read.)
-2. UNDO. A mis-dragged path, a mistyped skull count or an early End Turn
-   is permanent -- the only fix is starting the game over. Every
-   mutating endpoint already runs in a Firestore transaction, so
-   snapshotting the pre-state and restoring it is the shape.
-3. AUTH lock-down (deferred by the owner, on purpose -- recorded so it
+1. AUTH lock-down (deferred by the owner, on purpose -- recorded so it
    isn't lost). firebase.ts signs in ANONYMOUSLY, firestore.rules allows
    any signed-in user, and every Cloud Function checks only
    `req.auth is None`. So any visitor to the hosted URL can list and
@@ -336,7 +350,7 @@ Known gaps, in the owner's priority order:
    Fix shape (already a TODO in firestore.rules): Google sign-in, pin
    the owner's uid, `request.auth.uid == '<owner-uid>'` in the rules,
    same check in a shared helper in main.py.
-4. Chest/furniture traps -- the rulebook springs them when a room is
+2. Chest/furniture traps -- the rulebook springs them when a room is
    searched for treasure before it is searched for traps. Would hook
    into the treasure-search flow. Never built.
 

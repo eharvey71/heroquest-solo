@@ -85,3 +85,14 @@ def test_quest_without_a_stairway_is_never_home(good_quest_4h):
     from engine.objective import hero_on_stairway
 
     assert hero_on_stairway({}, {"heroes": [{"id": "barbarian", "pos": [1, 1]}]}) is False
+
+
+def test_a_dead_hero_on_the_stairway_does_not_finish_the_quest(good_quest_4h):
+    from engine.objective import hero_on_stairway
+
+    pos = good_quest_4h["stairway"]["pos"]
+    state = {"heroes": [{"id": "barbarian", "pos": list(pos), "alive": False}]}
+    assert hero_on_stairway(good_quest_4h, state) is False
+
+    state["heroes"].append({"id": "wizard", "pos": list(pos), "alive": True})
+    assert hero_on_stairway(good_quest_4h, state) is True

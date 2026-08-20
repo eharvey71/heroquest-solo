@@ -52,6 +52,7 @@ from validator.catalogs import CORRIDOR, Board, Catalogs
 from validator.geometry import furniture_squares
 
 from .doors import effective_door_state
+from .heroes import find_living_hero, living_heroes
 from .line_of_sight import visible_corridor_squares
 from .movement import passable_door_edges
 
@@ -158,10 +159,10 @@ def resolve_hero_movement(
     if len(path) < 1:
         raise IllegalMovementError("path must contain at least the hero's current position")
 
-    heroes = game_state.get("heroes", [])
-    hero = next((h for h in heroes if h["id"] == hero_id), None)
+    heroes = living_heroes(game_state)
+    hero = find_living_hero(game_state, hero_id)
     if hero is None:
-        raise IllegalMovementError(f"hero '{hero_id}' not found in game state")
+        raise IllegalMovementError(f"hero '{hero_id}' is not in this game, or has fallen")
     if path[0] != tuple(hero["pos"]):
         raise IllegalMovementError("path must start at the hero's current position")
 

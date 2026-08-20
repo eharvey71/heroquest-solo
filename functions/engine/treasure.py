@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterAttackRoll, roll_monster_attack
+from .heroes import find_living_hero, living_heroes
 from .targeting import spawn_wandering_monster_from_treasure_card
 
 Coord = tuple[int, int]
@@ -62,10 +63,10 @@ def resolve_treasure_search(
     if room_id not in board.room_squares:
         raise RoomNotFoundError(f"room '{room_id}' not found on the board")
 
-    heroes = game_state.get("heroes", [])
-    hero = next((h for h in heroes if h["id"] == hero_id), None)
+    heroes = living_heroes(game_state)
+    hero = find_living_hero(game_state, hero_id)
     if hero is None:
-        raise InvalidTreasureSearchError(f"hero '{hero_id}' not found in game state")
+        raise InvalidTreasureSearchError(f"hero '{hero_id}' is not in this game, or has fallen")
     hero_pos = tuple(hero["pos"])
 
     if board.area_of.get(hero_pos) != room_id:

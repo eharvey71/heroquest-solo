@@ -26,6 +26,8 @@ from dataclasses import dataclass
 
 from validator.catalogs import CORRIDOR, Board
 
+from .heroes import find_living_hero
+
 Coord = tuple[int, int]
 
 
@@ -79,10 +81,9 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
     if len(squares) != 2:
         raise DoorNotFoundError(f"door '{door_id}' has a malformed squares list")
 
-    heroes = game_state.get("heroes", [])
-    hero = next((h for h in heroes if h["id"] == hero_id), None)
+    hero = find_living_hero(game_state, hero_id)
     if hero is None:
-        raise InvalidDoorOpenError(f"hero '{hero_id}' not found in game state")
+        raise InvalidDoorOpenError(f"hero '{hero_id}' is not in this game, or has fallen")
     hero_pos = tuple(hero["pos"])
 
     if hero_pos not in squares:

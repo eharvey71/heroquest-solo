@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterDefenseResult, resolve_hero_attack
+from .heroes import find_living_hero, living_heroes
 from .line_of_sight import has_line_of_sight
 from .movement import passable_door_edges
 
@@ -80,10 +81,10 @@ def resolve_hero_spell(
     if spell_name.lower() in already_cast:
         raise InvalidSpellError(f"'{spell_name}' has already been cast this quest -- the card is discarded")
 
-    heroes = game_state.get("heroes", [])
-    hero = next((h for h in heroes if h["id"] == hero_id), None)
+    heroes = living_heroes(game_state)
+    hero = find_living_hero(game_state, hero_id)
     if hero is None:
-        raise InvalidSpellError(f"hero '{hero_id}' not found in game state")
+        raise InvalidSpellError(f"hero '{hero_id}' is not in this game, or has fallen")
     hero_pos = tuple(hero["pos"])
     hero_name = hero.get("name", hero_id)
 

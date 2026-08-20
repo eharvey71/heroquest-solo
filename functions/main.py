@@ -27,6 +27,8 @@ or a room becoming revealed), plus resolve_trap_action, since a jump
 can land a hero on the stairs.
 """
 
+import copy
+
 import anthropic
 from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
@@ -38,6 +40,8 @@ from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.heroes import HeroAlreadyDeadError, HeroNotFoundError, living_heroes
+from engine.heroes import record_hero_death as record_hero_death_engine
 from engine.objective import check_objective_complete, hero_on_stairway
 from engine.spell import InvalidSpellError, resolve_hero_spell
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
@@ -45,6 +49,7 @@ from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
 from engine.trap_action import InvalidTrapActionError, TRAP_ACTIONS, resolve_trap_action
 from engine.trap_search import SEARCH_TYPES, resolve_trap_search
+from engine.undo import NothingToUndoError, build_snapshot, restore as restore_snapshot, snapshot_id
 from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
@@ -283,6 +288,37 @@ def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
     return game_state, quest
 
 
+# Statuses that end a game: no more actions, but undo still works (a
+# misreported death has to be take-back-able).
+_FINISHED_STATUSES = ("complete", "lost")
+
+
+def _require_playable(game_state: dict) -> None:
+    status = game_state.get("status")
+    if status in _FINISHED_STATUSES:
+        message = (
+            "this quest is already complete" if status == "complete" else "every hero has fallen -- the quest is lost"
+        )
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=message)
+
+
+def _push_undo(transaction, game_ref, before: dict, updates: dict, label: str) -> None:
+    """Files the pre-action game state under games/{id}/undo/{n} and
+    points the game doc at it, so undo_last_action can put it back.
+
+    Written inside the same transaction as the action itself, which is
+    what makes it trustworthy: an action that raises leaves no snapshot
+    behind, and a snapshot never exists without the action that made it
+    necessary. Snapshots are full copies -- restoring has to be able to
+    DROP fields the action added (a searched room, a spawned monster),
+    which a field-by-field diff can't express.
+    """
+    depth, entry, undo_updates = build_snapshot(before, label)
+    entry["state"] = to_firestore_coords(entry["state"])
+    transaction.set(game_ref.collection("undo").document(snapshot_id(depth)), entry)
+    updates.update(undo_updates)
+
+
 def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, log_entries: list, turn: int) -> bool:
     """Advances the two-stage ending against `game_state` (the caller
     must have already applied this action's changes to the LOCAL
@@ -326,6 +362,8 @@ def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, lo
 @firestore.transactional
 def _apply_movement(transaction, db, game_ref, hero_id, path):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -366,6 +404,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _push_undo(transaction, game_ref, before, updates, "the hero's move")
     transaction.update(game_ref, updates)
 
     return result
@@ -417,16 +456,21 @@ def resolve_movement(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_end_turn(transaction, game_ref):
     game_state = _load_game(game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
     result = resolve_end_turn(game_state)
 
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
 
-    transaction.update(
-        game_ref,
-        {"phase": result.new_phase, "heroPhaseSegment": result.new_segment, "log": existing_log + new_log_entries},
-    )
+    updates = {
+        "phase": result.new_phase,
+        "heroPhaseSegment": result.new_segment,
+        "log": existing_log + new_log_entries,
+    }
+    _push_undo(transaction, game_ref, before, updates, "ending the hero phase")
+    transaction.update(game_ref, updates)
     return result
 
 
@@ -462,6 +506,8 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -486,6 +532,7 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _push_undo(transaction, game_ref, before, updates, "opening the door")
     transaction.update(game_ref, updates)
     return result
 
@@ -550,6 +597,8 @@ def _next_wandering_monster_id(existing_ids: set) -> str:
 @firestore.transactional
 def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wandering_monster_drawn):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -588,6 +637,7 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
             }
         )
 
+    _push_undo(transaction, game_ref, before, updates, "the treasure search")
     transaction.update(game_ref, updates)
     return result
 
@@ -656,6 +706,8 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, room_id, search_type):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -675,14 +727,20 @@ def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, roo
 
     if result.found_traps:
         # trapsFound, not trapsTriggered: the party now knows where these
-        # are, but they are still armed (see engine/trap_search.py).
-        traps_found = set(game_state.get("trapsFound", []))
-        traps_found.update(t.trap_id for t in result.found_traps)
-        updates["trapsFound"] = sorted(traps_found)
+        # are, but they are still armed (see engine/trap_search.py). Stored
+        # as {trapId: {type,pos}} so the client can offer jump/disarm
+        # without being handed the quest's whole hidden trap layout --
+        # writing a bare list of ids here threw those positions away.
+        existing_found = game_state.get("trapsFound", {})
+        traps_found = dict(existing_found) if isinstance(existing_found, dict) else {t: {} for t in existing_found}
+        for t in result.found_traps:
+            traps_found[t.trap_id] = {"type": t.trap_type, "pos": list(t.pos)}
+        updates["trapsFound"] = to_firestore_coords(traps_found)
 
     for d in result.found_secret_doors:
         updates[f"doors.{d.door_id}"] = "closed"
 
+    _push_undo(transaction, game_ref, before, updates, "the search")
     transaction.update(game_ref, updates)
     return result
 
@@ -765,6 +823,8 @@ def _trap_lookup_entry(quest, trap_id):
 @firestore.transactional
 def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_face, landing, has_tool_kit):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -806,6 +866,7 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _push_undo(transaction, game_ref, before, updates, "the trap action")
     transaction.update(game_ref, updates)
     return result
 
@@ -871,6 +932,8 @@ def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_monster_id, skulls, monster_defends):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -900,6 +963,7 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_mon
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _push_undo(transaction, game_ref, before, updates, "the spell")
     transaction.update(game_ref, updates)
     return result
 
@@ -997,7 +1061,8 @@ def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
         )
 
     turn_type = roll_turn_type(hero_count, difficulty)
-    heroes = game_state.get("heroes", [])
+    # Only heroes still standing can be the cunning turn's focus.
+    heroes = living_heroes(game_state)
     needs_prompt = turn_type == "cunning" and needs_cunning_target_prompt(heroes)
 
     return {
@@ -1010,6 +1075,8 @@ def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "zargon":
         raise https_fn.HttpsError(
@@ -1050,6 +1117,7 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
             }
         )
 
+    _push_undo(transaction, game_ref, before, updates, "Zargon's turn")
     transaction.update(game_ref, updates)
     return result
 
@@ -1110,6 +1178,8 @@ def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
         raise https_fn.HttpsError(
@@ -1154,6 +1224,7 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _push_undo(transaction, game_ref, before, updates, "the attack")
     transaction.update(game_ref, updates)
 
     return result
@@ -1206,10 +1277,14 @@ def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
 @firestore.transactional
 def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported):
     game_state = _load_game(game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
 
-    hero = next((h for h in game_state.get("heroes", []) if h["id"] == hero_id), None)
+    hero = next((h for h in living_heroes(game_state) if h["id"] == hero_id), None)
     if hero is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"hero '{hero_id}' not found in game")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"hero '{hero_id}' is not in this game, or has fallen"
+        )
 
     log_line = record_hero_defense_engine(
         hero_name=hero.get("name", hero_id), skulls_faced=skulls_faced, shields_reported=shields_reported
@@ -1217,7 +1292,9 @@ def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shi
 
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
-    transaction.update(game_ref, {"log": existing_log + [{"turn": turn, "text": log_line}]})
+    updates = {"log": existing_log + [{"turn": turn, "text": log_line}]}
+    _push_undo(transaction, game_ref, before, updates, "the defence roll")
+    transaction.update(game_ref, updates)
 
     return log_line
 
@@ -1262,3 +1339,137 @@ def record_hero_defense(req: https_fn.CallableRequest) -> dict:
     log_line = _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported)
 
     return {"log": log_line}
+
+
+@firestore.transactional
+def _apply_record_hero_death(transaction, game_ref, hero_id):
+    game_state = _load_game(game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
+
+    result = record_hero_death_engine(game_state, hero_id)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+
+    updates = {
+        "heroes": to_firestore_coords(game_state.get("heroes", [])),
+        "log": existing_log + new_log_entries,
+    }
+    if result.party_wiped:
+        updates["status"] = "lost"
+
+    _push_undo(transaction, game_ref, before, updates, f"{result.hero_name}'s death")
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def record_hero_death(req: https_fn.CallableRequest) -> dict:
+    """A hero has run out of Body Points. BP lives on the physical hero
+    sheet (CLAUDE.md's boundary), so the app can never work this out for
+    itself -- the player reports it, exactly like skulls and shields.
+
+    Everything that FOLLOWS is the app's business: the square frees up,
+    Zargon stops pathing to the figure and stops asking for its defence
+    rolls, it drops out of cunning targeting, and it no longer counts as
+    "a hero reached the stairway". When the last hero falls the quest is
+    lost -- the first end state the app has other than "complete". See
+    functions/engine/heroes.py.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_record_hero_death(transaction, game_ref, hero_id)
+    except HeroNotFoundError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=str(e)) from e
+    except HeroAlreadyDeadError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "heroId": result.hero_id,
+        "heroName": result.hero_name,
+        "partyWiped": result.party_wiped,
+        "log": result.log,
+    }
+
+
+@firestore.transactional
+def _apply_undo(transaction, game_ref):
+    game_snap = game_ref.get(transaction=transaction)
+    if not game_snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="game not found")
+    raw = game_snap.to_dict()
+
+    depth = int(raw.get("undoDepth") or 0)
+    if depth <= 0:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="there is nothing left to undo"
+        )
+
+    snap_ref = game_ref.collection("undo").document(snapshot_id(depth))
+    entry_snap = snap_ref.get(transaction=transaction)
+    if not entry_snap.exists:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message=f"the undo history is missing step {depth}",
+        )
+    entry = entry_snap.to_dict()
+    label = entry.get("label", "the last action")
+
+    # The snapshot was stored in Firestore's own coordinate shape, so it
+    # goes straight back in without a conversion round trip.
+    try:
+        restored = restore_snapshot(raw, entry)
+    except NothingToUndoError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    # set(), not update(): whatever the undone action ADDED has to
+    # disappear -- a searched room, a spawned monster, a sprung trap --
+    # and a field-by-field merge would leave all of it behind.
+    transaction.set(game_ref, restored)
+    transaction.delete(snap_ref)
+    return {"label": label, "undoDepth": depth - 1}
+
+
+@https_fn.on_call()
+def undo_last_action(req: https_fn.CallableRequest) -> dict:
+    """Puts the board back to just before the last action. Solo play has
+    no second pair of hands to catch a mis-dragged path, a mistyped
+    skull count or an early End Turn, and before this the only fix was
+    starting the game over.
+
+    Every mutating endpoint snapshots the pre-action state into the
+    game's undo subcollection inside its own transaction (_push_undo),
+    so this pops one step at a time and can keep going back to the start
+    of the game. A finished quest can still be undone -- reporting the
+    last hero's death by mistake has to be recoverable.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    return _apply_undo(transaction, game_ref)

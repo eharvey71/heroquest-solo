@@ -277,3 +277,38 @@ def test_monster_in_a_sprung_pit_attacks_with_one_less_die(catalogs):
     attack = result.monster_results[0].turn_result.attack
     assert attack is not None
     assert attack.dice_rolled == catalogs.monsters["orc"]["attack"] - 1
+
+
+def test_zargon_ignores_a_fallen_hero(catalogs):
+    # The dead hero is the closer target; Zargon must walk past the
+    # empty square to the one still standing.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}])
+    game_state = _game_state(
+        heroes=[
+            {"id": "elf", "name": "Elf", "pos": [7, 3], "alive": False},
+            {"id": "barbarian", "name": "Barbarian", "pos": [2, 2], "alive": True},
+        ],
+        monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}},
+    )
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert result.monster_results[0].action != "no_target"
+    assert not any("Elf" in line for line in result.log)
+
+
+def test_a_fallen_heros_square_no_longer_blocks_a_monster(catalogs):
+    # M1 at (8,3) with the only route west through (7,3). A living hero
+    # standing there walls the corridor off; a dead one is off the board.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}])
+    dead_elf = {"id": "elf", "name": "Elf", "pos": [7, 3], "alive": False}
+    game_state = _game_state(
+        heroes=[dead_elf, {"id": "barbarian", "name": "Barbarian", "pos": [6, 3], "alive": True}],
+        monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}},
+    )
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert result.monster_results[0].action == "moved_and_attacked"

@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
 import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
-import { revealedSquareKeys, type GameState } from "../lib/gameState";
+import { livingHeroes, revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
 import { Furniture } from "./Furniture";
@@ -37,6 +37,9 @@ export function BoardView({
   const lastCoordKeyRef = useRef<string | null>(null);
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
+  // A fallen hero's figure comes off the board: nothing to draw, nothing
+  // to select, and the square is free again (see engine/heroes.py).
+  const heroes = useMemo(() => livingHeroes(gameState.heroes), [gameState.heroes]);
   const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
   // A blocked square and a collapsed ceiling are the same thing to a
   // hero tracing a path: impassable terrain the app can see. A blocked
@@ -74,7 +77,7 @@ export function BoardView({
     blockedHint,
   } = usePathInput({
     board: staticBoard,
-    heroes: gameState.heroes,
+    heroes,
     monsters: gameState.monsters,
     revealed,
     furniture: furnitureKeys,
@@ -106,7 +109,7 @@ export function BoardView({
       if (!coord) return;
       const key = squareKey(coord[0], coord[1]);
 
-      const heroHere = gameState.heroes.find((h) => squareKey(h.pos[0], h.pos[1]) === key);
+      const heroHere = heroes.find((h) => squareKey(h.pos[0], h.pos[1]) === key);
       if (heroHere) {
         selectHero(heroHere);
         onSelectHero?.(heroHere.id); // keep the action panel's active hero in sync
@@ -131,7 +134,7 @@ export function BoardView({
     },
     [
       coordFromEvent,
-      gameState.heroes,
+      heroes,
       gameState.monsters,
       revealed,
       selectHero,
@@ -178,7 +181,7 @@ export function BoardView({
     stopDragging();
   }, [stopDragging]);
 
-  const selectedHero = gameState.heroes.find((h) => h.id === selectedHeroId);
+  const selectedHero = heroes.find((h) => h.id === selectedHeroId);
 
   const handleConfirm = () => {
     if (!selectedHero || !canConfirm) return;
@@ -215,7 +218,7 @@ export function BoardView({
         <PathOverlay cellSize={cellSize} path={path} />
         <Tokens
           cellSize={cellSize}
-          heroes={gameState.heroes}
+          heroes={heroes}
           monsters={gameState.monsters}
           revealed={revealed}
           selectedHeroId={selectedHeroId ?? undefined}

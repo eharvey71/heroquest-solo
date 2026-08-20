@@ -266,3 +266,33 @@ def test_movement_around_furniture_is_fine(catalogs):
     )
     assert result.stopped_reason is None
     assert result.final_pos == (3, 1)
+
+
+def test_a_fallen_hero_cannot_move(catalogs):
+    quest = _quest()
+    game_state = _game_state()
+    game_state["heroes"][0]["alive"] = False
+    with pytest.raises(IllegalMovementError):
+        resolve_hero_movement(
+            board=catalogs.board, catalogs=catalogs, quest=quest, game_state=game_state,
+            hero_id=game_state["heroes"][0]["id"], path=[game_state["heroes"][0]["pos"]],
+        )
+
+
+def test_a_fallen_heros_square_can_be_walked_over(catalogs):
+    # Heroes may pass through fellow heroes anyway; what matters is that
+    # the square is free to END on, which a living hero's never is.
+    quest = _quest()
+    game_state = _game_state()
+    mover = game_state["heroes"][0]
+    start = tuple(mover["pos"])
+    game_state["heroes"].append(
+        {"id": "elf", "name": "Elf", "pos": [start[0] + 1, start[1]], "alive": False}
+    )
+
+    result = resolve_hero_movement(
+        board=catalogs.board, catalogs=catalogs, quest=quest, game_state=game_state,
+        hero_id=mover["id"], path=[list(start), [start[0] + 1, start[1]]],
+    )
+    assert result.final_pos == (start[0] + 1, start[1])
+    assert result.stopped_reason is None

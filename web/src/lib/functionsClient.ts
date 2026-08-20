@@ -267,3 +267,30 @@ export interface RecordHeroDefenseResponse {
   log: string;
 }
 export const recordHeroDefense = call<RecordHeroDefenseRequest, RecordHeroDefenseResponse>("record_hero_defense");
+
+// ---- recordHeroDeath ----
+
+export interface RecordHeroDeathRequest {
+  gameId: string;
+  heroId: string;
+}
+export interface RecordHeroDeathResponse {
+  heroId: string;
+  heroName: string;
+  partyWiped: boolean;
+  log: string[];
+}
+export const recordHeroDeath = call<RecordHeroDeathRequest, RecordHeroDeathResponse>("record_hero_death");
+
+// ---- undoLastAction ----
+
+export interface UndoLastActionRequest {
+  gameId: string;
+}
+export interface UndoLastActionResponse {
+  /** What was rolled back, e.g. "the hero's move". */
+  label: string;
+  /** Steps still available after this one. */
+  undoDepth: number;
+}
+export const undoLastAction = call<UndoLastActionRequest, UndoLastActionResponse>("undo_last_action");

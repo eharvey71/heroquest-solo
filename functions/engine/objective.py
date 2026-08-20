@@ -34,6 +34,8 @@ generator prompt give no per-type guidance on what `target` contains):
 
 from __future__ import annotations
 
+from .heroes import living_heroes
+
 
 def check_objective_complete(quest: dict, game_state: dict) -> bool:
     objective = quest.get("objective", {})
@@ -65,4 +67,4 @@ def hero_on_stairway(quest: dict, game_state: dict) -> bool:
     squares = _stairway_squares(quest)
     if not squares:
         return False
-    return any(tuple(h["pos"]) in squares for h in game_state.get("heroes", []))
+    return any(tuple(h["pos"]) in squares for h in living_heroes(game_state))

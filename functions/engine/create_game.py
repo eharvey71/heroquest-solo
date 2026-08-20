@@ -69,7 +69,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
     squares = _stairway_squares(quest)
 
     hero_states = [
-        {"id": h["id"], "name": h.get("name", h["id"]), "pos": list(squares[i]), "active": True}
+        {"id": h["id"], "name": h.get("name", h["id"]), "pos": list(squares[i]), "alive": True}
         for i, h in enumerate(heroes)
     ]
 
