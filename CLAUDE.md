@@ -308,15 +308,41 @@ WHO must get back is deliberately "any hero": hero death is physical,
 so the app can never know who survived and "all survivors" is not
 computable. Revisit only if hero death ever becomes digital.
 
-## Open items / first tasks
-1. Firebase project skeleton (Hosting + Firestore + Functions, Python).
-2. Validator module (geometry, BFS reachability from stairway, budget,
-   depth, trap caps) — pure functions, unit-test against hand-built
-   good/bad quests BEFORE wiring the LLM.
-3. (done) Baseline budget calibrated = 120; see Balance system.
-4. Board renderer with fog of war + path input.
-5. Zargon engine: movement (A* on revealed map), target selection,
-   turn-type roller, combat prompts ("roll N defend dice, report shields").
+## Open items
+The original first tasks are all done and deployed: Firebase skeleton,
+validator, baseline budget (120), board renderer with fog + path input,
+and the Zargon engine (movement, targeting, turn-type roller, combat
+prompts).
+
+Known gaps, in the owner's priority order:
+1. HERO DEATH is not modelled at all. Heroes die often, and the app has
+   no way to be told: a dead hero keeps a square (impassable to
+   monsters), still draws Zargon's attacks and defence-roll prompts,
+   still counts for "a hero reached the stairway", and still shows in
+   cunning targeting. There is also no quest-LOST state -- status only
+   ever becomes "complete". BP stays physical; the player reports the
+   death, same handoff as skulls and shields. (game state carries a
+   vestigial hero.active field, written once and never read.)
+2. UNDO. A mis-dragged path, a mistyped skull count or an early End Turn
+   is permanent -- the only fix is starting the game over. Every
+   mutating endpoint already runs in a Firestore transaction, so
+   snapshotting the pre-state and restoring it is the shape.
+3. AUTH lock-down (deferred by the owner, on purpose -- recorded so it
+   isn't lost). firebase.ts signs in ANONYMOUSLY, firestore.rules allows
+   any signed-in user, and every Cloud Function checks only
+   `req.auth is None`. So any visitor to the hosted URL can list and
+   resume the owner's games and spend the Anthropic key on
+   generateQuest. The obscure URL is the only thing protecting it.
+   Fix shape (already a TODO in firestore.rules): Google sign-in, pin
+   the owner's uid, `request.auth.uid == '<owner-uid>'` in the rules,
+   same check in a shared helper in main.py.
+4. Chest/furniture traps -- the rulebook springs them when a room is
+   searched for treasure before it is searched for traps. Would hook
+   into the treasure-search flow. Never built.
+
+Blocked on a Monte Carlo sim re-run (both invalidate the calibrated 120
+baseline, see the notes in "Not implemented, deliberately"): chaos
+spells, and monster attack-then-move.
 
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.
