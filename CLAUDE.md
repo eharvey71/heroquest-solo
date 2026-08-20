@@ -47,7 +47,10 @@ wrong), app enforces via searched.<room>.treasureBy.
 - Frontend: React + SVG/Canvas grid, Firebase Hosting. Renders board,
   fog of war, tokens, path input, Zargon narration log.
 - State: Firestore. Collections: quests (validated definitions),
-  games (runtime state).
+  games (runtime state). A quest never changes after generation, so the
+  setup screen lists both: pick a past quest to start a fresh game on
+  the same dungeon (fog, traps and monsters all reset), or resume a
+  game in progress. Generating is not the only way in.
 - Backend: Python Cloud Functions.
   - generateQuest(params) -> questId: prompt build + LLM call + validate +
     auto-repair + retry loop (max 3) + Firestore write. Client never sees

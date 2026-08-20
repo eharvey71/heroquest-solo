@@ -17,12 +17,12 @@ function App() {
       .catch((e) => setAuthError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const handleGameCreated = (id: string) => {
+  const handleOpenGame = (id: string) => {
     localStorage.setItem(GAME_ID_STORAGE_KEY, id);
     setGameId(id);
   };
 
-  const handleNewQuest = () => {
+  const handleLeaveGame = () => {
     localStorage.removeItem(GAME_ID_STORAGE_KEY);
     setGameId(null);
   };
@@ -34,13 +34,13 @@ function App() {
       {authError && <p style={{ color: "#e66" }}>Sign-in failed: {authError}</p>}
       {!signedIn && !authError && <p className="hint">Signing in...</p>}
 
-      {signedIn && !gameId && <GameSetup onGameCreated={handleGameCreated} />}
+      {signedIn && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
 
       {signedIn && gameId && (
         <>
           <GameView gameId={gameId} />
           <p style={{ marginTop: 16 }}>
-            <button onClick={handleNewQuest}>Start a different quest</button>
+            <button onClick={handleLeaveGame}>Back to quests &amp; games</button>
           </p>
         </>
       )}

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { createGame, generateQuest } from "../lib/functionsClient";
+import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
 import { useQuestMap } from "../lib/useQuestMap";
 
 interface GameSetupProps {
-  onGameCreated: (gameId: string) => void;
+  onOpenGame: (gameId: string) => void;
 }
 
 const CLASSIC_HEROES = [
@@ -13,7 +14,33 @@ const CLASSIC_HEROES = [
   { id: "wizard", name: "Wizard" },
 ];
 
-export function GameSetup({ onGameCreated }: GameSetupProps) {
+function formatWhen(date: Date | null): string {
+  if (!date) return "just now";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+    " " + date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function questLine(quest: QuestSummary): string {
+  const parts = [
+    quest.heroCount ? `${quest.heroCount} hero${quest.heroCount === 1 ? "" : "es"}` : null,
+    quest.size,
+    quest.difficulty,
+    quest.theme,
+  ].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function gameLine(game: GameSummary): string {
+  const state =
+    game.status === "complete"
+      ? "finished"
+      : game.objectiveComplete
+        ? `turn ${game.turn}, heading back to the stairway`
+        : `turn ${game.turn}`;
+  return [game.heroNames.join(", "), state].filter(Boolean).join(" -- ");
+}
+
+export function GameSetup({ onOpenGame }: GameSetupProps) {
   // Which of the 4 classic hero cards are actually in play -- id stays
   // pinned to the class (barbarian/dwarf/elf/wizard) since that's what
   // matters for stairway-footprint placement order; only the display
@@ -27,9 +54,15 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
   const [theme, setTheme] = useState("");
 
   const [questId, setQuestId] = useState<string | null>(null);
+  // The hero count the chosen quest's monster budget was priced for
+  // (CLAUDE.md's Balance system). Known locally for a quest generated in
+  // this session, read off generationParams for one picked from the list.
+  const [questHeroCount, setQuestHeroCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const { narrative } = useQuestMap(questId ?? undefined);
+  const library = useLibrary(refreshKey);
 
   const heroCount = selectedHeroes.size;
 
@@ -54,11 +87,22 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
         ...(theme.trim() ? { theme: theme.trim() } : {}),
       });
       setQuestId(res.questId);
+      setQuestHeroCount(heroCount);
+      setRefreshKey((k) => k + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleReplayQuest = (quest: QuestSummary) => {
+    setError(null);
+    setQuestId(quest.id);
+    setQuestHeroCount(quest.heroCount);
+    if (quest.difficulty === "standard" || quest.difficulty === "hard") setDifficulty(quest.difficulty);
+    if (quest.size === "short" || quest.size === "full") setSize(quest.size);
+    setTheme(quest.theme ?? "");
   };
 
   const handleCreateGame = async () => {
@@ -71,7 +115,7 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
         name: heroNames[h.id] || h.name,
       }));
       const res = await createGame({ questId, heroes });
-      onGameCreated(res.gameId);
+      onOpenGame(res.gameId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -83,7 +127,7 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
     <div className="setup">
       <h2>Start a Quest</h2>
 
-      <fieldset disabled={busy || questId !== null}>
+      <fieldset disabled={busy}>
         <div>
           Heroes in play:{" "}
           {CLASSIC_HEROES.map((h) => (
@@ -93,6 +137,9 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
           ))}
           {heroCount === 0 && <span style={{ color: "#e66" }}> pick at least one</span>}
         </div>
+      </fieldset>
+
+      <fieldset disabled={busy || questId !== null}>
         <div style={{ marginTop: 8 }}>
           <label>
             Difficulty:{" "}
@@ -126,7 +173,10 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
       {questId && (
         <div style={{ marginTop: 16 }}>
           <p>
-            Quest ready: <code>{questId}</code>
+            Quest ready: <code>{questId}</code>{" "}
+            <button onClick={() => { setQuestId(null); setQuestHeroCount(null); }} disabled={busy}>
+              Choose a different quest
+            </button>
           </p>
           {narrative ? (
             <div style={{ maxWidth: 600, marginBottom: 12 }}>
@@ -144,6 +194,12 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
           ) : (
             <p className="hint">Loading quest story...</p>
           )}
+          {questHeroCount !== null && questHeroCount !== heroCount && (
+            <p style={{ color: "#e6a23b", maxWidth: 600 }}>
+              This quest's monsters were budgeted for {questHeroCount} hero{questHeroCount === 1 ? "" : "es"}, and
+              you have {heroCount} selected. It will still run -- it just won't be balanced.
+            </p>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 300 }}>
             {CLASSIC_HEROES.filter((h) => selectedHeroes.has(h.id)).map((h) => (
               <label key={h.id}>
@@ -155,7 +211,7 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
               </label>
             ))}
           </div>
-          <button style={{ marginTop: 8 }} onClick={handleCreateGame} disabled={busy}>
+          <button style={{ marginTop: 8 }} onClick={handleCreateGame} disabled={busy || heroCount < 1}>
             {busy ? "Creating..." : "Create Game"}
           </button>
         </div>
@@ -166,6 +222,46 @@ export function GameSetup({ onGameCreated }: GameSetupProps) {
           Error: {error}
         </p>
       )}
+
+      <hr style={{ margin: "24px 0", borderColor: "#333" }} />
+
+      <h2>Games</h2>
+      {library.loading && <p className="hint">Loading...</p>}
+      {library.error && <p style={{ color: "#e66" }}>Couldn't load past games: {library.error}</p>}
+      {!library.loading && library.games.length === 0 && <p className="hint">No games yet.</p>}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {library.games.map((game) => (
+          <li key={game.id} style={{ marginBottom: 8 }}>
+            <button onClick={() => onOpenGame(game.id)} disabled={busy}>
+              Resume
+            </button>{" "}
+            <strong>{game.questTitle ?? game.questId ?? "(quest unknown)"}</strong>{" "}
+            <span className="hint">
+              {gameLine(game)} &mdash; started {formatWhen(game.createdAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <h2 style={{ marginTop: 24 }}>Quests</h2>
+      <p className="hint" style={{ maxWidth: 600 }}>
+        A quest is a fixed map and story -- replaying one starts a brand new game on the same dungeon,
+        with fog of war, traps and monsters all reset.
+      </p>
+      {!library.loading && library.quests.length === 0 && <p className="hint">No quests generated yet.</p>}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        {library.quests.map((quest) => (
+          <li key={quest.id} style={{ marginBottom: 8 }}>
+            <button onClick={() => handleReplayQuest(quest)} disabled={busy || questId === quest.id}>
+              {questId === quest.id ? "Selected" : "Play again"}
+            </button>{" "}
+            <strong>{quest.title}</strong>{" "}
+            <span className="hint">
+              {questLine(quest)} &mdash; generated {formatWhen(quest.createdAt)}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
