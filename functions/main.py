@@ -339,12 +339,18 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         "revealed.rooms": sorted(result.revealed_rooms),
         "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
         "trapsTriggered": sorted(result.traps_triggered),
-        # trapsFound is deliberately NOT written here: movement never adds
-        # to it, and the stored value is a {trapId: {type,pos}} map the
-        # engine only reads ids from -- rewriting it from a set of ids
-        # would throw the positions away.
         "collapsedSquares": to_firestore_coords(sorted(result.collapsed_squares)),
     }
+    # A spear trap is discovered by stepping on it. Merge it into the
+    # {trapId: {type,pos}} map rather than rewriting the field from a
+    # set of ids, which would throw every stored position away.
+    if result.newly_found_traps:
+        existing_found = game_state.get("trapsFound", {})
+        traps_found = dict(existing_found) if isinstance(existing_found, dict) else {t: {} for t in existing_found}
+        for t in result.newly_found_traps:
+            traps_found[t.trap_id] = {"type": t.trap_type, "pos": list(t.pos)}
+        updates["trapsFound"] = to_firestore_coords(traps_found)
+
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 

@@ -112,3 +112,22 @@ def test_rejects_a_hero_who_isnt_next_to_the_trap(catalogs):
 def test_rejects_an_unknown_die_face(catalogs):
     with pytest.raises(InvalidTrapActionError):
         _call(catalogs, die_face="shield", landing=(7, 2))
+
+
+def test_spear_trap_on_a_skull_wounds_and_ends_the_turn(catalogs):
+    result = _call(catalogs, action="step", trap_type="spear", die_face="skull")
+    assert result.sprung is True
+    assert result.hero_pos == (6, 2)
+    assert result.placement_instruction is None  # "There are no spear trap tiles"
+
+
+def test_spear_trap_dodged_is_gone_forever(catalogs):
+    result = _call(catalogs, action="step", trap_type="spear", die_face="white_shield")
+    assert result.sprung is False
+    assert result.disarmed is True
+    assert result.hero_pos == (6, 2)
+
+
+def test_spear_trap_needs_the_heros_die(catalogs):
+    with pytest.raises(InvalidTrapActionError):
+        _call(catalogs, action="step", trap_type="spear")

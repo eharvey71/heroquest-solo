@@ -82,6 +82,9 @@ class HeroMovementResult:
     newly_revealed_rooms: list[str] = field(default_factory=list)
     newly_revealed_corridor_squares: list[Coord] = field(default_factory=list)
     triggered_traps: list[TriggeredTrap] = field(default_factory=list)
+    # Traps discovered the hard way (a spear trap underfoot): known now,
+    # but not yet resolved -- the hero still owes a die roll.
+    newly_found_traps: list[TriggeredTrap] = field(default_factory=list)
     # None means the full requested path was walked without interruption.
     # "closed_door" | "known_trap" | "trap_sprung" | "monster_blocked"
     # | "furniture_blocked" | "no_door" | "off_board"
@@ -190,6 +193,7 @@ def resolve_hero_movement(
     newly_revealed_rooms: list[str] = []
     newly_revealed_corridor: list[Coord] = []
     triggered: list[TriggeredTrap] = []
+    newly_found: list[TriggeredTrap] = []
     log: list[str] = []
 
     applied_path = [path[0]]
@@ -248,6 +252,24 @@ def resolve_hero_movement(
             break
 
         springing = trap is not None and trap[0] not in traps_sprung
+
+        if springing and trap[1] == "spear":
+            # "When moving onto a spear trap square, you must roll one
+            # combat die." That die is the hero's, so movement stops at
+            # the threshold and resolve_trap_action collects the result
+            # -- same two-step shape as a known trap.
+            trap_id, trap_type = trap
+            traps_found.add(trap_id)
+            newly_found.append(
+                TriggeredTrap(trap_id=trap_id, trap_type=trap_type, pos=cur, placement_instruction="")
+            )
+            stopped_reason = "known_trap"
+            stopped_trap_id = trap_id
+            log.append(
+                f"{hero_id} steps onto a hidden spear trap at [{cur[0]},{cur[1]}]! "
+                f"Roll 1 combat die: a skull costs 1 Body Point and ends the turn; either shield dodges it."
+            )
+            break
 
         if springing and trap[1] == "falling_block":
             # The ceiling comes down before the hero is through: they do
@@ -319,6 +341,7 @@ def resolve_hero_movement(
         newly_revealed_rooms=newly_revealed_rooms,
         newly_revealed_corridor_squares=newly_revealed_corridor,
         triggered_traps=triggered,
+        newly_found_traps=newly_found,
         stopped_reason=stopped_reason,
         stopped_at_door_id=stopped_door_id,
         stopped_at_trap_id=stopped_trap_id,

@@ -95,7 +95,9 @@ should be built: the owner confirms more than 5 doors are never closed
 on the board at once in real play, so the app does not track closed-
 piece supply or emit "place a closed door" instructions.
 Tiles: stairs 2x2, blocked squares,
-pit traps, falling block traps, secret doors, skulls.
+pit traps, falling block traps, secret doors, skulls. Spear traps
+have NO tile ("there are no spear trap tiles") -- a sprung spear is
+narrated and then gone forever.
 When the app reveals anything with a physical tile (trap sprung, secret
 door found, blocked square, stairs), it must show a "place tile"
 instruction naming the tile and square(s).
@@ -242,8 +244,12 @@ app logs it, spends the card, and changes nothing else.
 Not implemented, deliberately:
 - Attack-then-move. The rulebook lets a monster act then move (not
   move-partway-act-move); the engine only does move-then-attack, so
-  Zargon never hits and withdraws. A simplification, not a rules
-  misreading.
+  Zargon never hits and withdraws. Tried and reverted: making adjacent
+  monsters attack-then-withdraw is legal by the rules but turns every
+  melee into hit-and-run, which raises effective monster durability a
+  long way. Threat cost (attack+defend+body) has no term for that, so
+  it invalidates the calibrated 120 baseline exactly as chaos spells
+  would. Build it only alongside a re-run of the sim.
 - Chaos spells. Monsters can attack and nothing else; monsters.json
   carries no spell data and no catalog monster is a caster. The
   rulebook does permit spells in custom quests (cast INSTEAD of

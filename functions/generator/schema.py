@@ -82,7 +82,7 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
         "trap": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["pit", "falling_block"]},
+                "type": {"type": "string", "enum": ["pit", "falling_block", "spear"]},
                 "pos": POS,
             },
             "required": ["type", "pos"],

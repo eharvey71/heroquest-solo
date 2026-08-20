@@ -25,6 +25,11 @@ Rulebook outcomes, verified against the owner's photos:
   "gone": no tile, no further danger.
 - STEP: walking on deliberately springs it, same as never having found
   it. Included so a known trap is a decision, not a wall.
+- SPEAR traps (page 19) are their own case: stepping on one is not a
+  choice but a die roll -- a skull costs a Body Point and ends the
+  turn, either shield dodges it and "the spear trap is now gone
+  forever", so the hero continues onto the square. There are no spear
+  trap tiles, so nothing is ever placed.
 """
 
 from __future__ import annotations
@@ -63,8 +68,14 @@ def _orthogonally_adjacent(a: Coord, b: Coord) -> bool:
     return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
 
 
-def _spring(trap_type: str, pos: Coord, hero_id: str) -> tuple[str, str]:
-    """Returns (placement_instruction, log line) for a sprung trap."""
+def _spring(trap_type: str, pos: Coord, hero_id: str) -> tuple[str | None, str]:
+    """Returns (placement_instruction, log line) for a sprung trap.
+    A spear trap has no tile -- "Note: There are no spear trap tiles."
+    """
+    if trap_type == "spear":
+        return None, (
+            f"The spear catches {hero_id} at [{pos[0]},{pos[1]}] -- 1 Body Point of damage, and the turn ends."
+        )
     if trap_type == "falling_block":
         instruction = (
             f"Place the falling block trap tile at square [{pos[0]},{pos[1]}] -- "
@@ -110,6 +121,23 @@ def resolve_trap_action(
         raise InvalidTrapActionError(f"trap '{trap_id}' hasn't been found yet -- search for traps first")
     if not _orthogonally_adjacent(hero_pos, trap_pos):
         raise InvalidTrapActionError(f"hero '{hero_id}' is not next to the trap at {list(trap_pos)}")
+
+    if action == "step" and trap_type == "spear":
+        # Not a choice but a reflex: the hero is already on the square.
+        if die_face not in DIE_FACES:
+            raise InvalidTrapActionError(f"a spear trap needs the hero's die -- one of {DIE_FACES}")
+        if die_face == "skull":
+            _, line = _spring(trap_type, trap_pos, hero_id)
+            return TrapActionResult(
+                trap_id=trap_id, action=action, sprung=True, disarmed=False, hero_pos=trap_pos, log=[line]
+            )
+        return TrapActionResult(
+            trap_id=trap_id, action=action, sprung=False, disarmed=True, hero_pos=trap_pos,
+            log=[
+                f"{hero_id} dodges the spear at {list(trap_pos)}. It is gone forever -- "
+                f"the square is safe now, and the move may continue."
+            ],
+        )
 
     if action == "step":
         instruction, line = _spring(trap_type, trap_pos, hero_id)

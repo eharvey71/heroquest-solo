@@ -60,7 +60,8 @@ Blocked squares: use sparingly (limited tiles).
 5. Place the stairway (2x2) in one room, declared in `stairway`.
 6. Exactly one wandering monster type. {{WANDERING_CONSTRAINT}}
 7. Traps: at most 1 per room, at most 3 in corridors total.
-   Trap types: pit, falling_block (matching the physical tiles).
+   Trap types: pit, falling_block, spear (pit and falling block have
+   physical tiles; a spear trap has none).
 7b. You may declare blockedSquares (impassable, block line of sight,
    rendered with the physical blocked-square tiles). They must never make
    a populated room or the objective unreachable.

@@ -75,10 +75,23 @@ export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }
   );
 
   const roomLabelAnchors = useMemo(() => {
-    const anchors: { roomId: string; label: string; pos: Coord }[] = [];
+    const anchors: { roomId: string; label: string; full: string; pos: Coord; widthCells: number }[] = [];
     for (const room of board.rooms.values()) {
       const anchor = room.squares.reduce((best, sq) => (sq[1] < best[1] || (sq[1] === best[1] && sq[0] < best[0]) ? sq : best));
-      anchors.push({ roomId: room.id, label: room.label, pos: anchor });
+      // How wide is the room ON the anchor's row? A label longer than
+      // that spills into the neighbour, which is what made R13/R14 read
+      // as one run-together string.
+      const widthCells = room.squares.filter((sq) => sq[1] === anchor[1]).length;
+      const full = `${room.id} \u00b7 ${room.label}`;
+      // ~0.55em per character at the label's font size.
+      const maxChars = Math.max(room.id.length, Math.floor((widthCells * 1) / 0.28 / 0.55) - 1);
+      anchors.push({
+        roomId: room.id,
+        label: full.length > maxChars ? `${full.slice(0, Math.max(room.id.length, maxChars - 1))}\u2026` : full,
+        full,
+        pos: anchor,
+        widthCells,
+      });
     }
     return anchors;
   }, [board]);
@@ -114,7 +127,7 @@ export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }
         })}
       </g>
       <g>
-        {roomLabelAnchors.map(({ roomId, label, pos }) => (
+        {roomLabelAnchors.map(({ roomId, label, full, pos }) => (
           <text
             key={roomId}
             x={pos[0] * cellSize + 3}
@@ -123,7 +136,8 @@ export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }
             fill={revealed.has(`${pos[0]},${pos[1]}`) ? LABEL_FILL_REVEALED : LABEL_FILL_UNREVEALED}
             pointerEvents="none"
           >
-            {roomId} &middot; {label}
+            <title>{full}</title>
+            {label}
           </text>
         ))}
       </g>

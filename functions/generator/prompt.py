@@ -180,7 +180,9 @@ Blocked squares: use sparingly (limited tiles).
    `pos` such that the 2x2 footprint fits fully inside that room.
 6. Exactly one wandering monster type. {_wandering_constraint(hero_count)}
 7. Traps: at most 1 per room, at most 3 total in `corridorTraps` (traps placed
-   in corridor squares rather than inside a room). Trap types: pit, falling_block.
+   in corridor squares rather than inside a room). Trap types: pit,
+   falling_block, spear (pit and falling block have physical tiles; a
+   spear trap has none -- it is gone once sprung).
 7b. You may declare blockedSquares (impassable, block line of sight,
    rendered with the physical blocked-square tiles). They must never make
    a populated room or the objective unreachable.
