@@ -116,6 +116,8 @@ export interface SearchTrapsAndSecretDoorsRequest {
   gameId: string;
   heroId: string;
   roomId: string;
+  /** Two DISTINCT hero actions in the 1989 rules -- pick one. */
+  searchType: "traps" | "secret_doors";
 }
 export interface FoundTrap {
   trapId: string;

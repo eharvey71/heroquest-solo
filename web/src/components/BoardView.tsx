@@ -36,6 +36,10 @@ export function BoardView({
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
   const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
+  const collapsedKeys = useMemo(
+    () => new Set((gameState.collapsedSquares ?? []).map((sq) => squareKey(sq[0], sq[1]))),
+    [gameState.collapsedSquares]
+  );
   // `doors` arrives with live game state already merged in (GameView's
   // resolvedDoors), so an entry here is the door's state right now.
   const doorEdges = useMemo(() => {
@@ -62,6 +66,7 @@ export function BoardView({
     monsters: gameState.monsters,
     revealed,
     furniture: furnitureKeys,
+    collapsed: collapsedKeys,
     doorEdges,
   });
 

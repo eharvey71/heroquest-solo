@@ -1,7 +1,8 @@
-"""Resolves the "search traps/secret doors" button (CLAUDE.md's
-interface list) -- a separate action from "search treasure", per the
-1989 rules a hero can search a room for hazards without drawing from
-the treasure deck.
+"""Resolves the "search for traps" and "search for secret doors"
+buttons. The 1989 rulebook lists these as two DISTINCT hero actions
+(Actions 4 and 5) alongside search-for-treasure, and a hero performs
+only one action per turn -- doing both from a single button handed the
+party a free action, so search_type selects one.
 
 Unlike treasure (physical deck, app never learns the contents), traps
 and secret doors are entirely quest-owned data the app already has --
@@ -65,7 +66,15 @@ class TrapSearchResult:
     log: list[str] = field(default_factory=list)
 
 
-def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id: str, room_id: str) -> TrapSearchResult:
+SEARCH_TYPES = ("traps", "secret_doors")
+
+
+def resolve_trap_search(
+    *, board: Board, quest: dict, game_state: dict, hero_id: str, room_id: str, search_type: str = "traps"
+) -> TrapSearchResult:
+    if search_type not in SEARCH_TYPES:
+        raise InvalidTrapSearchError(f"search_type must be one of {SEARCH_TYPES}, got '{search_type}'")
+
     if room_id not in board.room_squares:
         raise RoomNotFoundError(f"room '{room_id}' not found on the board")
 
@@ -81,11 +90,12 @@ def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id:
     if room_id not in game_state.get("revealed", {}).get("rooms", []):
         raise InvalidTrapSearchError(f"room '{room_id}' has not been revealed yet")
 
-    if game_state.get("searched", {}).get(room_id, {}).get("traps"):
-        raise InvalidTrapSearchError(f"room '{room_id}' has already been searched for traps/secret doors")
+    searched_flag = "traps" if search_type == "traps" else "secretDoors"
+    if game_state.get("searched", {}).get(room_id, {}).get(searched_flag):
+        raise InvalidTrapSearchError(f"room '{room_id}' has already been searched for {search_type.replace('_', ' ')}")
 
     already_known = set(game_state.get("trapsTriggered", []))
-    log = [f"{hero_id} searches {room_id} for traps and secret doors."]
+    log = [f"{hero_id} searches {room_id} for {search_type.replace('_', ' ')}."]
 
     # "You can only search for traps [or secret doors] if there are no
     # monsters visible to you" (1989 rulebook, Actions 4 and 5). True
@@ -100,7 +110,7 @@ def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id:
         raise InvalidTrapSearchError(f"monsters are still in room '{room_id}' -- a hero can't search while they watch")
 
     found_traps: list[FoundTrap] = []
-    trap_lookup = _build_trap_lookup(quest)
+    trap_lookup = _build_trap_lookup(quest) if search_type == "traps" else {}
     room_trap_prefix = f"{room_id}-T"
     for pos, (trap_id, trap_type) in trap_lookup.items():
         if not trap_id.startswith(room_trap_prefix) or trap_id in already_known:
@@ -117,7 +127,7 @@ def resolve_trap_search(*, board: Board, quest: dict, game_state: dict, hero_id:
     found_doors: list[FoundSecretDoor] = []
     door_states = game_state.get("doors", {})
     room_squares = board.room_squares[room_id]
-    for d in quest.get("doors", []):
+    for d in quest.get("doors", []) if search_type == "secret_doors" else []:
         squares = [tuple(s) for s in d["squares"]]
         state = door_states.get(d["id"], d.get("state"))
         if state != "secret" or not any(sq in room_squares for sq in squares):

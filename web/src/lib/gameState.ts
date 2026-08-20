@@ -48,7 +48,9 @@ export interface GameState {
   // treasureBy: hero ids that searched this room (one search per hero
   // per room, 1989 rulebook). treasure: legacy per-room flag from the
   // old rule -- ignored, kept only so old game docs still parse.
-  searched?: Record<string, { treasure?: boolean; treasureBy?: string[]; traps?: boolean }>;
+  searched?: Record<string, { treasure?: boolean; treasureBy?: string[]; traps?: boolean; secretDoors?: boolean }>;
+  /** Squares sealed by a sprung falling block -- impassable for good. */
+  collapsedSquares?: Coord[];
   log?: LogEntry[];
 }
 

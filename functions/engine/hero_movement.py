@@ -9,9 +9,17 @@ gets told which door is in the way, and traces a new path after
 clicking "open door" as a separate action. This is a direct reading of
 settled design, not a guess.
 
-Traps do NOT halt movement (documented assumption -- the 1989 rules
-don't stop a hero's move on a sprung pit/falling-block trap, just deal
-damage); the path keeps processing past a trap trigger. Monsters,
+Springing a trap ENDS the hero's movement (1989 rulebook, verified
+against the owner's photos: every trap description finishes "This ends
+your turn"). The two trap types the generator emits end it differently:
+a pit swallows the hero, who ends ON the trap square with the tile
+placed under the figure; a falling block brings the ceiling down, so
+the hero never takes the square -- it becomes a PERMANENT block for
+heroes and monsters alike, and the hero stays where they were. The
+rulebook lets that hero step forward or back; the app can't prompt
+mid-move, so it picks "back", the choice that can't strand them.
+
+Monsters,
 furniture, and blocked squares DO halt movement, same as a closed door
 -- partial credit for however far the hero got, not a rejected request.
 
@@ -71,6 +79,7 @@ class HeroMovementResult:
     revealed_rooms: set[str] = field(default_factory=set)
     revealed_corridor_squares: set[Coord] = field(default_factory=set)
     traps_triggered: set[str] = field(default_factory=set)
+    collapsed_squares: set[Coord] = field(default_factory=set)
 
 
 def _build_trap_lookup(quest: dict) -> dict[Coord, tuple[str, str]]:
@@ -126,6 +135,9 @@ def resolve_hero_movement(
     door_states = game_state.get("doors", {})
     traps_triggered = set(game_state.get("trapsTriggered", []))
     blocked_squares = {tuple(s) for s in quest.get("blockedSquares", [])}
+    # Squares where a falling block has already come down this game --
+    # quest data can't know these; they accumulate at runtime.
+    collapsed = {tuple(s) for s in game_state.get("collapsedSquares", [])}
     furniture = furniture_squares(quest, catalogs)
     other_hero_squares = {tuple(h["pos"]) for h in heroes if h["id"] != hero_id}
     monster_squares = {tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")}
@@ -146,7 +158,7 @@ def resolve_hero_movement(
         if board.area_of.get(cur) is None:
             stopped_reason = "off_board"
             break
-        if cur in blocked_squares:
+        if cur in blocked_squares or cur in collapsed:
             stopped_reason = "blocked_square"
             break
         if cur in furniture:
@@ -183,15 +195,40 @@ def resolve_hero_movement(
             revealed_corridor.add(cur)
             newly_revealed_corridor.append(cur)
 
+        trap = trap_lookup.get(cur)
+        springing = trap is not None and trap[0] not in traps_triggered
+
+        if springing and trap[1] == "falling_block":
+            # The ceiling comes down before the hero is through: they do
+            # not take the square, and it is sealed for good.
+            trap_id, trap_type = trap
+            traps_triggered.add(trap_id)
+            collapsed.add(cur)
+            instruction = (
+                f"Place the falling block trap tile at square [{cur[0]},{cur[1]}] -- "
+                f"that square is blocked for the rest of the quest."
+            )
+            triggered.append(TriggeredTrap(trap_id=trap_id, trap_type=trap_type, pos=cur, placement_instruction=instruction))
+            log.append(
+                f"{hero_id} springs a falling block trap at [{cur[0]},{cur[1]}]! The ceiling caves in. "
+                f"Roll 3 combat dice -- 1 Body Point per skull, no defend dice. {instruction}"
+            )
+            stopped_reason = "trap_sprung"
+            break
+
         applied_path.append(cur)
 
-        if cur in trap_lookup:
-            trap_id, trap_type = trap_lookup[cur]
-            if trap_id not in traps_triggered:
-                traps_triggered.add(trap_id)
-                instruction = f"Place the {trap_type} trap tile at square [{cur[0]},{cur[1]}]."
-                triggered.append(TriggeredTrap(trap_id=trap_id, trap_type=trap_type, pos=cur, placement_instruction=instruction))
-                log.append(f"{hero_id} triggers a {trap_type} trap at [{cur[0]},{cur[1]}]! {instruction}")
+        if springing:
+            trap_id, trap_type = trap
+            traps_triggered.add(trap_id)
+            instruction = f"Place the pit trap tile at square [{cur[0]},{cur[1]}], under the hero's figure."
+            triggered.append(TriggeredTrap(trap_id=trap_id, trap_type=trap_type, pos=cur, placement_instruction=instruction))
+            log.append(
+                f"{hero_id} stumbles into a pit at [{cur[0]},{cur[1]}]! 1 Body Point of damage, and the move ends here. "
+                f"{instruction}"
+            )
+            stopped_reason = "trap_sprung"
+            break
 
     final_pos = applied_path[-1]
     if final_pos in other_hero_squares:
@@ -210,4 +247,5 @@ def resolve_hero_movement(
         revealed_rooms=revealed_rooms,
         revealed_corridor_squares=revealed_corridor,
         traps_triggered=traps_triggered,
+        collapsed_squares=collapsed,
     )

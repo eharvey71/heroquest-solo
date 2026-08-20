@@ -8,6 +8,7 @@
 
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
+import type { Coord } from "./board";
 import { db } from "./firebase";
 import { fromFirestoreCoords } from "./firestoreCoords";
 import type { GameState, HeroToken, LogEntry, MonsterToken } from "./gameState";
@@ -23,6 +24,7 @@ interface RawGameDoc {
   revealed: GameState["revealed"];
   doors?: Record<string, string>;
   searched?: GameState["searched"];
+  collapsedSquares?: Coord[];
   log?: LogEntry[];
 }
 
@@ -39,6 +41,7 @@ function toGameState(raw: RawGameDoc): GameState {
     heroPhaseSegment: raw.heroPhaseSegment ?? 1,
     doors: raw.doors ?? {},
     searched: raw.searched ?? {},
+    collapsedSquares: raw.collapsedSquares ?? [],
     log: raw.log ?? [],
   };
 }

@@ -126,6 +126,7 @@ export function GameView({ gameId }: GameViewProps) {
     ? (game.searched?.[activeHeroRoomId]?.treasureBy ?? []).includes(heroId)
     : false;
   const roomAlreadySearchedTraps = activeHeroRoomId ? game.searched?.[activeHeroRoomId]?.traps : false;
+  const roomAlreadySearchedSecretDoors = activeHeroRoomId ? game.searched?.[activeHeroRoomId]?.secretDoors : false;
 
   // The 1989 flow: a hero stops AT a door, tells Zargon, and the door
   // opens -- revealing the room without stepping inside (which would
@@ -154,6 +155,7 @@ export function GameView({ gameId }: GameViewProps) {
       // the hero is now standing at that door, so it shows up in
       // openableDoors on its own.
       const reasons: Record<string, string> = {
+        trap_sprung: "The trap ends the hero's turn -- no further movement.",
         closed_door: "Movement stopped at a closed door -- use the Open door button.",
         locked_door: "Movement stopped: that door won't open from here.",
         furniture_blocked: "Movement stopped: furniture blocks the path.",
@@ -184,9 +186,11 @@ export function GameView({ gameId }: GameViewProps) {
     if (result.monsterAttack) enqueueDefense(result.monsterAttack.heroName, result.monsterAttack.skulls);
   };
 
-  const handleSearchTraps = async () => {
+  const handleSearchTraps = async (searchType: "traps" | "secret_doors") => {
     if (!activeHeroRoomId || !heroId) return;
-    const result = await runAction(() => searchTrapsAndSecretDoors({ gameId, heroId, roomId: activeHeroRoomId }));
+    const result = await runAction(() =>
+      searchTrapsAndSecretDoors({ gameId, heroId, roomId: activeHeroRoomId, searchType })
+    );
     if (!result) return;
     for (const t of result.foundTraps) pushLog([`PLACE TILE: ${t.placementInstruction}`]);
     for (const d of result.foundSecretDoors) pushLog([`PLACE TILE: ${d.placementInstruction}`]);
@@ -342,11 +346,22 @@ export function GameView({ gameId }: GameViewProps) {
               )}
             </div>
 
-            <div>
-              <button onClick={handleSearchTraps} disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTraps}>
-                Search traps / secret doors
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={() => handleSearchTraps("traps")}
+                disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTraps}
+              >
+                Search for traps
               </button>
-              {roomAlreadySearchedTraps && <span className="hint">(this room has been searched -- once per room)</span>}
+              {roomAlreadySearchedTraps && <span className="hint">(already searched)</span>}
+              <button
+                onClick={() => handleSearchTraps("secret_doors")}
+                disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedSecretDoors}
+              >
+                Search for secret doors
+              </button>
+              {roomAlreadySearchedSecretDoors && <span className="hint">(already searched)</span>}
+              <span className="hint">(two separate actions)</span>
             </div>
 
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

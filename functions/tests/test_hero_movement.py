@@ -45,7 +45,9 @@ def test_full_path_through_open_door_reveals_room(catalogs):
     assert result.path_taken == [tuple(p) for p in path]
 
 
-def test_trap_triggers_mid_move_and_movement_continues(catalogs):
+def test_pit_trap_ends_the_move_on_the_trap_square(catalogs):
+    # 1989 rulebook: springing a pit "ends your turn", and the tile goes
+    # under the hero's figure -- so the hero ends ON the trap square.
     board = catalogs.board
     quest = _quest(rooms={"R2": {"traps": [{"type": "pit", "pos": [6, 1]}]}})
     game_state = _game_state()
@@ -53,15 +55,43 @@ def test_trap_triggers_mid_move_and_movement_continues(catalogs):
 
     result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
-    assert result.stopped_reason is None  # trap does not halt movement
-    assert result.final_pos == (6, 2)
+    assert result.stopped_reason == "trap_sprung"
+    assert result.final_pos == (6, 1)
     assert len(result.triggered_traps) == 1
     trap = result.triggered_traps[0]
     assert trap.trap_id == "R2-T1"
     assert trap.trap_type == "pit"
     assert trap.pos == (6, 1)
-    assert trap.placement_instruction == "Place the pit trap tile at square [6,1]."
     assert "R2-T1" in result.traps_triggered
+    assert result.collapsed_squares == set()  # a pit is not a permanent block
+
+
+def test_falling_block_seals_the_square_and_the_hero_stays_back(catalogs):
+    # The ceiling comes down before the hero is through: they never take
+    # the square, and it is blocked for the rest of the quest.
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": [{"type": "falling_block", "pos": [6, 1]}]}})
+    game_state = _game_state()
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
+
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.stopped_reason == "trap_sprung"
+    assert result.final_pos == (5, 1)  # stopped short of the collapse
+    assert (6, 1) in result.collapsed_squares
+    assert result.triggered_traps[0].trap_type == "falling_block"
+
+
+def test_collapsed_square_blocks_later_movement(catalogs):
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": []}})
+    game_state = _game_state(collapsedSquares=[[5, 1]])
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1]]
+
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.stopped_reason == "blocked_square"
+    assert result.final_pos == (4, 1)
 
 
 def test_already_triggered_trap_does_not_refire(catalogs):

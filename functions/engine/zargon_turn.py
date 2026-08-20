@@ -131,7 +131,13 @@ def resolve_zargon_turn(
     # "Neither Heroes nor monsters can move through blocked squares"
     # (1989 rulebook, Blocked Square Tiles). Heroes were already stopped
     # by these in hero_movement; monsters were walking straight through.
-    impassable = furniture | {tuple(sq) for sq in quest.get("blockedSquares", [])}
+    impassable = (
+        furniture
+        | {tuple(sq) for sq in quest.get("blockedSquares", [])}
+        # A sprung falling block is a wall of fallen stone -- permanent,
+        # and it stops Zargon exactly as it stops the party.
+        | {tuple(sq) for sq in game_state.get("collapsedSquares", [])}
+    )
 
     if turn_type == "wandering":
         occupied = {tuple(h["pos"]) for h in heroes} | {

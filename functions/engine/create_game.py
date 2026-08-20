@@ -92,6 +92,7 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "revealed": {"rooms": [stairway_room], "corridorSquares": []},
         "doors": _initial_door_states(quest),
         "trapsTriggered": [],
+        "collapsedSquares": [],  # squares sealed by a sprung falling block
         "searched": {},
         "log": [{"turn": 1, "text": "The party begins their quest."}],
     }

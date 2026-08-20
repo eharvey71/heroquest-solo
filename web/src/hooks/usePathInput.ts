@@ -36,12 +36,22 @@ export interface UsePathInputArgs {
   revealed: ReadonlySet<string>;
   /** Squares covered by furniture -- impassable (see lib/furniture.ts). */
   furniture: ReadonlySet<string>;
+  /** Squares sealed by a sprung falling block -- impassable for good. */
+  collapsed: ReadonlySet<string>;
   /** crossingKey -> door state, for every door in the quest. A crossing
    * with no entry is a plain wall. */
   doorEdges: ReadonlyMap<string, string>;
 }
 
-export function usePathInput({ board, heroes, monsters, revealed, furniture, doorEdges }: UsePathInputArgs) {
+export function usePathInput({
+  board,
+  heroes,
+  monsters,
+  revealed,
+  furniture,
+  collapsed,
+  doorEdges,
+}: UsePathInputArgs) {
   const [selectedHeroId, setSelectedHeroId] = useState<string | null>(null);
   const [path, setPath] = useState<Coord[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -92,6 +102,10 @@ export function usePathInput({ board, heroes, monsters, revealed, furniture, doo
             return prev;
           }
         }
+        if (collapsed.has(key)) {
+          setBlockedHint("a collapsed ceiling seals that square for the rest of the quest");
+          return prev;
+        }
         if (furniture.has(key)) {
           setBlockedHint("furniture blocks that square -- heroes can't move over it");
           return prev;
@@ -109,7 +123,7 @@ export function usePathInput({ board, heroes, monsters, revealed, furniture, doo
         return [...prev, coord];
       });
     },
-    [board, monsters, revealed, furniture, doorEdges]
+    [board, monsters, revealed, furniture, collapsed, doorEdges]
   );
 
   const startDragging = useCallback(() => setIsDragging(true), []);

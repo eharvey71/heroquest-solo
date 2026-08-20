@@ -158,7 +158,11 @@ adjacent — crossbow or spell only") and never blocked. Enforcing hero
 adjacency was rejected for exactly this reason.
 
 Searching (1989 rulebook, Actions 3-5, verified against the owner's
-photos): treasure may only be searched in a room UNINHABITED by
+photos): SEARCH FOR TRAPS and SEARCH FOR SECRET DOORS are two DISTINCT
+hero actions, not one button -- a hero takes one action per turn, so
+combining them handed the party a free action. searchType picks one;
+each has its own once-per-room flag (searched.<room>.traps /
+.secretDoors). Treasure may only be searched in a room UNINHABITED by
 monsters; traps and secret doors only when no monsters are visible
 (approximated as "none in the hero's room" until line of sight is
 modelled). A FOUND trap gets no tile -- "Zargon will NOT put any trap
@@ -166,6 +170,20 @@ tiles out on the board; they are still concealed and unsprung" -- the
 tile goes down only when it is sprung. A found secret door DOES get a
 secret-door tile, and still needs the open-door button afterwards.
 Blocked squares stop monsters as well as heroes.
+
+Traps (1989 rulebook, verified): springing one ENDS the hero's
+movement -- every trap description finishes "This ends your turn". The
+two types the generator emits differ in where the hero lands: a PIT
+swallows them, so they end ON the trap square with the tile under the
+figure; a FALLING BLOCK brings the ceiling down before they are
+through, so they never take the square and stay put (the rulebook
+offers forward or back; the app can't prompt mid-move and picks back,
+which can't strand them). A sprung falling block becomes a PERMANENT
+block for heroes and monsters alike -- tracked as game state's
+collapsedSquares, since quest data can't know it. Note the app treats
+a FOUND trap as known and therefore un-springable; the rulebook would
+still spring it on a hero who walks in without jumping or disarming.
+That gap is known and not yet fixed.
 
 Monsters may not (1989 rulebook, Zargon's Turn page, verified against
 the owner's photos): search for treasure or secret doors, move or
