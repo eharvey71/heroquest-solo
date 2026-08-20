@@ -295,6 +295,20 @@ def resolve_hero_movement(
                 revealed_corridor.add(seen)
                 newly_revealed_corridor.append(seen)
 
+    if stopped_reason is not None:
+        stop_lines = {
+            "closed_door": "A closed door blocks the way -- open it from the doorway.",
+            "locked_door": "That door is locked -- it needs a key or a spell.",
+            "furniture_blocked": "Furniture blocks the way.",
+            "monster_blocked": "A monster blocks the way.",
+            "blocked_square": "That square is blocked.",
+            "no_door": "There is no door in that wall.",
+            "off_board": "That path leaves the board.",
+        }
+        # trap_sprung and known_trap already narrate themselves above.
+        if stopped_reason in stop_lines:
+            log.append(f"{hero_id} stops: {stop_lines[stopped_reason]}")
+
     final_pos = applied_path[-1]
     if final_pos in other_hero_squares and final_pos not in shareable_squares(quest, game_state):
         raise IllegalMovementError(f"path cannot end on a square occupied by another hero ({final_pos})")

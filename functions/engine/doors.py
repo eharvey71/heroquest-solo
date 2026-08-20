@@ -100,16 +100,19 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
     far_square = squares[1] if hero_pos == squares[0] else squares[0]
     far_area = board.area_of.get(far_square)
 
-    revealed_room = None
-    log = [f"{hero_id} opens the door at {list(squares[0])}-{list(squares[1])}."]
-    if far_area is not None and far_area != CORRIDOR:
-        revealed_room = far_area
-        log.append(f"{far_area} revealed.")
-
     placement_instruction = (
         f"Replace the closed door piece at squares {list(squares[0])}-{list(squares[1])} "
         f"with an open door piece."
     )
+
+    revealed_room = None
+    # The tile instruction goes IN the log line, as every other engine
+    # does, so the client never has to echo it as a second stream (which
+    # landed the instructions out of order at the bottom of the log).
+    log = [f"{hero_id} opens the door at {list(squares[0])}-{list(squares[1])}. {placement_instruction}"]
+    if far_area is not None and far_area != CORRIDOR:
+        revealed_room = far_area
+        log.append(f"{far_area} revealed.")
 
     return OpenDoorResult(
         door_id=door_id,

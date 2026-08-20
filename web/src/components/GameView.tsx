@@ -45,7 +45,6 @@ export function GameView({ gameId }: GameViewProps) {
   } | null>(null);
   const [lowestBpHeroId, setLowestBpHeroId] = useState<string>("");
   const [pendingDefenses, setPendingDefenses] = useState<PendingDefense[]>([]);
-  const [actionLog, setActionLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -54,8 +53,6 @@ export function GameView({ gameId }: GameViewProps) {
       setHeroId(game.heroes[0]?.id ?? "");
     }
   }, [game, heroId]);
-
-  const pushLog = (lines: string[]) => setActionLog((prev) => [...prev, ...lines]);
 
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true);
@@ -146,31 +143,12 @@ export function GameView({ gameId }: GameViewProps) {
     : [];
 
   const handleConfirmMove = async (movingHeroId: string, path: Coord[]) => {
-    // result.log is already written to the live game.log by the
-    // backend (see main.py's _apply_movement) -- the Firestore
-    // subscription renders it a moment later, so pushing it into
-    // actionLog too would just show every line twice.
-    const result = await runAction(() => resolveMovement({ gameId, heroId: movingHeroId, path }));
-    if (!result) return;
-    for (const t of result.triggeredTraps) pushLog([`PLACE TILE: ${t.placementInstruction}`]);
-    if (result.stoppedReason) {
-      // A partial move with no visible explanation feels like a bug --
-      // name the obstacle. The closed-door case needs no button wiring:
-      // the hero is now standing at that door, so it shows up in
-      // openableDoors on its own.
-      const reasons: Record<string, string> = {
-        trap_sprung: "The trap ends the hero's turn -- no further movement.",
-        known_trap: "Stopped in front of a known trap -- jump it, disarm it, or step on it.",
-        closed_door: "Movement stopped at a closed door -- use the Open door button.",
-        locked_door: "Movement stopped: that door won't open from here.",
-        furniture_blocked: "Movement stopped: furniture blocks the path.",
-        monster_blocked: "Movement stopped: a monster blocks the path.",
-        blocked_square: "Movement stopped: that square is blocked (place the blocked-square tile if not already placed).",
-        no_door: "Movement stopped: there's no door in that wall.",
-        off_board: "Movement stopped: the path left the board.",
-      };
-      pushLog([reasons[result.stoppedReason] ?? `Movement stopped (${result.stoppedReason}).`]);
-    }
+    // Every consequence -- tile instructions, trap springs, why a move
+    // stopped short -- is narrated server-side into game.log, which the
+    // Firestore subscription renders in order. A second client-side
+    // stream used to append its lines at the bottom regardless of when
+    // they happened, which read as the log being out of order.
+    await runAction(() => resolveMovement({ gameId, heroId: movingHeroId, path }));
   };
 
   // A trap the party has FOUND is still armed, so movement stops in
@@ -210,14 +188,12 @@ export function GameView({ gameId }: GameViewProps) {
       })
     );
     if (!result) return;
-    if (result.placementInstruction) pushLog([`PLACE TILE: ${result.placementInstruction}`]);
   };
 
   const handleOpenDoor = async (doorId: string) => {
     if (!heroId) return;
     const result = await runAction(() => openDoor({ gameId, heroId, doorId }));
     if (!result) return;
-    pushLog([`PLACE TILE: ${result.placementInstruction}`]);
   };
 
   const handleSearchTreasure = async () => {
@@ -227,7 +203,6 @@ export function GameView({ gameId }: GameViewProps) {
     );
     if (!result) return;
     setWanderingDrawn(false);
-    if (result.spawnedMonster) pushLog([`PLACE TILE: ${result.spawnedMonster.placementInstruction}`]);
     if (result.monsterAttack) enqueueDefense(result.monsterAttack.heroName, result.monsterAttack.skulls);
   };
 
@@ -237,8 +212,6 @@ export function GameView({ gameId }: GameViewProps) {
       searchTrapsAndSecretDoors({ gameId, heroId, roomId: activeHeroRoomId, searchType })
     );
     if (!result) return;
-    for (const t of result.foundTraps) pushLog([`PLACE TILE: ${t.placementInstruction}`]);
-    for (const d of result.foundSecretDoors) pushLog([`PLACE TILE: ${d.placementInstruction}`]);
   };
 
   const handleAttack = async () => {
@@ -258,7 +231,6 @@ export function GameView({ gameId }: GameViewProps) {
     if (!result) return;
     setRolledTurn(result);
     setLowestBpHeroId("");
-    pushLog([`Zargon rolls: ${result.turnType}`]);
   };
 
   const handleResolveTurn = async () => {
@@ -275,7 +247,6 @@ export function GameView({ gameId }: GameViewProps) {
       })
     );
     if (!result) return;
-    if (result.spawnedMonster) pushLog([`PLACE TILE: ${result.spawnedMonster.placementInstruction}`]);
     for (const mr of result.monsterResults) {
       if (mr.attackedHeroName && mr.skulls !== null) enqueueDefense(mr.attackedHeroName, mr.skulls);
     }
@@ -524,16 +495,18 @@ export function GameView({ gameId }: GameViewProps) {
         <div className="log">
           <h3>Log</h3>
           <ul style={{ maxHeight: 240, overflowY: "auto", fontFamily: "monospace", fontSize: "0.85rem" }}>
-            {(game.log ?? []).map((entry, i) => (
-              <li key={`g${i}`}>
-                [{entry.turn}] {entry.text}
-              </li>
-            ))}
-            {actionLog.map((line, i) => (
-              <li key={`a${i}`} style={{ color: line.startsWith("PLACE TILE") ? "#e8b04a" : undefined }}>
-                {line}
-              </li>
-            ))}
+            {(game.log ?? []).map((entry, i) => {
+              // Tile instructions are the lines the player must act on
+              // physically, so they stay visually distinct. Matched on
+              // our own generated wording -- see the engines'
+              // placement_instruction strings.
+              const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
+              return (
+                <li key={`g${i}`} style={{ color: isTileInstruction ? "#e8b04a" : undefined }}>
+                  [{entry.turn}] {entry.text}
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>
