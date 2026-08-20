@@ -146,6 +146,20 @@ one-time prompt: when a cunning turn rolls and more than one hero is
 in play, the app asks "which hero is lowest on BP?" and uses the
 answer for that turn only — never stored as ongoing state.
 
+Adjacency and attacks: all engine geometry is ORTHOGONAL only
+(engine/movement.py `_STEPS`) — no diagonal movement or attacks.
+Monsters may only attack a hero orthogonally adjacent to them, and
+engine/turn.py enforces it (a monster that can't reach adjacency logs
+"isn't in range yet" and does not attack). Hero attacks are the
+deliberate exception: the app cannot see hero weapons (physical), and
+a spear attacks diagonally while a crossbow attacks at range, so a
+non-adjacent target is WARNED about ("diagonal — spear only", "not
+adjacent — crossbow or spell only") and never blocked. Enforcing hero
+adjacency was rejected for exactly this reason.
+
+Chaos spells are NOT implemented (open gap): monsters can attack and
+nothing else. data/monsters.json carries no spell data.
+
 Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:
 - **Treasure-card wandering** (drawn during a physical treasure

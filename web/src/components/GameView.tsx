@@ -11,7 +11,7 @@ import {
   searchTrapsAndSecretDoors,
   searchTreasure,
 } from "../lib/functionsClient";
-import { revealedSquareKeys } from "../lib/gameState";
+import { revealedSquareKeys, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
@@ -103,6 +103,22 @@ export function GameView({ gameId }: GameViewProps) {
   const targetableMonsters = game.monsters.filter((m) => m.alive && revealedKeys.has(squareKey(m.pos[0], m.pos[1])));
 
   const activeHero = game.heroes.find((h) => h.id === heroId);
+
+  // Hero attacks are WARNED about, never blocked: the app can't see
+  // hero weapons (physical/digital boundary), and a spear attacks
+  // diagonally while a crossbow attacks at range -- only the player
+  // knows what they're holding. Monsters get no such latitude; the
+  // engine requires orthogonal adjacency for them (engine/turn.py).
+  const attackReach = (m: MonsterToken): "" | "diagonal" | "not adjacent" => {
+    if (!activeHero) return "";
+    const dx = Math.abs(m.pos[0] - activeHero.pos[0]);
+    const dy = Math.abs(m.pos[1] - activeHero.pos[1]);
+    if (dx + dy === 1) return "";
+    if (dx === 1 && dy === 1) return "diagonal";
+    return "not adjacent";
+  };
+  const selectedTarget = targetableMonsters.find((m) => m.id === attackMonsterId);
+  const selectedReach = selectedTarget ? attackReach(selectedTarget) : "";
   const activeHeroArea = activeHero ? staticBoard.areaOf.get(squareKey(activeHero.pos[0], activeHero.pos[1])) : undefined;
   const activeHeroRoomId = activeHeroArea && activeHeroArea !== CORRIDOR ? activeHeroArea : null;
   const heroSearchedTreasureHere = activeHeroRoomId
@@ -335,11 +351,15 @@ export function GameView({ gameId }: GameViewProps) {
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
                 <option value="">Attack target...</option>
-                {targetableMonsters.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.type} ({m.id}) &mdash; {m.currentBody} BP
-                  </option>
-                ))}
+                {targetableMonsters.map((m) => {
+                  const reach = attackReach(m);
+                  return (
+                    <option key={m.id} value={m.id}>
+                      {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                      {reach && ` \u00b7 ${reach}`}
+                    </option>
+                  );
+                })}
               </select>
               <label>
                 Skulls: <input type="number" min={0} value={attackSkulls} onChange={(e) => setAttackSkulls(Number(e.target.value))} style={{ width: 48 }} />
@@ -347,6 +367,13 @@ export function GameView({ gameId }: GameViewProps) {
               <button onClick={handleAttack} disabled={busy || !attackMonsterId}>
                 Attack
               </button>
+              {selectedReach && (
+                <span style={{ color: "#e6a23b" }}>
+                  {selectedReach === "diagonal"
+                    ? "diagonal \u2014 spear only"
+                    : "not adjacent \u2014 crossbow or spell only"}
+                </span>
+              )}
             </div>
 
             <div>
