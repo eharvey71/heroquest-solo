@@ -167,7 +167,7 @@ def test_stops_before_a_blocked_square(catalogs):
     assert result.stopped_reason == "blocked_square"
 
 
-def test_progressive_corridor_reveal(catalogs):
+def test_corridor_is_revealed_by_line_of_sight(catalogs):
     board = catalogs.board
     quest = _quest()
     game_state = _game_state(
@@ -179,8 +179,14 @@ def test_progressive_corridor_reveal(catalogs):
     result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
 
     assert result.final_pos == (5, 0)
-    assert result.newly_revealed_corridor_squares == [(4, 0), (5, 0)]
-    assert (4, 0) in result.revealed_corridor_squares and (5, 0) in result.revealed_corridor_squares
+    # Every square walked is revealed...
+    assert {(4, 0), (5, 0)} <= result.revealed_corridor_squares
+    # ...and so is corridor the hero could SEE along the way, which is
+    # the whole point: the party looks down a corridor, it doesn't
+    # discover it one square at a time.
+    assert len(result.revealed_corridor_squares) > len(path)
+    # But sight stops at walls -- never the entire corridor network.
+    assert len(result.revealed_corridor_squares) < len(board.corridor_squares)
 
 
 def test_rejects_path_not_starting_at_hero_position(catalogs):

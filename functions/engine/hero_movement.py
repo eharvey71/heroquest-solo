@@ -52,6 +52,8 @@ from validator.catalogs import CORRIDOR, Board, Catalogs
 from validator.geometry import furniture_squares
 
 from .doors import effective_door_state
+from .line_of_sight import visible_corridor_squares
+from .movement import passable_door_edges
 
 Coord = tuple[int, int]
 
@@ -278,6 +280,20 @@ def resolve_hero_movement(
             )
             stopped_reason = "trap_sprung"
             break
+
+    # "When a Hero 'looks' down a corridor, place on the gameboard any
+    # closed doors, blocked square tiles, and monsters that are directly
+    # within the Hero's line of sight" -- so corridor fog lifts by
+    # SIGHT, from every square walked, not just the squares stepped on.
+    # Room fog stays door-gated (engine/doors.py), matching the rulebook's
+    # separate "when a Hero opens a door" instruction.
+    sight_walls = frozenset(blocked_squares | collapsed)
+    open_edges = passable_door_edges(quest.get("doors", []), door_states)
+    for square in applied_path:
+        for seen in visible_corridor_squares(board, square, open_door_edges=open_edges, walls=sight_walls):
+            if seen not in revealed_corridor:
+                revealed_corridor.add(seen)
+                newly_revealed_corridor.append(seen)
 
     final_pos = applied_path[-1]
     if final_pos in other_hero_squares and final_pos not in shareable_squares(quest, game_state):

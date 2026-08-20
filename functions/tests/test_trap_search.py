@@ -124,3 +124,28 @@ def test_rejects_unknown_search_type(good_quest_4h, catalogs):
             board=catalogs.board, quest=good_quest_4h, game_state=game_state, hero_id="barbarian",
             room_id="R3", search_type="treasure",
         )
+
+
+def test_a_monster_in_line_of_sight_blocks_the_search(good_quest_4h, catalogs):
+    # 1989 rulebook: no searching while a monster is visible. Visibility
+    # is the real sightline now, not "same room".
+    game_state = _game_state((9, 5), ["R3"])
+    game_state["monsters"] = {"M9": {"type": "orc", "pos": [10, 5], "currentBody": 1, "alive": True}}
+    with pytest.raises(InvalidTrapSearchError):
+        resolve_trap_search(
+            board=catalogs.board, quest=good_quest_4h, game_state=game_state,
+            hero_id="barbarian", room_id="R3", search_type="traps",
+        )
+
+
+def test_a_monster_behind_a_wall_does_not_block_the_search(good_quest_4h, catalogs):
+    # Same monster, but walled off in R1 with no open door between --
+    # the old "same room" rule and the sightline rule agree here, and
+    # the sightline is what's actually being tested.
+    game_state = _game_state((9, 5), ["R3"])
+    game_state["monsters"] = {"M9": {"type": "orc", "pos": [2, 2], "currentBody": 1, "alive": True}}
+    result = resolve_trap_search(
+        board=catalogs.board, quest=good_quest_4h, game_state=game_state,
+        hero_id="barbarian", room_id="R3", search_type="traps",
+    )
+    assert result.room_id == "R3"

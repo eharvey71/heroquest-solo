@@ -146,6 +146,23 @@ one-time prompt: when a cunning turn rolls and more than one hero is
 in play, the app asks "which hero is lowest on BP?" and uses the
 answer for that turn only — never stored as ongoing state.
 
+Line of sight ("SEE", 1989 rulebook page 15, verified against the
+owner's photos): a target is visible if a straight line between square
+CENTRES crosses no wall, closed door, hero or monster -- corner grazes
+count as visible, but only where sight could actually pass (allowing
+every diagonal let a line escape a sealed room between two wall
+corners). engine/line_of_sight.py.
+
+Two callers, deliberately different blocker sets:
+- TARGETING (visible monsters; later, spell targets) applies it
+  strictly -- figures block.
+- REVEALING (corridor fog) ignores figures, so terrain once seen stays
+  seen; a hero sidestepping must never un-reveal a corridor. Walls and
+  closed doors still block, so the party never sees round a corner.
+Corridor fog now lifts by SIGHT from every square walked, not one
+square at a time. ROOM fog stays door-gated -- the rulebook reveals a
+room's contents when its door is OPENED, not by peering in.
+
 Adjacency and attacks: all engine geometry is ORTHOGONAL only
 (engine/movement.py `_STEPS`) — no diagonal movement or attacks.
 Monsters may only attack a hero orthogonally adjacent to them, and

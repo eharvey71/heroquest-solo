@@ -30,6 +30,8 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board
 
 from .hero_movement import _build_trap_lookup
+from .line_of_sight import has_line_of_sight
+from .movement import passable_door_edges
 
 Coord = tuple[int, int]
 
@@ -100,16 +102,22 @@ def resolve_trap_search(
     log = [f"{hero_id} searches {room_id} for {search_type.replace('_', ' ')}."]
 
     # "You can only search for traps [or secret doors] if there are no
-    # monsters visible to you" (1989 rulebook, Actions 4 and 5). True
-    # visibility is line-of-sight, which the app doesn't model yet;
-    # monsters in the hero's own room is the faithful subset -- it
-    # catches the case the rule exists for (searching while something
-    # is standing over you) without guessing at sightlines.
+    # monsters visible to you" (1989 rulebook, Actions 4 and 5) -- now
+    # the rulebook's actual sightline (page 15's "SEE"), not the older
+    # "same room" approximation. Figures block sight here: this is
+    # targeting, not terrain reveal.
+    open_edges = passable_door_edges(quest.get("doors", []), game_state.get("doors", {}))
+    walls = frozenset(
+        {tuple(sq) for sq in quest.get("blockedSquares", [])}
+        | {tuple(sq) for sq in game_state.get("collapsedSquares", [])}
+    )
+    live_monsters = [tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")]
+    figures = frozenset(live_monsters) | {tuple(h["pos"]) for h in heroes}
     if any(
-        m.get("alive") and board.area_of.get(tuple(m["pos"])) == room_id
-        for m in game_state.get("monsters", {}).values()
+        has_line_of_sight(board, hero_pos, mpos, open_door_edges=open_edges, walls=walls, figures=figures)
+        for mpos in live_monsters
     ):
-        raise InvalidTrapSearchError(f"monsters are still in room '{room_id}' -- a hero can't search while they watch")
+        raise InvalidTrapSearchError(f"'{hero_id}' can see a monster -- a hero can't search while one watches")
 
     found_traps: list[FoundTrap] = []
     trap_lookup = _build_trap_lookup(quest) if search_type == "traps" else {}
