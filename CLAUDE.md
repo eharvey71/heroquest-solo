@@ -157,8 +157,27 @@ non-adjacent target is WARNED about ("diagonal — spear only", "not
 adjacent — crossbow or spell only") and never blocked. Enforcing hero
 adjacency was rejected for exactly this reason.
 
-Chaos spells are NOT implemented (open gap): monsters can attack and
-nothing else. data/monsters.json carries no spell data.
+Monsters may not (1989 rulebook, Zargon's Turn page, verified against
+the owner's photos): search for treasure or secret doors, move or
+attack diagonally, pass over heroes, move through walls, OPEN OR CLOSE
+DOORS, or share a square. All are enforced. The door one is easy to
+get wrong: monsters path only through doors the HEROES have opened --
+closed/locked/secret are walls to Zargon (engine/movement.py
+passable_door_edges). Monsters also never spring traps, and need not
+spend their full movement allowance.
+
+Not implemented, deliberately:
+- Attack-then-move. The rulebook lets a monster act then move (not
+  move-partway-act-move); the engine only does move-then-attack, so
+  Zargon never hits and withdraws. A simplification, not a rules
+  misreading.
+- Chaos spells. Monsters can attack and nothing else; monsters.json
+  carries no spell data and no catalog monster is a caster. The
+  rulebook does permit spells in custom quests (cast INSTEAD of
+  attacking, only on a hero the caster can see, once per quest each),
+  so this is a real feature if wanted -- the cost is that threat cost
+  (attack+defend+body) has no term for spell value, so adding casters
+  invalidates the calibrated 120 baseline until the sim is re-run.
 
 Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:

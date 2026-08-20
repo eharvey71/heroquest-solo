@@ -39,12 +39,28 @@ def test_find_path_blocked_by_locked_door(catalogs):
     assert path is None
 
 
-def test_find_path_blocked_by_closed_door_state_default(catalogs):
-    # No override in door_states -- falls back to the quest's declared
-    # initial state (closed), which is still passable (monsters can open
-    # closed doors same as heroes; only locked/secret block them).
+def test_find_path_blocked_by_closed_door(catalogs):
+    # 1989 rulebook, "Monsters May Not: open or close doors" -- a closed
+    # door is a wall to Zargon until the HEROES open it.
+    board = catalogs.board
+    edges = passable_door_edges([D1], {"D1": "closed"})
+    path = find_path(board, _revealed(board), edges, set(), (6, 2), {(2, 2)})
+    assert path is None
+
+
+def test_find_path_blocked_when_door_state_defaults(catalogs):
+    # No override in door_states: the quest's declared state is used,
+    # and a quest-declared "open" still means "starts closed" (see
+    # engine/doors.effective_door_state), so it must not be passable.
     board = catalogs.board
     edges = passable_door_edges([D1], {})
+    path = find_path(board, _revealed(board), edges, set(), (6, 2), {(2, 2)})
+    assert path is None
+
+
+def test_find_path_allowed_once_heroes_open_the_door(catalogs):
+    board = catalogs.board
+    edges = passable_door_edges([D1], {"D1": "open"})
     path = find_path(board, _revealed(board), edges, set(), (6, 2), {(2, 2)})
     assert path is not None
 

@@ -2,14 +2,15 @@
 
 Per CLAUDE.md: "movement (A* on revealed map)" -- a monster can only
 path through squares the party has already revealed (Zargon doesn't
-send monsters wandering through walls/unopened doors into rooms no one
-has found yet), and only through doors that are currently open or
-closed (not locked/secret -- those need a key or a search, which is a
-hero action). All other tokens (hero or monster) are hard obstacles;
-HeroQuest's "heroes may pass through fellow heroes" exception (CLAUDE.md
-rules edition note) is stated for hero movement specifically and does
-not extend to monsters here -- a documented assumption, not the
-official rulebook's exact wording on monster movement.
+send monsters wandering through walls into rooms no one has found
+yet), and only through doors the HEROES have opened -- the 1989
+rulebook's "Monsters May Not" list includes "open or close doors", so
+closed, locked, and secret doors are all walls to Zargon.
+
+All other tokens (hero or monster) are hard obstacles. That matches
+the same rulebook list: monsters may not "pass over Heroes" or "share
+a square on the gameboard" -- the "heroes may pass through fellow
+heroes" exception is a HERO rule and does not extend to monsters.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import heapq
 from dataclasses import dataclass
 
 from validator.catalogs import Board
+
+from .doors import effective_door_state
 
 Coord = tuple[int, int]
 
@@ -41,12 +44,19 @@ def passable_door_edges(quest_doors: list[dict], door_states: dict) -> set[froze
     the game state's current per-door status ({"D1": "open"}),
     overriding the quest's initially-declared state once a door has
     been opened/found during play.
+
+    Only OPEN doors are passable. The 1989 rulebook's "Monsters May
+    Not" list includes "open or close doors", so a monster can cross a
+    doorway only after the HEROES have opened it -- a closed, locked,
+    or secret door is a wall as far as Zargon is concerned. (Counting
+    "closed" as passable let monsters roam through every unopened door
+    on the map once doors started life closed.) The same set drives
+    guard-objective sightlines, which CLAUDE.md likewise defines
+    through an OPEN doorway.
     """
     edges = set()
     for d in quest_doors:
-        door_id = d.get("id")
-        state = door_states.get(door_id, d.get("state"))
-        if state not in ("open", "closed"):
+        if effective_door_state(d, door_states) != "open":
             continue
         squares = d.get("squares", [])
         if len(squares) != 2:
