@@ -31,6 +31,50 @@ DOOR_TOTAL_CAP = 21
 CORRIDOR_TRAP_CAP = 3
 ROOM_TRAP_CAP = 1
 
+# Blocked-square tiles in the owner's box: 8 that cover one square, 2
+# that cover two adjacent squares. They don't recycle (a tile stays on
+# the board once placed), so 12 squares is the hard ceiling -- and the
+# last 4 of those only exist as adjacent pairs.
+BLOCKED_SINGLE_TILES = 8
+BLOCKED_DOUBLE_TILES = 2
+BLOCKED_SQUARE_CAP = BLOCKED_SINGLE_TILES + 2 * BLOCKED_DOUBLE_TILES
+
+
+def _has_disjoint_pairs(pairs: list, count: int) -> bool:
+    """Can `count` of these pairs be chosen without sharing a square?
+    Brute force is fine: count is at most BLOCKED_DOUBLE_TILES (2).
+    """
+    if count <= 0:
+        return True
+    for i, pair in enumerate(pairs):
+        rest = [p for p in pairs[i + 1:] if p.isdisjoint(pair)]
+        if _has_disjoint_pairs(rest, count - 1):
+            return True
+    return False
+
+
+def blocked_squares_fit_tiles(squares) -> bool:
+    """True if the owner can actually lay these squares out with the
+    tiles in the box. Past 8 squares the double tiles have to carry the
+    rest, and a double tile only covers two ADJACENT squares -- so 12
+    scattered singles don't fit even though 12 is the cap.
+    """
+    cells = {tuple(sq) for sq in squares}
+    if len(cells) > BLOCKED_SQUARE_CAP:
+        return False
+    doubles_needed = -(-(len(cells) - BLOCKED_SINGLE_TILES) // 2)
+    if doubles_needed <= 0:
+        return True
+    if doubles_needed > BLOCKED_DOUBLE_TILES:
+        return False
+    pairs = [
+        frozenset((a, b))
+        for a in cells
+        for b in ((a[0] + 1, a[1]), (a[0], a[1] + 1))
+        if b in cells
+    ]
+    return _has_disjoint_pairs(pairs, doubles_needed)
+
 
 def _monster_threat_cost(monster: dict, catalog_entry: dict) -> int:
     """Base threat cost + extra threat from stat overrides.
@@ -179,6 +223,24 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
             continue  # geometry check already reported unknown type
         if count > entry["owned"]:
             errors.append(f"quest uses {count} '{ftype}' pieces, exceeding the owned count of {entry['owned']}")
+
+    # -- blocked square tiles (physical, don't recycle) --
+    blocked = [
+        tuple(sq) for sq in quest.get("blockedSquares", [])
+        if isinstance(sq, (list, tuple)) and len(sq) == 2
+    ]
+    if len(set(blocked)) > BLOCKED_SQUARE_CAP:
+        errors.append(
+            f"quest declares {len(set(blocked))} blocked squares, more than the "
+            f"{BLOCKED_SQUARE_CAP} squares the owned tiles cover "
+            f"({BLOCKED_SINGLE_TILES} single + {BLOCKED_DOUBLE_TILES} double)"
+        )
+    elif not blocked_squares_fit_tiles(blocked):
+        errors.append(
+            f"the {len(set(blocked))} blocked squares can't be laid out with "
+            f"{BLOCKED_SINGLE_TILES} single + {BLOCKED_DOUBLE_TILES} double tiles "
+            f"(past {BLOCKED_SINGLE_TILES} squares the rest must come in adjacent pairs)"
+        )
 
     # -- door physical caps --
     doors = quest.get("doors", [])

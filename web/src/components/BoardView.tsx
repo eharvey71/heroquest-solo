@@ -39,13 +39,18 @@ export function BoardView({
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
   const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
   // A blocked square and a collapsed ceiling are the same thing to a
-  // hero tracing a path: impassable terrain the app can see.
+  // hero tracing a path: impassable terrain the app can see. A blocked
+  // square only counts once it has been SEEN, though -- the quest's
+  // fence is hidden information until the fog lifts, and a tracer that
+  // refused to draw through an unrevealed one would give it away. The
+  // server stops the move there anyway (and calls for the tile).
   const collapsedKeys = useMemo(
     () =>
-      new Set(
-        [...(gameState.collapsedSquares ?? []), ...blockedSquares].map((sq) => squareKey(sq[0], sq[1]))
-      ),
-    [gameState.collapsedSquares, blockedSquares]
+      new Set([
+        ...(gameState.collapsedSquares ?? []).map((sq) => squareKey(sq[0], sq[1])),
+        ...blockedSquares.map((sq) => squareKey(sq[0], sq[1])).filter((key) => revealed.has(key)),
+      ]),
+    [gameState.collapsedSquares, blockedSquares, revealed]
   );
   // `doors` arrives with live game state already merged in (GameView's
   // resolvedDoors), so an entry here is the door's state right now.

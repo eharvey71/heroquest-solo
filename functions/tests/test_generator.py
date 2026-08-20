@@ -167,3 +167,16 @@ def test_truncated_response_retries_instead_of_crashing(good_quest_4h, good_ques
     # the retry message should explain the truncation, not leak a raw JSONDecodeError
     retry_message = client.calls[1]["messages"][0]["content"]
     assert "cut off" in retry_message
+
+
+def test_pipeline_fences_the_play_area_before_returning(good_quest_4h, good_quest_4h_params, catalogs):
+    # The model is told to declare no blockedSquares; the cordon is the
+    # pipeline's own last step (generator/fence.py).
+    good_quest_4h["blockedSquares"] = []
+    client = ScriptedClient([good_quest_4h])
+    result = generate_quest(good_quest_4h_params, client, catalogs)
+
+    fence = [tuple(sq) for sq in result.quest["blockedSquares"]]
+    assert fence
+    assert all(catalogs.board.area_of[sq] == "CORRIDOR" for sq in fence)
+    assert result.validation.ok

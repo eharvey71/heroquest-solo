@@ -160,6 +160,29 @@ def check_geometry(quest: dict, catalogs: Catalogs) -> list:
             errors.append(f"{label} is not a corridor square")
         claim([pos], label)
 
+    # -- blocked squares: real board squares, nothing standing on them --
+    # (the app places these itself, generator/fence.py, but a quest
+    # loaded from Firestore is checked like any other input)
+    door_edge_squares = set()
+    for d in quest.get("doors", []):
+        squares = d.get("squares", [])
+        if len(squares) == 2:
+            door_edge_squares.update(tuple(sq) for sq in squares)
+    for sq in quest.get("blockedSquares", []):
+        if not (isinstance(sq, (list, tuple)) and len(sq) == 2):
+            errors.append("blockedSquares contains a malformed square")
+            continue
+        sq = tuple(sq)
+        if board.area_of.get(sq) is None:
+            errors.append(f"blocked square at {fmt_pos(sq)} is outside the board")
+            continue
+        if sq in door_edge_squares:
+            errors.append(
+                f"blocked square at {fmt_pos(sq)} sits on a door's own edge "
+                f"(the door could never be used)"
+            )
+        claim([sq], f"blocked square at {fmt_pos(sq)}")
+
     # -- doors: wall edge between two distinct, adjacent areas --
     for d in quest.get("doors", []):
         did = d.get("id", "?")

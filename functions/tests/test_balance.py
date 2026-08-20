@@ -134,3 +134,34 @@ def test_every_door_may_be_closed(good_quest_4h, good_quest_4h_params, catalogs)
     assert not any("door" in e for e in errors)
 
 
+
+
+def test_blocked_squares_beyond_the_owned_tiles_rejected(good_quest_4h, good_quest_4h_params, catalogs):
+    # 8 single + 2 double tiles cover 12 squares; a 13th has no tile.
+    good_quest_4h["blockedSquares"] = [[x, 0] for x in range(13)]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("more than the 12 squares the owned tiles cover" in e for e in errors)
+
+
+def test_twelve_blocked_squares_in_one_run_accepted(good_quest_4h, good_quest_4h_params, catalogs):
+    # A single run of 12 contains plenty of adjacent pairs for the two
+    # double tiles, so it lays out fine.
+    good_quest_4h["blockedSquares"] = [[x, 0] for x in range(12)]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert not any("blocked squares" in e for e in errors)
+
+
+def test_scattered_blocked_squares_past_the_single_tiles_rejected(good_quest_4h, good_quest_4h_params, catalogs):
+    # 9 squares, none adjacent to another: the 9th would need a double
+    # tile, and a double tile covers two ADJACENT squares or nothing.
+    good_quest_4h["blockedSquares"] = [[x, 0] for x in range(0, 18, 2)]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("can't be laid out with" in e for e in errors)
+
+
+def test_eleven_blocked_squares_with_only_one_pair_rejected(good_quest_4h, good_quest_4h_params, catalogs):
+    # 11 squares needs both double tiles, so it needs two DISJOINT
+    # adjacent pairs -- one pair plus 9 loose squares doesn't fit.
+    good_quest_4h["blockedSquares"] = [[0, 0], [1, 0]] + [[x, 2] for x in range(0, 18, 2)]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("can't be laid out with" in e for e in errors)

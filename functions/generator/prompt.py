@@ -147,7 +147,8 @@ furniture still needs `"furniture": []`).
 
 ### PHYSICAL COMPONENT CAPS
 {_physical_caps_lines(catalogs)}
-Blocked squares: use sparingly (limited tiles).
+Blocked square tiles: 8 single + 2 double -- and the app spends them
+itself, not you (see hard constraint 7b).
 
 ### QUEST PARAMETERS
 - heroCount: {hero_count}
@@ -183,9 +184,11 @@ Blocked squares: use sparingly (limited tiles).
    in corridor squares rather than inside a room). Trap types: pit,
    falling_block, spear (pit and falling block have physical tiles; a
    spear trap has none -- it is gone once sprung).
-7b. You may declare blockedSquares (impassable, block line of sight,
-   rendered with the physical blocked-square tiles). They must never make
-   a populated room or the objective unreachable.
+7b. Leave `blockedSquares` as an empty array `[]`. Once your quest
+   validates, the app computes the cordon itself -- it fences the play
+   area in with blocked-square tiles so the party can't roam corridors
+   your quest never uses, the way the printed quest maps do. Anything
+   you declare there is discarded, so spend no effort on it.
 8. Unpopulated rooms: omit them from `rooms`. They default to empty + treasure deck.
 9. Do not invent room ids, monster types, or furniture types.
 

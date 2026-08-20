@@ -49,6 +49,7 @@ from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resol
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
 from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
+from generator.fence import apply_fence
 from validator.catalogs import load_catalogs
 
 initialize_app()
@@ -208,6 +209,17 @@ def create_game(req: https_fn.CallableRequest) -> dict:
     if not quest_snap.exists:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
     quest = from_firestore_coords(quest_snap.to_dict())
+
+    # Quests generated before the cordon existed carry no blockedSquares
+    # at all, which lets the party roam all 148 corridor squares of a
+    # 4-room quest. Compute the fence on the first game started from
+    # such a quest and store it back, so an existing quest doesn't have
+    # to be regenerated to get one.
+    if not quest.get("blockedSquares"):
+        if apply_fence(quest, _catalogs):
+            db.collection("quests").document(quest_id).update(
+                {"blockedSquares": to_firestore_coords(quest["blockedSquares"])}
+            )
 
     try:
         game_state = build_initial_game_state(quest=quest, catalogs=_catalogs, heroes=heroes)

@@ -94,13 +94,30 @@ door nothing could ever open. Removed; legacy quests read a stored
 should be built: the owner confirms more than 5 doors are never closed
 on the board at once in real play, so the app does not track closed-
 piece supply or emit "place a closed door" instructions.
-Tiles: stairs 2x2, blocked squares,
+Tiles: stairs 2x2, blocked squares (8 single + 2 double = 12 squares,
+and they do not recycle),
 pit traps, falling block traps, secret doors, skulls. Spear traps
 have NO tile ("there are no spear trap tiles") -- a sprung spear is
 narrated and then gone forever.
 When the app reveals anything with a physical tile (trap sprung, secret
 door found, blocked square, stairs), it must show a "place tile"
 instruction naming the tile and square(s).
+
+Blocked squares are APP-owned, not model-owned. The printed quests fence
+the play area in so the party can't wander the whole board; a generated
+quest that populates 4 rooms out of 22 needs the same. The LLM is told
+to declare none (it is bad at graph cuts, and this board's corridors are
+a loop -- no single square ever seals a branch), and
+functions/generator/fence.py computes the cordon after a quest
+validates: skeleton (stairway + everything the quest uses + the shortest
+paths joining them, never cut) -> sink (everything more than `d` steps
+beyond it) -> minimum vertex cut between them, walking `d` out from 1
+until the cut fits the 12 squares of tile. Typical result: 3-6 tiles cut
+corridor roaming from 148 squares to 20-45. Corridor squares only, never
+a door's own edge or a corridor trap. If no cut fits the tiles, there is
+no fence -- an open board beats an instruction the owner can't follow.
+A quest generated before the cordon existed gets one on the first game
+started from it (create_game backfills and stores it).
 
 ## Balance system (from prior Monte Carlo sim work — "Zargon Deck")
 Monster threat cost ≈ attack + defend + body. Budget by heroCount:

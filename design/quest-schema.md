@@ -122,7 +122,10 @@ Notes:
 - `stairway` is quest-owned (placed tile, 2x2, any room); the board has no
   fixed stairway and no printed doorways — doors are quest-defined wall edges.
 - `blockedSquares`: impassable + block LOS; player places the physical
-  blocked-square tiles when revealed.
+  blocked-square tiles when revealed. App-owned, not model-owned: the
+  generator computes them after validation to fence the play area in
+  (functions/generator/fence.py), capped by the tiles in the box
+  (8 single + 2 double = 12 squares).
 - Entity counts are capped by owned physical components (see CLAUDE.md).
 
 ## 4. Game state (Firestore, mutated at runtime)

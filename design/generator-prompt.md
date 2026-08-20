@@ -38,7 +38,8 @@ chaos_warrior 4, skeleton 4, zombie 2, mummy 2, gargoyle 1,
 chaos_warlock 1 (boss use only).
 Furniture per quest: hard-capped at owned counts (see catalog).
 Doors per quest: 21 total.
-Blocked squares: use sparingly (limited tiles).
+Blocked square tiles: 8 single + 2 double -- and the app spends them
+itself, not you (see hard constraint 7b).
 
 ### QUEST PARAMETERS
 - heroCount: {{HERO_COUNT}}
@@ -62,9 +63,11 @@ Blocked squares: use sparingly (limited tiles).
 7. Traps: at most 1 per room, at most 3 in corridors total.
    Trap types: pit, falling_block, spear (pit and falling block have
    physical tiles; a spear trap has none).
-7b. You may declare blockedSquares (impassable, block line of sight,
-   rendered with the physical blocked-square tiles). They must never make
-   a populated room or the objective unreachable.
+7b. Leave `blockedSquares` as an empty array `[]`. Once your quest
+   validates, the app computes the cordon itself (functions/generator/
+   fence.py) -- it fences the play area in with blocked-square tiles so
+   the party can't roam corridors your quest never uses, the way the
+   printed quest maps do. Anything you declare there is discarded.
 8. Unpopulated rooms: omit them. They default to empty + treasure deck.
 9. Do not invent room ids, monster types, or furniture types.
 

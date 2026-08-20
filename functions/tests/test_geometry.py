@@ -104,3 +104,22 @@ def test_good_quest_end_to_end_still_clean(good_quest_4h, good_quest_4h_params, 
     # Guards against a mutation test accidentally not deep-copying.
     result = validate_quest(good_quest_4h, good_quest_4h_params, catalogs)
     assert result.ok
+
+
+def test_blocked_square_off_the_board_rejected(good_quest_4h, catalogs):
+    good_quest_4h["blockedSquares"] = [[99, 99]]
+    errors = errors_for(good_quest_4h, catalogs)
+    assert any("blocked square at [99,99] is outside the board" in e for e in errors)
+
+
+def test_blocked_square_on_a_door_edge_rejected(good_quest_4h, catalogs):
+    good_quest_4h["blockedSquares"] = [list(good_quest_4h["doors"][0]["squares"][0])]
+    errors = errors_for(good_quest_4h, catalogs)
+    assert any("sits on a door's own edge" in e for e in errors)
+
+
+def test_blocked_square_under_a_monster_rejected(good_quest_4h, catalogs):
+    monster = good_quest_4h["rooms"]["R2"]["monsters"][0]
+    good_quest_4h["blockedSquares"] = [list(monster["pos"])]
+    errors = errors_for(good_quest_4h, catalogs)
+    assert any("blocked square at" in e and "overlaps monster" in e for e in errors)

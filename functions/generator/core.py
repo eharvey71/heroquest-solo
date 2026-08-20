@@ -19,6 +19,7 @@ from validator.core import validate_quest
 from validator.result import ValidationResult
 
 from .client import QuestGenerationTruncated, call_llm
+from .fence import apply_fence
 from .prompt import build_retry_message, build_system_prompt, build_user_message, pick_stairway_room
 from .repair import apply_auto_repair
 from .schema import build_quest_json_schema
@@ -52,6 +53,22 @@ class QuestGenerationFailed(Exception):
         super().__init__(f"quest generation failed after {attempts} attempts: {errors}")
 
 
+def _fence_play_area(quest: dict, params: dict, catalogs: Catalogs, passed: ValidationResult) -> ValidationResult:
+    """Cordons the unused parts of the board off (generator/fence.py),
+    then re-validates. The fence is computed to preserve reachability, so
+    this second pass should never fail -- but a quest that already
+    validated must not be broken by a cosmetic step, so a failure puts
+    the original blockedSquares back and keeps the quest as it was.
+    """
+    original = quest.get("blockedSquares", [])
+    apply_fence(quest, catalogs)
+    fenced = validate_quest(quest, params, catalogs)
+    if fenced.ok:
+        return fenced
+    quest["blockedSquares"] = original
+    return passed
+
+
 def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> GenerationResult:
     """params: {"heroCount": 1-4, "difficulty": "standard"|"hard",
     "size": "short"|"full", "theme": str}. `client` is an Anthropic
@@ -80,6 +97,7 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> Ge
         apply_auto_repair(quest, params, catalogs)
         result = validate_quest(quest, validation_params, catalogs)
         if result.ok:
+            result = _fence_play_area(quest, validation_params, catalogs, result)
             return GenerationResult(quest=quest, validation=result, attempts=attempt)
         last_errors = result.errors
         message = build_retry_message(last_errors)
