@@ -6,6 +6,8 @@ import {
   recordHeroDefense,
   resolveHeroAttack,
   resolveMovement,
+  resolveTrapAction,
+  type CombatDieFace,
   resolveZargonTurn,
   rollZargonTurnType,
   searchTrapsAndSecretDoors,
@@ -34,6 +36,8 @@ export function GameView({ gameId }: GameViewProps) {
   const [wanderingDrawn, setWanderingDrawn] = useState(false);
   const [attackMonsterId, setAttackMonsterId] = useState<string>("");
   const [attackSkulls, setAttackSkulls] = useState(0);
+  const [trapDieFace, setTrapDieFace] = useState<CombatDieFace>("white_shield");
+  const [hasToolKit, setHasToolKit] = useState(false);
   const [rolledTurn, setRolledTurn] = useState<{
     turnType: "normal" | "cunning" | "wandering";
     needsCunningPrompt: boolean;
@@ -156,6 +160,7 @@ export function GameView({ gameId }: GameViewProps) {
       // openableDoors on its own.
       const reasons: Record<string, string> = {
         trap_sprung: "The trap ends the hero's turn -- no further movement.",
+        known_trap: "Stopped in front of a known trap -- jump it, disarm it, or step on it.",
         closed_door: "Movement stopped at a closed door -- use the Open door button.",
         locked_door: "Movement stopped: that door won't open from here.",
         furniture_blocked: "Movement stopped: furniture blocks the path.",
@@ -166,6 +171,46 @@ export function GameView({ gameId }: GameViewProps) {
       };
       pushLog([reasons[result.stoppedReason] ?? `Movement stopped (${result.stoppedReason}).`]);
     }
+  };
+
+  // A trap the party has FOUND is still armed, so movement stops in
+  // front of it and the hero chooses. Only found traps are in game
+  // state, so this can't leak the quest's hidden ones.
+  const adjacentKnownTraps = activeHero
+    ? Object.entries(game.trapsFound ?? {})
+        .filter(([id, t]) => {
+          if ((game.trapsTriggered ?? []).includes(id)) return false;
+          const dx = Math.abs(t.pos[0] - activeHero.pos[0]);
+          const dy = Math.abs(t.pos[1] - activeHero.pos[1]);
+          return dx + dy === 1;
+        })
+        .map(([id, t]) => ({ id, ...t }))
+    : [];
+
+  const handleTrapAction = async (
+    trapId: string,
+    action: "jump" | "disarm" | "step",
+    trapPos: Coord
+  ) => {
+    if (!heroId || !activeHero) return;
+    // Jump lands on the square directly beyond, in the direction of travel.
+    const landing: Coord = [
+      trapPos[0] + (trapPos[0] - activeHero.pos[0]),
+      trapPos[1] + (trapPos[1] - activeHero.pos[1]),
+    ];
+    const result = await runAction(() =>
+      resolveTrapAction({
+        gameId,
+        heroId,
+        trapId,
+        action,
+        ...(action === "step" ? {} : { dieFace: trapDieFace }),
+        ...(action === "jump" ? { landing } : {}),
+        ...(action === "disarm" ? { hasToolKit } : {}),
+      })
+    );
+    if (!result) return;
+    if (result.placementInstruction) pushLog([`PLACE TILE: ${result.placementInstruction}`]);
   };
 
   const handleOpenDoor = async (doorId: string) => {
@@ -322,6 +367,42 @@ export function GameView({ gameId }: GameViewProps) {
 
         {game.phase === "hero" && (
           <>
+            {adjacentKnownTraps.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #6a5a3a", padding: 8 }}>
+                <span className="hint">
+                  You know a trap is there. Roll 1 combat die and report the face &mdash; the app never rolls it.
+                </span>
+                <label>
+                  Die:{" "}
+                  <select value={trapDieFace} onChange={(e) => setTrapDieFace(e.target.value as CombatDieFace)}>
+                    <option value="skull">skull</option>
+                    <option value="white_shield">white shield</option>
+                    <option value="black_shield">black shield</option>
+                  </select>
+                </label>
+                <label>
+                  <input type="checkbox" checked={hasToolKit} onChange={(e) => setHasToolKit(e.target.checked)} /> hero
+                  has a tool kit (the Dwarf never needs one)
+                </label>
+                {adjacentKnownTraps.map((t) => (
+                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span>
+                      {t.type.replace(/_/g, " ")} at [{t.pos[0]},{t.pos[1]}]
+                    </span>
+                    <button onClick={() => handleTrapAction(t.id, "jump", t.pos)} disabled={busy}>
+                      Jump it
+                    </button>
+                    <button onClick={() => handleTrapAction(t.id, "disarm", t.pos)} disabled={busy}>
+                      Disarm it
+                    </button>
+                    <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
+                      Step on it
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {openableDoors.length > 0 && (
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 {openableDoors.map((d) => (

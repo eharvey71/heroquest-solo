@@ -40,6 +40,7 @@ from engine.objective import check_objective_complete
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
+from engine.trap_action import InvalidTrapActionError, TRAP_ACTIONS, resolve_trap_action
 from engine.trap_search import SEARCH_TYPES, resolve_trap_search
 from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
@@ -312,6 +313,10 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         "revealed.rooms": sorted(result.revealed_rooms),
         "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
         "trapsTriggered": sorted(result.traps_triggered),
+        # trapsFound is deliberately NOT written here: movement never adds
+        # to it, and the stored value is a {trapId: {type,pos}} map the
+        # engine only reads ids from -- rewriting it from a set of ids
+        # would throw the positions away.
         "collapsedSquares": to_firestore_coords(sorted(result.collapsed_squares)),
     }
     if _mark_objective_if_complete(quest, game_state, updates):
@@ -627,9 +632,11 @@ def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, roo
     updates: dict = {f"searched.{room_id}.{searched_flag}": True, "log": existing_log + new_log_entries}
 
     if result.found_traps:
-        traps_triggered = set(game_state.get("trapsTriggered", []))
-        traps_triggered.update(t.trap_id for t in result.found_traps)
-        updates["trapsTriggered"] = sorted(traps_triggered)
+        # trapsFound, not trapsTriggered: the party now knows where these
+        # are, but they are still armed (see engine/trap_search.py).
+        traps_found = set(game_state.get("trapsFound", []))
+        traps_found.update(t.trap_id for t in result.found_traps)
+        updates["trapsFound"] = sorted(traps_found)
 
     for d in result.found_secret_doors:
         updates[f"doors.{d.door_id}"] = "closed"
@@ -697,6 +704,122 @@ def search_traps_and_secret_doors(req: https_fn.CallableRequest) -> dict:
             {"doorId": d.door_id, "squares": [list(s) for s in d.squares], "placementInstruction": d.placement_instruction}
             for d in result.found_secret_doors
         ],
+        "log": result.log,
+    }
+
+
+def _trap_lookup_entry(quest, trap_id):
+    """(trap_type, pos) for a synthesized trap id, or None. Ids come from
+    engine/hero_movement._build_trap_lookup, so they resolve the same way.
+    """
+    from engine.hero_movement import _build_trap_lookup
+
+    for pos, (tid, ttype) in _build_trap_lookup(quest).items():
+        if tid == trap_id:
+            return ttype, pos
+    return None
+
+
+@firestore.transactional
+def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_face, landing, has_tool_kit):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    entry = _trap_lookup_entry(quest, trap_id)
+    if entry is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"no trap '{trap_id}' in this quest")
+    trap_type, trap_pos = entry
+
+    result = resolve_trap_action(
+        board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id,
+        trap_id=trap_id, trap_type=trap_type, trap_pos=trap_pos,
+        action=action, die_face=die_face, landing=landing, has_tool_kit=has_tool_kit,
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    heroes = game_state.get("heroes", [])
+    for h in heroes:
+        if h["id"] == hero_id:
+            h["pos"] = list(result.hero_pos)
+
+    updates: dict = {
+        "heroes": to_firestore_coords(heroes),
+        "log": existing_log + [{"turn": turn, "text": line} for line in result.log],
+    }
+
+    if result.sprung:
+        updates["trapsTriggered"] = sorted(set(game_state.get("trapsTriggered", [])) | {trap_id})
+        if trap_type == "falling_block":
+            collapsed = {tuple(sq) for sq in game_state.get("collapsedSquares", [])} | {tuple(trap_pos)}
+            updates["collapsedSquares"] = to_firestore_coords(sorted(collapsed))
+    if result.disarmed:
+        # A disarmed trap is "gone" -- parking it in trapsTriggered is the
+        # simplest way to make it permanently inert without a third registry.
+        updates["trapsTriggered"] = sorted(set(game_state.get("trapsTriggered", [])) | {trap_id})
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
+    """Jump, disarm, or deliberately step on a trap the party already
+    found. Movement stops in front of a known trap, so this is the
+    follow-up action -- same two-step shape as open_door.
+
+    The die is the HERO's: the app names the roll, the player reports
+    the face ("skull" | "white_shield" | "black_shield"), and the engine
+    applies the consequence. hasToolKit is asserted by the caller
+    because inventory is physical (the Dwarf needs no kit).
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    trap_id = data.get("trapId")
+    action = data.get("action")
+    die_face = data.get("dieFace")
+    landing = data.get("landing")
+    has_tool_kit = bool(data.get("hasToolKit", False))
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(trap_id, str) or not trap_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="trapId is required")
+    if action not in TRAP_ACTIONS:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"action must be one of {sorted(TRAP_ACTIONS)}"
+        )
+    if landing is not None:
+        landing = tuple(from_firestore_coords(landing))
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_trap_action(
+            transaction, db, game_ref, hero_id, trap_id, action, die_face, landing, has_tool_kit
+        )
+    except InvalidTrapActionError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "trapId": result.trap_id,
+        "action": result.action,
+        "sprung": result.sprung,
+        "disarmed": result.disarmed,
+        "heroPos": list(result.hero_pos),
+        "placementInstruction": result.placement_instruction,
         "log": result.log,
     }
 

@@ -4,6 +4,8 @@ R1 (x:1-4,y:1-3) <-D1(4,1)/(5,1)-> R2 (x:5-8,y:1-3) <-D2(8,1)/(9,1)-> R3
 (unrevealed in most tests, used only for the wandering-frontier case).
 """
 
+import random
+
 import pytest
 
 from engine.zargon_turn import ZARGON_TURN_END, resolve_zargon_turn
@@ -257,3 +259,21 @@ def test_monsters_cannot_cross_blocked_squares(catalogs):
     result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
 
     assert result.monster_results[0].action == "no_target"
+
+
+def test_monster_in_a_sprung_pit_attacks_with_one_less_die(catalogs):
+    # "When in a pit, you may also attack and defend, but you must roll
+    # one less combat die... (This applies to monsters as well.)"
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [3, 2]}])
+    quest["rooms"]["R1"] = {"traps": [{"type": "pit", "pos": [3, 2]}], "monsters": [], "furniture": []}
+    game_state = _game_state(monsters={"M1": {"pos": [3, 2], "currentBody": 1, "alive": True}})
+    game_state["trapsTriggered"] = ["R1-T1"]  # the pit is open
+
+    result = resolve_zargon_turn(
+        board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal", rng=random.Random(1)
+    )
+
+    attack = result.monster_results[0].turn_result.attack
+    assert attack is not None
+    assert attack.dice_rolled == catalogs.monsters["orc"]["attack"] - 1

@@ -7,9 +7,11 @@ party a free action, so search_type selects one.
 Unlike treasure (physical deck, app never learns the contents), traps
 and secret doors are entirely quest-owned data the app already has --
 so this search is fully digital: it reveals whatever's actually there.
-Found traps go into the same trapsTriggered registry
-engine/hero_movement.py uses, so stepping on a found trap later doesn't
-re-log it as a fresh spring -- once known, it's known. Found secret
+Found traps go into game state's trapsFound registry -- deliberately
+NOT trapsTriggered, which means SPRUNG. A found trap is still armed:
+the rulebook springs it on a hero who walks in without jumping or
+disarming, so knowing where it is buys the party a decision, not
+immunity. Found secret
 doors flip from "secret" to "closed": now a normal door, still
 requiring the separate "open door" button per the interface list.
 
@@ -94,7 +96,7 @@ def resolve_trap_search(
     if game_state.get("searched", {}).get(room_id, {}).get(searched_flag):
         raise InvalidTrapSearchError(f"room '{room_id}' has already been searched for {search_type.replace('_', ' ')}")
 
-    already_known = set(game_state.get("trapsTriggered", []))
+    already_known = set(game_state.get("trapsFound", [])) | set(game_state.get("trapsTriggered", []))
     log = [f"{hero_id} searches {room_id} for {search_type.replace('_', ' ')}."]
 
     # "You can only search for traps [or secret doors] if there are no

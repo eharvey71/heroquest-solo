@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from validator.catalogs import CORRIDOR, Board, Catalogs
 from validator.geometry import furniture_squares
 
+from .hero_movement import shareable_squares
+
 from .movement import Coord, passable_door_edges, revealed_squares
 from .targeting import (
     guard_engaged_by,
@@ -107,6 +109,14 @@ def _turn_opening(turn_type: str, focus_hero_name: str | None) -> str:
     return line
 
 
+def _stairway_squares(quest: dict) -> set:
+    pos = quest.get("stairway", {}).get("pos")
+    if not pos:
+        return set()
+    x, y = pos
+    return {(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)}
+
+
 def resolve_zargon_turn(
     *,
     board: Board,
@@ -128,6 +138,10 @@ def resolve_zargon_turn(
     # Furniture is solid for monsters too -- a monster pathing through a
     # tomb would desync from the physical board (see hero_movement.py).
     furniture = furniture_squares(quest, catalogs)
+    # Sprung pits: a monster standing in one fights at a die's disadvantage.
+    pit_squares = {
+        sq for sq in shareable_squares(quest, game_state) if sq not in _stairway_squares(quest)
+    }
     # "Neither Heroes nor monsters can move through blocked squares"
     # (1989 rulebook, Blocked Square Tiles). Heroes were already stopped
     # by these in hero_movement; monsters were walking straight through.
@@ -198,6 +212,11 @@ def resolve_zargon_turn(
             continue
         overrides = mdef.get("overrides", {})
         attack_dice = overrides.get("attack", catalog_entry["attack"])
+        # "When in a pit, you may also attack and defend, but you must
+        # roll one less combat die when doing so. (This applies to
+        # monsters as well.)" Minimum one die, same as the hero rule.
+        if pos in pit_squares:
+            attack_dice = max(1, attack_dice - 1)
         move_points = overrides.get("move", catalog_entry["move"])
         monster_name = mdef.get("name") or mdef["type"]
 

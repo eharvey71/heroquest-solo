@@ -140,6 +140,34 @@ export const searchTrapsAndSecretDoors = call<SearchTrapsAndSecretDoorsRequest, 
   "search_traps_and_secret_doors"
 );
 
+// ---- resolveTrapAction ----
+
+export type CombatDieFace = "skull" | "white_shield" | "black_shield";
+
+export interface ResolveTrapActionRequest {
+  gameId: string;
+  heroId: string;
+  trapId: string;
+  action: "jump" | "disarm" | "step";
+  /** The hero's own die, reported -- the app never rolls it. */
+  dieFace?: CombatDieFace;
+  landing?: Coord;
+  /** Inventory is physical, so the player asserts this. */
+  hasToolKit?: boolean;
+}
+export interface ResolveTrapActionResponse {
+  trapId: string;
+  action: string;
+  sprung: boolean;
+  disarmed: boolean;
+  heroPos: Coord;
+  placementInstruction: string | null;
+  log: string[];
+}
+export const resolveTrapAction = call<ResolveTrapActionRequest, ResolveTrapActionResponse>(
+  "resolve_trap_action_endpoint"
+);
+
 // ---- endTurn ----
 
 export interface EndTurnRequest {

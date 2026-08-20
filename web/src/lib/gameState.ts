@@ -51,6 +51,11 @@ export interface GameState {
   searched?: Record<string, { treasure?: boolean; treasureBy?: string[]; traps?: boolean; secretDoors?: boolean }>;
   /** Squares sealed by a sprung falling block -- impassable for good. */
   collapsedSquares?: Coord[];
+  /** Traps already sprung. */
+  trapsTriggered?: string[];
+  /** Traps the party found by searching -- known, but still armed.
+   * Only found traps appear here; unfound ones stay hidden in quest data. */
+  trapsFound?: Record<string, { type: string; pos: Coord }>;
   log?: LogEntry[];
 }
 

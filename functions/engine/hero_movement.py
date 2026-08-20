@@ -27,6 +27,19 @@ Heroes may pass through fellow HEROES but nothing else (CLAUDE.md's
 rules-edition note). Furniture is solid: a table or tomb is a physical
 obstruction on the real board, so a traced path can't cross it.
 
+KNOWN traps are distinct from SPRUNG ones. A trap the party found by
+searching is still armed -- the rulebook springs it on anyone who
+walks in without jumping or disarming -- so movement STOPS in front of
+it ("known_trap") and the hero chooses: jump it, disarm it, or step on
+it deliberately. Conflating the two registries made searching a room
+disarm every trap in it for free.
+
+Sharing a square is normally illegal, with the rulebook's two stated
+exceptions: "When on the stairs or in pit traps, sharing a square is
+permitted." Both are computable from quest data plus which pits have
+sprung, so the app enforces the rule and its exceptions rather than
+approximating either.
+
 This module never touches hero body points -- physical-only, same
 boundary as everywhere else in this app.
 """
@@ -72,13 +85,15 @@ class HeroMovementResult:
     # | "furniture_blocked" | "no_door" | "off_board"
     stopped_reason: str | None = None
     stopped_at_door_id: str | None = None
+    stopped_at_trap_id: str | None = None
     log: list[str] = field(default_factory=list)
 
     # Everything a caller needs to merge back into game state -- the
     # union of what was already revealed plus what this move added.
     revealed_rooms: set[str] = field(default_factory=set)
     revealed_corridor_squares: set[Coord] = field(default_factory=set)
-    traps_triggered: set[str] = field(default_factory=set)
+    traps_triggered: set[str] = field(default_factory=set)  # sprung
+    traps_found: set[str] = field(default_factory=set)  # known, still armed
     collapsed_squares: set[Coord] = field(default_factory=set)
 
 
@@ -95,6 +110,25 @@ def _build_trap_lookup(quest: dict) -> dict[Coord, tuple[str, str]]:
     for i, trap in enumerate(quest.get("corridorTraps", []), start=1):
         lookup[tuple(trap["pos"])] = (f"CORRIDOR-T{i}", trap["type"])
     return lookup
+
+
+def shareable_squares(quest: dict, game_state: dict) -> set:
+    """Squares where figures may stack: the stairway's 2x2 footprint and
+    any SPRUNG pit (1989 rulebook -- an unsprung pit is still a covered
+    floor, so it shares nothing).
+    """
+    squares = set()
+    stairway = quest.get("stairway", {})
+    pos = stairway.get("pos")
+    if pos:
+        x, y = pos
+        squares.update({(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)})
+
+    sprung = set(game_state.get("trapsTriggered", []))
+    for trap_pos, (trap_id, trap_type) in _build_trap_lookup(quest).items():
+        if trap_type == "pit" and trap_id in sprung:
+            squares.add(trap_pos)
+    return squares
 
 
 def _door_by_edge(quest_doors: list[dict]) -> dict[frozenset, dict]:
@@ -133,7 +167,13 @@ def resolve_hero_movement(
     revealed_rooms = set(game_state.get("revealed", {}).get("rooms", []))
     revealed_corridor = {tuple(s) for s in game_state.get("revealed", {}).get("corridorSquares", [])}
     door_states = game_state.get("doors", {})
-    traps_triggered = set(game_state.get("trapsTriggered", []))
+    # trapsTriggered keeps its original meaning: traps already SPRUNG.
+    # trapsFound is the newer, separate registry of traps the party knows
+    # about but which are still armed. A legacy doc with search results
+    # folded into trapsTriggered just leaves those few traps harmless in
+    # that one game -- no migration needed.
+    traps_sprung = set(game_state.get("trapsTriggered", []))
+    traps_found = set(game_state.get("trapsFound", []))
     blocked_squares = {tuple(s) for s in quest.get("blockedSquares", [])}
     # Squares where a falling block has already come down this game --
     # quest data can't know these; they accumulate at runtime.
@@ -153,6 +193,7 @@ def resolve_hero_movement(
     applied_path = [path[0]]
     stopped_reason: str | None = None
     stopped_door_id: str | None = None
+    stopped_trap_id: str | None = None
 
     for prev, cur in zip(path, path[1:]):
         if board.area_of.get(cur) is None:
@@ -196,13 +237,21 @@ def resolve_hero_movement(
             newly_revealed_corridor.append(cur)
 
         trap = trap_lookup.get(cur)
-        springing = trap is not None and trap[0] not in traps_triggered
+        if trap is not None and trap[0] not in traps_sprung and trap[0] in traps_found:
+            # The party already knows this one is here. Walking on would
+            # spring it, so stop and let the hero decide.
+            stopped_reason = "known_trap"
+            stopped_trap_id = trap[0]
+            log.append(f"{hero_id} stops in front of the known {trap[1]} trap at [{cur[0]},{cur[1]}].")
+            break
+
+        springing = trap is not None and trap[0] not in traps_sprung
 
         if springing and trap[1] == "falling_block":
             # The ceiling comes down before the hero is through: they do
             # not take the square, and it is sealed for good.
             trap_id, trap_type = trap
-            traps_triggered.add(trap_id)
+            traps_sprung.add(trap_id)
             collapsed.add(cur)
             instruction = (
                 f"Place the falling block trap tile at square [{cur[0]},{cur[1]}] -- "
@@ -220,7 +269,7 @@ def resolve_hero_movement(
 
         if springing:
             trap_id, trap_type = trap
-            traps_triggered.add(trap_id)
+            traps_sprung.add(trap_id)
             instruction = f"Place the pit trap tile at square [{cur[0]},{cur[1]}], under the hero's figure."
             triggered.append(TriggeredTrap(trap_id=trap_id, trap_type=trap_type, pos=cur, placement_instruction=instruction))
             log.append(
@@ -231,7 +280,7 @@ def resolve_hero_movement(
             break
 
     final_pos = applied_path[-1]
-    if final_pos in other_hero_squares:
+    if final_pos in other_hero_squares and final_pos not in shareable_squares(quest, game_state):
         raise IllegalMovementError(f"path cannot end on a square occupied by another hero ({final_pos})")
 
     return HeroMovementResult(
@@ -243,9 +292,11 @@ def resolve_hero_movement(
         triggered_traps=triggered,
         stopped_reason=stopped_reason,
         stopped_at_door_id=stopped_door_id,
+        stopped_at_trap_id=stopped_trap_id,
         log=log,
         revealed_rooms=revealed_rooms,
         revealed_corridor_squares=revealed_corridor,
-        traps_triggered=traps_triggered,
+        traps_triggered=traps_sprung,
+        traps_found=traps_found,
         collapsed_squares=collapsed,
     )

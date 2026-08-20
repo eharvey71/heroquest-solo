@@ -180,10 +180,23 @@ through, so they never take the square and stay put (the rulebook
 offers forward or back; the app can't prompt mid-move and picks back,
 which can't strand them). A sprung falling block becomes a PERMANENT
 block for heroes and monsters alike -- tracked as game state's
-collapsedSquares, since quest data can't know it. Note the app treats
-a FOUND trap as known and therefore un-springable; the rulebook would
-still spring it on a hero who walks in without jumping or disarming.
-That gap is known and not yet fixed.
+collapsedSquares, since quest data can't know it. FOUND and SPRUNG are separate registries: trapsFound (known, still
+ARMED -- stored as {trapId: {type,pos}} so the client can offer
+jump/disarm without being handed the quest's hidden trap layout) vs
+trapsTriggered (sprung or disarmed, permanently inert). Conflating
+them let a search disarm a whole room for free. Movement STOPS in
+front of a known trap ("known_trap"), same two-step shape as a door,
+and the hero picks JUMP, DISARM, or step on it deliberately
+(engine/trap_action.py). The die is the hero's: the app names the roll
+and the player reports the face. Dwarf disarms bare-handed and fails
+only on a black shield; anyone else needs a tool kit (physical, so the
+caller asserts it) and fails on a skull.
+
+Sharing a square is allowed in exactly the rulebook's two cases: the
+stairway footprint, and a SPRUNG pit (an unsprung one is still covered
+floor). A monster standing in a sprung pit attacks with one die fewer,
+minimum one -- the rulebook's pit penalty explicitly applies to
+monsters too.
 
 Monsters may not (1989 rulebook, Zargon's Turn page, verified against
 the owner's photos): search for treasure or secret doors, move or
