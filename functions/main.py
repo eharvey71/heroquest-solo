@@ -18,11 +18,13 @@ actions), end_turn (flips phase hero->zargon; a lone-hero party gets two
 full hero phases per turn first -- heroPhaseSegment),
 roll_zargon_turn_type/resolve_zargon_turn, resolve_hero_attack, and
 record_hero_defense (log-only shield reporting) operate on it
-afterward. resolve_movement, open_door, and resolve_hero_attack also
-check engine.objective.check_objective_complete after applying their
-own state change (see _mark_objective_if_complete) -- those are the
-only three actions that can newly satisfy an objective (a monster
-dying, or a room becoming revealed).
+afterward. Ending a quest takes TWO stages (see
+_mark_objective_if_complete): the objective is met, and then a hero
+walks back to the stairway -- the rulebook only counts a quest
+finished there. Every action that can advance either stage checks it:
+resolve_movement, open_door and resolve_hero_attack (a monster dying
+or a room becoming revealed), plus resolve_trap_action, since a jump
+can land a hero on the stairs.
 """
 
 import anthropic
@@ -36,7 +38,7 @@ from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
-from engine.objective import check_objective_complete
+from engine.objective import check_objective_complete, hero_on_stairway
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
@@ -268,20 +270,43 @@ def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
     return game_state, quest
 
 
-def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict) -> bool:
-    """Checks engine.objective.check_objective_complete against `game_state`
-    (the caller must have already applied this action's changes to the
-    LOCAL game_state dict -- e.g. the new revealed rooms or a monster's
-    flipped alive flag -- before calling this) and, if newly true, adds
-    status + a completion log line to `updates` in place. Returns
-    whether this call is what completed it, so the caller can decide
-    whether to mention it in the response. A no-op if already complete.
+def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, log_entries: list, turn: int) -> bool:
+    """Advances the two-stage ending against `game_state` (the caller
+    must have already applied this action's changes to the LOCAL
+    game_state dict -- new revealed rooms, a monster's flipped alive
+    flag, a hero's new position -- before calling this).
+
+    Stage 1: the objective is met -> objectiveComplete, and the party is
+    told to head back. Stage 2: a hero reaches the stairway -> status
+    "complete". The rulebook ends a quest at the stairway, not at the
+    objective (engine/objective.py). Appends its own log lines for both
+    stages; returns True only when this call finished the whole quest.
     """
     if game_state.get("status") == "complete":
         return False
-    if not check_objective_complete(quest, game_state):
+
+    objective_done = game_state.get("objectiveComplete") or check_objective_complete(quest, game_state)
+    if not objective_done:
         return False
+
+    if not game_state.get("objectiveComplete"):
+        updates["objectiveComplete"] = True
+        game_state["objectiveComplete"] = True
+        log_entries.append(
+            {
+                "turn": turn,
+                "text": (
+                    f"{quest.get('objective', {}).get('description', 'The objective')} -- done! "
+                    f"Now get back to the stairway; the quest is only safely finished there."
+                ),
+            }
+        )
+
+    if not hero_on_stairway(quest, game_state):
+        return False
+
     updates["status"] = "complete"
+    log_entries.append({"turn": turn, "text": quest.get("completionText", "The heroes escape with the quest complete!")})
     return True
 
 
@@ -319,8 +344,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         # would throw the positions away.
         "collapsedSquares": to_firestore_coords(sorted(result.collapsed_squares)),
     }
-    if _mark_objective_if_complete(quest, game_state, updates):
-        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
     transaction.update(game_ref, updates)
@@ -440,8 +464,7 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
         updates["revealed.rooms"] = sorted(revealed_rooms)
         game_state["revealed"]["rooms"] = sorted(revealed_rooms)
 
-    if _mark_objective_if_complete(quest, game_state, updates):
-        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
     transaction.update(game_ref, updates)
@@ -747,10 +770,8 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
         if h["id"] == hero_id:
             h["pos"] = list(result.hero_pos)
 
-    updates: dict = {
-        "heroes": to_firestore_coords(heroes),
-        "log": existing_log + [{"turn": turn, "text": line} for line in result.log],
-    }
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates: dict = {"heroes": to_firestore_coords(heroes)}
 
     if result.sprung:
         updates["trapsTriggered"] = sorted(set(game_state.get("trapsTriggered", [])) | {trap_id})
@@ -761,6 +782,10 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
         # A disarmed trap is "gone" -- parking it in trapsTriggered is the
         # simplest way to make it permanently inert without a third registry.
         updates["trapsTriggered"] = sorted(set(game_state.get("trapsTriggered", [])) | {trap_id})
+
+    # A jump (or a deliberate step) can land a hero on the stairway.
+    _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
+    updates["log"] = existing_log + new_log_entries
 
     transaction.update(game_ref, updates)
     return result
@@ -1013,8 +1038,7 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
         f"monsters.{monster_id}.currentBody": result.body_points_after,
         f"monsters.{monster_id}.alive": not result.defeated,
     }
-    if _mark_objective_if_complete(quest, game_state, updates):
-        new_log_entries.append({"turn": turn, "text": quest.get("completionText", "Objective complete!")})
+    _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
     transaction.update(game_ref, updates)

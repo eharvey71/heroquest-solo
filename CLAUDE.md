@@ -259,6 +259,18 @@ do not conflate them:
 Both wandering cases emit a "place the [type] mini at square [x,y]"
 instruction, same convention as trap/secret-door reveals.
 
+Ending a quest takes TWO stages (1989 rulebook, Hero Movement: "To
+safely complete a Quest, you must return to the stairway, for it is
+only there that you are truly free from harm"). Stage 1: the objective
+is met -> game state's objectiveComplete, and the log tells the party
+to head back. Stage 2: a hero reaches the stairway footprint ->
+status "complete" and completionText. Firing on the objective alone
+skipped the walk home entirely.
+
+WHO must get back is deliberately "any hero": hero death is physical,
+so the app can never know who survived and "all survivors" is not
+computable. Revisit only if hero death ever becomes digital.
+
 ## Open items / first tasks
 1. Firebase project skeleton (Hosting + Firestore + Functions, Python).
 2. Validator module (geometry, BFS reachability from stairway, budget,

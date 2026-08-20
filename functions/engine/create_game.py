@@ -86,7 +86,8 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "turn": 1,
         "phase": "hero",
         "heroPhaseSegment": 1,  # lone-hero parties get 2 hero phases per turn; see engine/end_turn.py
-        "status": "in_progress",  # -> "complete" once engine.objective.check_objective_complete fires
+        "status": "in_progress",  # -> "complete" only once a hero is back at the stairway
+        "objectiveComplete": False,  # stage 1 of 2; see main._mark_objective_if_complete
         "heroes": hero_states,
         "monsters": monsters,
         "revealed": {"rooms": [stairway_room], "corridorSquares": []},

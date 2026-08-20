@@ -56,3 +56,32 @@ def test_missing_target_room_never_completes():
     quest = _quest("reach_exit", {})
     game_state = {"revealed": {"rooms": ["R1"]}}
     assert check_objective_complete(quest, game_state) is False
+
+
+def test_hero_on_stairway_detected(good_quest_4h):
+    from engine.objective import hero_on_stairway
+
+    pos = good_quest_4h["stairway"]["pos"]
+    on = {"heroes": [{"id": "barbarian", "pos": [pos[0] + 1, pos[1] + 1]}]}
+    off = {"heroes": [{"id": "barbarian", "pos": [pos[0] - 5, pos[1]]}]}
+    assert hero_on_stairway(good_quest_4h, on) is True
+    assert hero_on_stairway(good_quest_4h, off) is False
+
+
+def test_any_hero_counts_not_only_the_first(good_quest_4h):
+    from engine.objective import hero_on_stairway
+
+    pos = good_quest_4h["stairway"]["pos"]
+    state = {
+        "heroes": [
+            {"id": "barbarian", "pos": [pos[0] - 5, pos[1]]},
+            {"id": "wizard", "pos": list(pos)},
+        ]
+    }
+    assert hero_on_stairway(good_quest_4h, state) is True
+
+
+def test_quest_without_a_stairway_is_never_home(good_quest_4h):
+    from engine.objective import hero_on_stairway
+
+    assert hero_on_stairway({}, {"heroes": [{"id": "barbarian", "pos": [1, 1]}]}) is False

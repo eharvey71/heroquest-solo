@@ -1,4 +1,18 @@
-"""Detects whether the quest's objective has been completed.
+"""Detects whether the quest's objective has been completed, and
+whether the party has since made it home.
+
+Completing the objective is NOT the end of the quest. "To safely
+complete a Quest, you must return to the stairway, for it is only
+there that you are truly free from harm" (1989 rulebook, Hero
+Movement). So the quest runs in two stages: the objective is met, and
+then a hero has to walk back.
+
+Who has to get back is a judgement call the app can't fully make: hero
+death is physical (CLAUDE.md's boundary), so the app never knows who
+survived and "all surviving heroes" isn't computable. ANY hero
+reaching the stairway ends the quest -- it needs no extra state and no
+extra typing mid-game. Tighten it only if hero death ever becomes
+digital.
 
 The four objective.type values (design/quest-schema.md) resolve to
 exactly two digitally-verifiable triggers -- confirmed against real
@@ -36,3 +50,19 @@ def check_objective_complete(quest: dict, game_state: dict) -> bool:
     if not room:
         return False
     return room in game_state.get("revealed", {}).get("rooms", [])
+
+
+def _stairway_squares(quest: dict) -> set:
+    pos = quest.get("stairway", {}).get("pos")
+    if not pos:
+        return set()
+    x, y = pos
+    return {(x, y), (x + 1, y), (x, y + 1), (x + 1, y + 1)}
+
+
+def hero_on_stairway(quest: dict, game_state: dict) -> bool:
+    """Is any hero standing on the stairway's 2x2 footprint?"""
+    squares = _stairway_squares(quest)
+    if not squares:
+        return False
+    return any(tuple(h["pos"]) in squares for h in game_state.get("heroes", []))

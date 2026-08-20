@@ -17,6 +17,7 @@ interface RawGameDoc {
   questId: string;
   phase: "hero" | "zargon";
   status?: "in_progress" | "complete";
+  objectiveComplete?: boolean;
   turn: number;
   heroPhaseSegment?: number;
   heroes: HeroToken[];
@@ -39,6 +40,7 @@ function toGameState(raw: RawGameDoc): GameState {
     questId: raw.questId,
     phase: raw.phase,
     status: raw.status ?? "in_progress",
+    objectiveComplete: raw.objectiveComplete ?? false,
     turn: raw.turn,
     heroPhaseSegment: raw.heroPhaseSegment ?? 1,
     doors: raw.doors ?? {},

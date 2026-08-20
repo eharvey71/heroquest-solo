@@ -279,6 +279,26 @@ export function GameView({ gameId }: GameViewProps) {
         </div>
       )}
 
+      {/* The objective is only half the quest -- the rulebook ends it at
+          the stairway, so say so until a hero actually gets there. */}
+      {game.status !== "complete" && game.objectiveComplete && (
+        <div
+          style={{
+            border: "2px solid #7fb0ff",
+            borderRadius: 6,
+            padding: 12,
+            marginBottom: 16,
+            background: "#16233a",
+            maxWidth: 700,
+          }}
+        >
+          <h2 style={{ margin: 0, color: "#7fb0ff" }}>Objective complete &mdash; get back to the stairway</h2>
+          <p style={{ color: "#cfe0ff", margin: "6px 0 0" }}>
+            A quest is only safely finished at the stairway. Any hero reaching it ends the quest.
+          </p>
+        </div>
+      )}
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <h2>
           Turn {game.turn} &mdash;{" "}

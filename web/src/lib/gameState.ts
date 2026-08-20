@@ -41,6 +41,9 @@ export interface GameState {
   questId?: string;
   phase?: "hero" | "zargon";
   status?: "in_progress" | "complete";
+  /** Stage 1 of the ending: objective met, but the party still has to
+   * walk back to the stairway (see main._mark_objective_if_complete). */
+  objectiveComplete?: boolean;
   turn?: number;
   /** Lone-hero parties play the hero phase twice per turn (1 | 2). */
   heroPhaseSegment?: number;
