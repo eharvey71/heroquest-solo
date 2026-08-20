@@ -33,8 +33,8 @@ tells Zargon, and the room is revealed without stepping inside --
 entering first would mean walking onto whatever stands behind it. The
 app derives openable doors from where the hero stands, so no walk-into
 attempt is needed to discover a closed door. EVERY door starts closed
-at game creation: quest data marking a door "open" only means "no lock,
-no secret" -- it is not a claim the door stands open on turn 1, and
+at game creation: quest data marking a door "open" only means "not
+secret" -- it is not a claim the door stands open on turn 1, and
 taking it literally let heroes walk straight into unrevealed rooms.
 Opening a door REPLACES the closed piece with an open one (see the
 component notes below). Treasure searches use the physical
@@ -84,9 +84,13 @@ PIECES, not a cap on closed doors. Every door is placed closed; when a
 hero opens one, Zargon REPLACES the closed piece with an open piece,
 freeing the closed piece for reuse. So closed pieces recycle, open
 pieces accumulate. Quest-declared door state therefore constrains
-nothing physical: only "locked" (needs key/spell) and "secret" (must be
-searched for) carry meaning, and locked is capped at 5 as a difficulty
-knob, not a component count. No simultaneity cap is needed and none
+nothing physical: only "secret" (must be searched for) carries
+meaning. There is NO locked-door state -- it came from the v0.1 schema,
+not the rulebook, which has no lock mechanic and no locked-door piece;
+the app had no way to grant a key, and the validator counted locked
+doors as passable, so a quest could be certified reachable through a
+door nothing could ever open. Removed; legacy quests read a stored
+"locked" as closed. No simultaneity cap is needed and none
 should be built: the owner confirms more than 5 doors are never closed
 on the board at once in real play, so the app does not track closed-
 piece supply or emit "place a closed door" instructions.
@@ -220,7 +224,7 @@ the owner's photos): search for treasure or secret doors, move or
 attack diagonally, pass over heroes, move through walls, OPEN OR CLOSE
 DOORS, or share a square. All are enforced. The door one is easy to
 get wrong: monsters path only through doors the HEROES have opened --
-closed/locked/secret are walls to Zargon (engine/movement.py
+closed and secret are walls to Zargon (engine/movement.py
 passable_door_edges). Monsters also never spring traps, and need not
 spend their full movement allowance.
 

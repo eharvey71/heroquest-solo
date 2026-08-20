@@ -119,18 +119,6 @@ def test_stops_at_closed_door_threshold(catalogs):
     assert result.newly_revealed_rooms == []
 
 
-def test_stops_at_locked_door(catalogs):
-    board = catalogs.board
-    quest = _quest()
-    game_state = _game_state(doors={"D1": "locked"})
-    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1]]
-
-    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
-
-    assert result.final_pos == (4, 1)
-    assert result.stopped_reason == "locked_door"
-
-
 def test_stops_before_a_monster(catalogs):
     board = catalogs.board
     quest = _quest()

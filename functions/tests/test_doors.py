@@ -68,18 +68,6 @@ def test_quest_open_door_still_needs_opening(good_quest_4h, catalogs):
     assert result.new_state == "open"
 
 
-def test_rejects_locked_door(good_quest_4h, catalogs):
-    game_state = {
-        "heroes": _hero_at((8, 4)),
-        "doors": {"D3": "locked"},
-        "revealed": {"rooms": [], "corridorSquares": []},
-    }
-    with pytest.raises(InvalidDoorOpenError):
-        resolve_open_door(
-            board=catalogs.board, quest=good_quest_4h, game_state=game_state, hero_id="barbarian", door_id="D3"
-        )
-
-
 def test_rejects_secret_door(good_quest_4h, catalogs):
     game_state = {
         "heroes": _hero_at((8, 4)),

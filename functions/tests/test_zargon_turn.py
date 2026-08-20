@@ -51,7 +51,7 @@ def test_normal_turn_chases_and_attacks_nearest_hero(catalogs):
 def test_normal_turn_no_target_when_unreachable(catalogs):
     board, c = catalogs.board, catalogs
     quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [8, 3]}])
-    game_state = _game_state(monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}}, doors={"D1": "locked"})
+    game_state = _game_state(monsters={"M1": {"pos": [8, 3], "currentBody": 1, "alive": True}}, doors={"D1": "closed"})
 
     result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
 

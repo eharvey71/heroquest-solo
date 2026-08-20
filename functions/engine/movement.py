@@ -5,7 +5,7 @@ path through squares the party has already revealed (Zargon doesn't
 send monsters wandering through walls into rooms no one has found
 yet), and only through doors the HEROES have opened -- the 1989
 rulebook's "Monsters May Not" list includes "open or close doors", so
-closed, locked, and secret doors are all walls to Zargon.
+closed and secret doors are both walls to Zargon.
 
 All other tokens (hero or monster) are hard obstacles. That matches
 the same rulebook list: monsters may not "pass over Heroes" or "share
@@ -47,8 +47,8 @@ def passable_door_edges(quest_doors: list[dict], door_states: dict) -> set[froze
 
     Only OPEN doors are passable. The 1989 rulebook's "Monsters May
     Not" list includes "open or close doors", so a monster can cross a
-    doorway only after the HEROES have opened it -- a closed, locked,
-    or secret door is a wall as far as Zargon is concerned. (Counting
+    doorway only after the HEROES have opened it -- a closed or secret
+    door is a wall as far as Zargon is concerned. (Counting
     "closed" as passable let monsters roam through every unopened door
     on the map once doors started life closed.) The same set drives
     guard-objective sightlines, which CLAUDE.md likewise defines

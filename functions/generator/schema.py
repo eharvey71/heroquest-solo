@@ -93,7 +93,7 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
             "properties": {
                 "id": {"type": "string"},
                 "squares": POS_PAIR,
-                "state": {"type": "string", "enum": ["open", "closed", "locked", "secret"]},
+                "state": {"type": "string", "enum": ["open", "closed", "secret"]},
             },
             "required": ["id", "squares", "state"],
             "additionalProperties": False,

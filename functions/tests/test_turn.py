@@ -180,11 +180,11 @@ def test_guarding_requires_monster_room_id_and_heroes():
 
 def test_monster_with_no_path_does_not_crash(catalogs):
     board, _edges, revealed = _setup(catalogs)
-    locked_edges = passable_door_edges([D1], {"D1": "locked"})
+    closed_edges = passable_door_edges([D1], {"D1": "closed"})
     result = take_monster_turn(
         board=board,
         revealed=revealed,
-        door_edges=locked_edges,
+        door_edges=closed_edges,
         occupied=set(),
         monster_id="M1",
         monster_name="Orc",

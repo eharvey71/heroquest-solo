@@ -15,7 +15,7 @@ are NOT flood-revealed here -- a corridor stretches out past what a
 doorway alone lets you see, and reveals progressively as walked
 (engine/hero_movement.py), same as if the door had already been open.
 
-Only closed -> open is handled. Locked doors need a key/spell
+Only closed -> open is handled. Secret doors need a search
 resolution and secret doors need to be found via a search first --
 neither is this button's job.
 """
@@ -35,7 +35,7 @@ class DoorNotFoundError(ValueError):
 
 class InvalidDoorOpenError(ValueError):
     """The door can't be opened right now: the hero isn't standing at
-    it, it's already open, or its state (locked/secret) requires a
+    it, it's already open, or it is still secret and requires a
     different resolution than this button.
     """
 
@@ -56,7 +56,9 @@ def effective_door_state(door: dict, door_states: dict) -> str:
     if state is not None:
         return state
     quest_state = door.get("state")
-    return "closed" if quest_state in ("open", "closed", None) else quest_state
+    # Anything that isn't a secret door starts closed. That includes the
+    # retired "locked" state, so pre-existing quests stay playable.
+    return quest_state if quest_state == "secret" else "closed"
 
 
 @dataclass
@@ -90,8 +92,6 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
 
     if state == "open":
         raise InvalidDoorOpenError(f"door '{door_id}' is already open")
-    if state == "locked":
-        raise InvalidDoorOpenError(f"door '{door_id}' is locked -- needs a key or spell, not this button")
     if state == "secret":
         raise InvalidDoorOpenError(f"door '{door_id}' is secret -- must be found via search first")
     if state != "closed":

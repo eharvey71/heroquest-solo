@@ -48,7 +48,6 @@ const STAIRWAY_STROKE = "#e8c34a";
 const DOOR_COLORS: Record<string, string> = {
   open: "#7fd67f",
   closed: "#d69a4a",
-  locked: "#c23b3b",
 };
 
 export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }: BoardTerrainProps) {

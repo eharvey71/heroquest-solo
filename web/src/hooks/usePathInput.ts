@@ -94,11 +94,7 @@ export function usePathInput({
             return prev;
           }
           if (doorState !== "open") {
-            setBlockedHint(
-              doorState === "locked"
-                ? "that door is locked -- it needs a key or spell"
-                : "that door is closed -- stop at it and use the Open door button"
-            );
+            setBlockedHint("that door is closed -- stop at it and use the Open door button");
             return prev;
           }
         }

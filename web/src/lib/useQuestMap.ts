@@ -12,7 +12,7 @@ import type { Coord } from "./board";
 import { db } from "./firebase";
 import { fromFirestoreCoords } from "./firestoreCoords";
 
-export type DoorState = "open" | "closed" | "locked" | "secret";
+export type DoorState = "open" | "closed" | "secret";
 
 export interface QuestDoor {
   id: string;

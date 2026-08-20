@@ -83,7 +83,7 @@ class HeroMovementResult:
     newly_revealed_corridor_squares: list[Coord] = field(default_factory=list)
     triggered_traps: list[TriggeredTrap] = field(default_factory=list)
     # None means the full requested path was walked without interruption.
-    # "closed_door" | "locked_door" | "monster_blocked" | "blocked_square"
+    # "closed_door" | "known_trap" | "trap_sprung" | "monster_blocked"
     # | "furniture_blocked" | "no_door" | "off_board"
     stopped_reason: str | None = None
     stopped_at_door_id: str | None = None
@@ -221,8 +221,8 @@ def resolve_hero_movement(
                 break
             door_id = door["id"]
             state = effective_door_state(door, door_states)
-            if state in ("locked", "secret"):
-                stopped_reason = "locked_door"
+            if state == "secret":
+                stopped_reason = "closed_door"
                 stopped_door_id = door_id
                 break
             if state == "closed":
@@ -298,7 +298,6 @@ def resolve_hero_movement(
     if stopped_reason is not None:
         stop_lines = {
             "closed_door": "A closed door blocks the way -- open it from the doorway.",
-            "locked_door": "That door is locked -- it needs a key or a spell.",
             "furniture_blocked": "Furniture blocks the way.",
             "monster_blocked": "A monster blocks the way.",
             "blocked_square": "That square is blocked.",

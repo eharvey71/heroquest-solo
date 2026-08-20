@@ -105,7 +105,7 @@ def test_rejects_quest_with_no_stairway(catalogs):
 
 def test_all_passable_doors_start_closed(good_quest_4h, catalogs):
     # A hero may never walk through a door unannounced -- quest data
-    # marking a door "open" means "not locked, not secret", not "already
+    # marking a door "open" means "not secret", not "already
     # standing open on turn 1".
     game_state = build_initial_game_state(
         quest=good_quest_4h, catalogs=catalogs, heroes=[{"id": "barbarian", "name": "Barbarian"}]
@@ -113,8 +113,8 @@ def test_all_passable_doors_start_closed(good_quest_4h, catalogs):
     quest_doors = {d["id"]: d.get("state") for d in good_quest_4h.get("doors", [])}
     assert quest_doors, "fixture should declare doors"
     for door_id, quest_state in quest_doors.items():
-        if quest_state in ("locked", "secret"):
-            assert game_state["doors"][door_id] == quest_state  # needs key/spell or a search
+        if quest_state == "secret":
+            assert game_state["doors"][door_id] == quest_state  # needs a search first
         else:
             assert game_state["doors"][door_id] == "closed"
 

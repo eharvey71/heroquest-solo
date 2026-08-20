@@ -17,7 +17,7 @@
     { "id": "D3", "squares": [[8, 4], [9, 4]], "state": "closed" },
     { "id": "D4", "squares": [[4, 4], [5, 4]], "state": "open" },
     { "id": "D5", "squares": [[1, 8], [1, 9]], "state": "open" },
-    { "id": "D6", "squares": [[4, 9], [4, 10]], "state": "locked" }
+    { "id": "D6", "squares": [[4, 9], [4, 10]], "state": "closed" }
   ],
   "corridorTraps": [
     { "type": "falling_block", "pos": [0, 0] }

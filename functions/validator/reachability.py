@@ -18,7 +18,7 @@ from collections import deque
 from .catalogs import Catalogs
 from .geometry import footprint_cells, furniture_squares
 
-NON_SECRET_STATES = {"open", "closed", "locked"}
+NON_SECRET_STATES = {"open", "closed"}
 
 
 def _door_edges(quest: dict, allowed_states) -> set:

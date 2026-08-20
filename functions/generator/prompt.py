@@ -57,7 +57,7 @@ def _physical_caps_lines(catalogs: Catalogs) -> str:
         f"Per-ROOM monster caps (minis recycle across the quest, but one room can "
         f"never contain more of a type than owned): {room_caps}.\n"
         f"Furniture per quest (hard-capped at owned counts): {furniture_caps}.\n"
-        f"Doors per quest: 21 total, at most 5 locked."
+        f"Doors per quest: 21 total."
     )
 
 
@@ -164,11 +164,11 @@ Blocked squares: use sparingly (limited tiles).
    nothing else.
 2. Doors only on wall edges shared by two areas. Every populated room must be
    reachable from the stairway through your doors (corridors are open paths).
-   A door is `{{"id": "D1", "squares": [[x1,y1],[x2,y2]], "state": "open|closed|locked|secret"}}`
+   A door is `{{"id": "D1", "squares": [[x1,y1],[x2,y2]], "state": "open|closed|secret"}}`
    -- declare an ordinary door as "closed": EVERY door starts closed in
    play (a hero must stop at it and have Zargon open it), so "open" is
-   never the right choice. Use "locked" (needs a key/spell) and
-   "secret" (must be found by searching) deliberately.
+   never the right choice. Use "secret" (must be found by searching)
+   deliberately.
    — the two squares are the wall edge itself, one on each side.
 3. The objective room must be at least {min_depth} doors deep from the
    stairway room and never adjacent to it.

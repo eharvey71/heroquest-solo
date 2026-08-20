@@ -32,13 +32,6 @@ def test_find_path_through_open_door(catalogs):
         assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
 
 
-def test_find_path_blocked_by_locked_door(catalogs):
-    board = catalogs.board
-    edges = passable_door_edges([D1], {"D1": "locked"})
-    path = find_path(board, _revealed(board), edges, set(), (6, 2), {(2, 2)})
-    assert path is None
-
-
 def test_find_path_blocked_by_closed_door(catalogs):
     # 1989 rulebook, "Monsters May Not: open or close doors" -- a closed
     # door is a wall to Zargon until the HEROES open it.

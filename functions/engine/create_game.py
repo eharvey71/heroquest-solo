@@ -43,8 +43,8 @@ def _initial_door_states(quest: dict) -> dict:
     one, and taking it literally let heroes stroll into unrevealed rooms
     (and onto whatever waited behind the door).
 
-    Locked and secret doors keep their state: they need a key/spell or a
-    search first, not the open-door button (engine/doors.py).
+    Secret doors keep their state: they must be found by searching
+    before the open-door button applies (engine/doors.py).
     """
     states = {}
     for d in quest.get("doors", []):
@@ -52,7 +52,7 @@ def _initial_door_states(quest: dict) -> dict:
         if not door_id:
             continue
         state = d.get("state")
-        states[door_id] = "closed" if state in ("open", "closed", None) else state
+        states[door_id] = state if state == "secret" else "closed"
     return states
 
 

@@ -28,7 +28,6 @@ MIN_DEPTH_BY_SIZE = {"short": 3, "full": 5}
 WANDERING_MAX_COST_LOW_HERO_COUNT = 8
 
 DOOR_TOTAL_CAP = 21
-DOOR_LOCKED_CAP = 5
 CORRIDOR_TRAP_CAP = 3
 ROOM_TRAP_CAP = 1
 
@@ -185,13 +184,9 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
     doors = quest.get("doors", [])
     if len(doors) > DOOR_TOTAL_CAP:
         errors.append(f"quest declares {len(doors)} doors, exceeding the owned count of {DOOR_TOTAL_CAP}")
-    # NOT a piece-count cap: every door starts closed in play regardless
-    # of the state declared here, and the closed piece is recycled the
-    # moment Zargon swaps it for an open one -- so "how many doors are
-    # closed" constrains nothing physical. Locked doors are capped as a
-    # DIFFICULTY knob (each one needs a key or spell to pass).
-    locked = sum(1 for d in doors if d.get("state") == "locked")
-    if locked > DOOR_LOCKED_CAP:
-        errors.append(f"quest declares {locked} locked doors, exceeding the cap of {DOOR_LOCKED_CAP}")
+    # No per-state cap: every door starts closed in play regardless of
+    # the state declared here, and the closed piece is recycled the
+    # moment Zargon swaps it for an open one, so "how many are closed"
+    # constrains nothing physical.
 
     return errors

@@ -14,7 +14,7 @@
   "doors": [
     { "id": "D1", "squares": [[16, 1], [17, 1]], "state": "open" },
     { "id": "D2", "squares": [[20, 1], [21, 1]], "state": "closed" },
-    { "id": "D3", "squares": [[21, 4], [21, 5]], "state": "locked" }
+    { "id": "D3", "squares": [[21, 4], [21, 5]], "state": "closed" }
   ],
   "rooms": {
     "R7": {

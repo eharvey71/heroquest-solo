@@ -66,7 +66,7 @@ Named bosses reference a base type with stat overrides (see quest schema).
   "blockedSquares": [[12, 4], [12, 5]],
   "startingRoom": "stairway",
   "doors": [
-    { "id": "D1", "squares": [[3, 2], [4, 2]], "state": "open | closed | locked | secret" }
+    { "id": "D1", "squares": [[3, 2], [4, 2]], "state": "open | closed | secret" }
   ],
   "corridorTraps": [
     { "type": "pit | falling_block", "pos": [6, 0] }
@@ -110,7 +110,7 @@ quest-generator-design.md section 5 — traps placed in the corridor
 rather than inside a room.
 
 If the objective is only reachable through a secret door (no route
-through open/closed/locked doors), the quest must set
+through open/closed doors), the quest must set
 `objective.secretPathHint: { "room": "R_id", "text": "..." }`, where
 `room` is itself reachable without any secret door. Without a valid
 hint, an objective reachable only via secret door fails validation.

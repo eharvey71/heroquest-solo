@@ -37,7 +37,7 @@ never contain more of a type than owned): orc 8, goblin 6, fimir 3,
 chaos_warrior 4, skeleton 4, zombie 2, mummy 2, gargoyle 1,
 chaos_warlock 1 (boss use only).
 Furniture per quest: hard-capped at owned counts (see catalog).
-Doors per quest: 21 total, at most 5 closed/locked.
+Doors per quest: 21 total.
 Blocked squares: use sparingly (limited tiles).
 
 ### QUEST PARAMETERS

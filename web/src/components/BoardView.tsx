@@ -202,6 +202,22 @@ export function BoardView({
           selectedHeroId={selectedHeroId ?? undefined}
         />
       </svg>
+      <div
+        style={{ marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap", fontSize: "0.8rem", color: "#9a917c" }}
+      >
+        {[
+          ["#7fd67f", "open door"],
+          ["#d69a4a", "closed door"],
+          ["#e8c34a", "stairway"],
+        ].map(([colour, label]) => (
+          <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 12, height: 4, background: colour, display: "inline-block" }} />
+            {label}
+          </span>
+        ))}
+        <span>a secret door looks like plain wall until it is found</span>
+      </div>
+
       {selectedHero && (
         <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span>

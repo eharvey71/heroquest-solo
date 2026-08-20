@@ -64,7 +64,7 @@ def test_select_normal_target_picks_nearest_hero(catalogs):
 
 def test_select_normal_target_none_when_no_hero_reachable(catalogs):
     board = catalogs.board
-    edges = passable_door_edges([D1], {"D1": "locked"})
+    edges = passable_door_edges([D1], {"D1": "closed"})
     revealed = revealed_squares(board, {"rooms": ["R1", "R2"], "corridorSquares": []})
     heroes = [{"id": "barbarian", "pos": [2, 2]}]
     target = select_normal_target(board, revealed, edges, set(), (6, 2), heroes)
@@ -125,9 +125,9 @@ def test_guard_engages_at_open_doorway_without_entering(catalogs):
     assert guard_should_engage(board, "R1", edges, heroes) is True
 
 
-def test_guard_does_not_engage_through_a_locked_door(catalogs):
+def test_guard_does_not_engage_through_a_closed_door(catalogs):
     board = catalogs.board
-    edges = passable_door_edges([D1], {"D1": "locked"})
+    edges = passable_door_edges([D1], {"D1": "closed"})
     heroes = [{"id": "wizard", "pos": [5, 1]}]
     assert guard_should_engage(board, "R1", edges, heroes) is False
 

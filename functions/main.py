@@ -455,7 +455,7 @@ def open_door(req: https_fn.CallableRequest) -> dict:
     stops at a closed door rather than auto-opening it). Reveals the
     far room immediately, matching how a human Zargon populates a room
     as soon as the door swings open. See functions/engine/doors.py for
-    the pure resolution logic (including why locked/secret doors are
+    the pure resolution logic (including why secret doors are
     explicitly out of scope for this button).
     """
     if req.auth is None:
