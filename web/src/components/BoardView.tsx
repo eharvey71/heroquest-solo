@@ -19,6 +19,7 @@ interface BoardViewProps {
   doors?: QuestDoor[];
   stairway?: QuestStairway | null;
   furniture?: QuestFurniture[];
+  blockedSquares?: Coord[];
 }
 
 export function BoardView({
@@ -30,15 +31,21 @@ export function BoardView({
   doors,
   stairway,
   furniture = [],
+  blockedSquares = [],
 }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
 
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
   const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
+  // A blocked square and a collapsed ceiling are the same thing to a
+  // hero tracing a path: impassable terrain the app can see.
   const collapsedKeys = useMemo(
-    () => new Set((gameState.collapsedSquares ?? []).map((sq) => squareKey(sq[0], sq[1]))),
-    [gameState.collapsedSquares]
+    () =>
+      new Set(
+        [...(gameState.collapsedSquares ?? []), ...blockedSquares].map((sq) => squareKey(sq[0], sq[1]))
+      ),
+    [gameState.collapsedSquares, blockedSquares]
   );
   // `doors` arrives with live game state already merged in (GameView's
   // resolvedDoors), so an entry here is the door's state right now.
@@ -191,7 +198,14 @@ export function BoardView({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        <BoardTerrain board={staticBoard} cellSize={cellSize} revealed={revealed} doors={doors} stairway={stairway} />
+        <BoardTerrain
+          board={staticBoard}
+          cellSize={cellSize}
+          revealed={revealed}
+          doors={doors}
+          stairway={stairway}
+          blockedSquares={blockedSquares}
+        />
         <Furniture cellSize={cellSize} furniture={furniture} revealed={revealed} />
         <PathOverlay cellSize={cellSize} path={path} />
         <Tokens

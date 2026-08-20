@@ -35,6 +35,7 @@ interface BoardTerrainProps {
   revealed: ReadonlySet<string>;
   doors?: QuestDoor[];
   stairway?: QuestStairway | null;
+  blockedSquares?: Coord[];
 }
 
 const ROOM_FILL = "#3a3226";
@@ -45,12 +46,20 @@ const WALL_STROKE = "#e8dfc8";
 const LABEL_FILL_REVEALED = "#c9bfa0";
 const LABEL_FILL_UNREVEALED = "#5a5347";
 const STAIRWAY_STROKE = "#e8c34a";
+const BLOCKED_FILL = "#5b5b5b";
 const DOOR_COLORS: Record<string, string> = {
   open: "#7fd67f",
   closed: "#d69a4a",
 };
 
-export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }: BoardTerrainProps) {
+export function BoardTerrain({
+  board,
+  cellSize,
+  revealed,
+  doors = [],
+  stairway,
+  blockedSquares = [],
+}: BoardTerrainProps) {
   const allSquareKeys = useMemo(() => new Set(board.areaOf.keys()), [board]);
 
   const visibleDoors = useMemo(
@@ -125,6 +134,24 @@ export function BoardTerrain({ board, cellSize, revealed, doors = [], stairway }
             />
           );
         })}
+      </g>
+      <g>
+        {blockedSquares
+          .filter((sq) => revealed.has(`${sq[0]},${sq[1]}`))
+          .map((sq) => (
+            <rect
+              key={`blocked-${sq[0]},${sq[1]}`}
+              x={sq[0] * cellSize + 1}
+              y={sq[1] * cellSize + 1}
+              width={cellSize - 2}
+              height={cellSize - 2}
+              fill={BLOCKED_FILL}
+              stroke="#8a8a8a"
+              strokeWidth={1}
+            >
+              <title>blocked square -- neither heroes nor monsters pass</title>
+            </rect>
+          ))}
       </g>
       <g>
         {roomLabelAnchors.map(({ roomId, label, full, pos }) => (

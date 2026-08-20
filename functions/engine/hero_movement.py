@@ -317,6 +317,16 @@ def resolve_hero_movement(
                 revealed_corridor.add(seen)
                 newly_revealed_corridor.append(seen)
 
+    # "You must place a blocked square tile on the gameboard as soon as
+    # it becomes visible to the Hero" (1989 rulebook, Blocked Square
+    # Tiles). They are quest data the party can't see until they look.
+    for square in newly_revealed_corridor:
+        if square in blocked_squares:
+            log.append(
+                f"Place the blocked square tile at [{square[0]},{square[1]}] -- "
+                f"neither heroes nor monsters pass it."
+            )
+
     if stopped_reason is not None:
         stop_lines = {
             "closed_door": "A closed door blocks the way -- open it from the doorway.",

@@ -113,6 +113,12 @@ def resolve_open_door(*, board: Board, quest: dict, game_state: dict, hero_id: s
     if far_area is not None and far_area != CORRIDOR:
         revealed_room = far_area
         log.append(f"{far_area} revealed.")
+        # Blocked squares inside the room become visible with it.
+        room_squares = board.room_squares.get(far_area, frozenset())
+        for sq in sorted({tuple(s) for s in quest.get("blockedSquares", [])} & set(room_squares)):
+            log.append(
+                f"Place the blocked square tile at [{sq[0]},{sq[1]}] -- neither heroes nor monsters pass it."
+            )
 
     return OpenDoorResult(
         door_id=door_id,

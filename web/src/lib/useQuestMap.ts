@@ -41,12 +41,15 @@ export interface QuestNarrative {
 
 export interface QuestMap {
   doors: QuestDoor[];
+  /** Impassable squares -- the physical blocked-square tiles. Drawn
+   * only once revealed, same as any other hidden quest content. */
+  blockedSquares: Coord[];
   stairway: QuestStairway | null;
   furniture: QuestFurniture[];
   narrative: QuestNarrative | null;
 }
 
-const EMPTY: QuestMap = { doors: [], stairway: null, furniture: [], narrative: null };
+const EMPTY: QuestMap = { doors: [], blockedSquares: [], stairway: null, furniture: [], narrative: null };
 
 interface RawFurniture {
   type: string;
@@ -56,6 +59,7 @@ interface RawFurniture {
 
 interface RawQuestDoc {
   doors?: QuestDoor[];
+  blockedSquares?: Coord[];
   stairway?: QuestStairway;
   title?: string;
   backstory?: string;
@@ -88,6 +92,7 @@ export function useQuestMap(questId: string | undefined): QuestMap {
       const raw = fromFirestoreCoords(snap.data()) as RawQuestDoc;
       setMap({
         doors: raw.doors ?? [],
+        blockedSquares: raw.blockedSquares ?? [],
         stairway: raw.stairway ?? null,
         furniture: extractFurniture(raw.rooms),
         narrative:

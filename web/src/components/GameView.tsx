@@ -87,7 +87,7 @@ export function GameView({ gameId }: GameViewProps) {
   // quest-declared "open" means "no lock, no secret", NOT that the door
   // stands open, so with no game-state entry it reads as closed and
   // still needs the Open door button.
-  const { doors: questDoors, stairway, furniture, narrative } = useQuestMap(game?.questId);
+  const { doors: questDoors, blockedSquares, stairway, furniture, narrative } = useQuestMap(game?.questId);
   const resolvedDoors = useMemo(
     () =>
       questDoors.map((d) => {
@@ -365,6 +365,7 @@ export function GameView({ gameId }: GameViewProps) {
         doors={resolvedDoors}
         stairway={stairway}
         furniture={furniture}
+        blockedSquares={blockedSquares}
       />
 
       {errorMsg && <p style={{ color: "#e66" }}>Error: {errorMsg}</p>}
