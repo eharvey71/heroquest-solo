@@ -228,6 +228,17 @@ closed and secret are walls to Zargon (engine/movement.py
 passable_door_edges). Monsters also never spring traps, and need not
 spend their full movement allowance.
 
+Hero spells (1989 rulebook, Action 2 -- engine/spell.py): the Elf and
+Wizard only, cast INSTEAD of attacking, at any target they can SEE
+(the real line-of-sight rule), once per spell per quest
+(game state's spellsCast). Spell CARDS stay physical -- the app has no
+spell catalogue and never learns what a card does. The player names
+the card; for an attack spell they report the skulls it rolled and the
+engine applies damage exactly as for a weapon attack, with a
+monsterDefends flag for cards that allow no defence roll. A spell
+aimed at a hero (healing, buffs) touches only physical state, so the
+app logs it, spends the card, and changes nothing else.
+
 Not implemented, deliberately:
 - Attack-then-move. The rulebook lets a monster act then move (not
   move-partway-act-move); the engine only does move-then-attack, so

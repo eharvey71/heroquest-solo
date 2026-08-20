@@ -26,6 +26,7 @@ interface RawGameDoc {
   doors?: Record<string, string>;
   searched?: GameState["searched"];
   collapsedSquares?: Coord[];
+  spellsCast?: string[];
   trapsTriggered?: string[];
   trapsFound?: GameState["trapsFound"];
   log?: LogEntry[];
@@ -46,6 +47,7 @@ function toGameState(raw: RawGameDoc): GameState {
     doors: raw.doors ?? {},
     searched: raw.searched ?? {},
     collapsedSquares: raw.collapsedSquares ?? [],
+    spellsCast: raw.spellsCast ?? [],
     trapsTriggered: raw.trapsTriggered ?? [],
     trapsFound: raw.trapsFound ?? {},
     log: raw.log ?? [],

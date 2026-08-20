@@ -96,5 +96,6 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "trapsFound": [],  # traps the party knows about but are still armed
         "collapsedSquares": [],  # squares sealed by a sprung falling block
         "searched": {},
+        "spellsCast": [],  # each spell card is spent once per quest
         "log": [{"turn": 1, "text": "The party begins their quest."}],
     }

@@ -54,6 +54,8 @@ export interface GameState {
   searched?: Record<string, { treasure?: boolean; treasureBy?: string[]; traps?: boolean; secretDoors?: boolean }>;
   /** Squares sealed by a sprung falling block -- impassable for good. */
   collapsedSquares?: Coord[];
+  /** Spell cards already spent this quest (one cast each). */
+  spellsCast?: string[];
   /** Traps already sprung. */
   trapsTriggered?: string[];
   /** Traps the party found by searching -- known, but still armed.

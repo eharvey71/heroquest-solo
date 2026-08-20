@@ -140,6 +140,27 @@ export const searchTrapsAndSecretDoors = call<SearchTrapsAndSecretDoorsRequest, 
   "search_traps_and_secret_doors"
 );
 
+// ---- castSpell ----
+
+export interface CastSpellRequest {
+  gameId: string;
+  heroId: string;
+  /** Named off the physical card -- the app has no spell catalogue. */
+  spellName: string;
+  targetMonsterId?: string;
+  skulls?: number;
+  monsterDefends?: boolean;
+}
+export interface CastSpellResponse {
+  heroId: string;
+  spellName: string;
+  targetMonsterId: string | null;
+  defeated: boolean;
+  bodyPointsAfter: number | null;
+  log: string[];
+}
+export const castSpell = call<CastSpellRequest, CastSpellResponse>("cast_spell");
+
 // ---- resolveTrapAction ----
 
 export type CombatDieFace = "skull" | "white_shield" | "black_shield";

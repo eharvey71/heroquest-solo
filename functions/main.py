@@ -39,6 +39,7 @@ from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_d
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.objective import check_objective_complete, hero_on_stairway
+from engine.spell import InvalidSpellError, resolve_hero_spell
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
@@ -845,6 +846,100 @@ def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
         "disarmed": result.disarmed,
         "heroPos": list(result.hero_pos),
         "placementInstruction": result.placement_instruction,
+        "log": result.log,
+    }
+
+
+@firestore.transactional
+def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_monster_id, skulls, monster_defends):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    result = resolve_hero_spell(
+        board=_catalogs.board, catalogs=_catalogs, quest=quest, game_state=game_state,
+        hero_id=hero_id, spell_name=spell_name, target_monster_id=target_monster_id,
+        skulls=skulls, monster_defends=monster_defends,
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+
+    updates: dict = {"spellsCast": sorted(set(game_state.get("spellsCast", [])) | {result.spell_name})}
+
+    if result.defense is not None and target_monster_id:
+        monster = game_state["monsters"][target_monster_id]
+        monster["currentBody"] = result.defense.body_points_after
+        updates[f"monsters.{target_monster_id}.currentBody"] = result.defense.body_points_after
+        if result.defense.defeated:
+            monster["alive"] = False
+            updates[f"monsters.{target_monster_id}.alive"] = False
+
+    _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
+    updates["log"] = existing_log + new_log_entries
+
+    transaction.update(game_ref, updates)
+    return result
+
+
+@https_fn.on_call()
+def cast_spell(req: https_fn.CallableRequest) -> dict:
+    """The Elf or Wizard casts a spell instead of attacking.
+
+    Spell cards are physical, so the app never learns what a spell
+    does: the player names the card, and for an attack spell reports
+    the skulls it rolled, exactly as with a weapon attack. What the app
+    enforces is the rulebook's frame -- caster class, line of sight to
+    the target, and one cast per spell per quest. See
+    functions/engine/spell.py.
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    spell_name = data.get("spellName")
+    target_monster_id = data.get("targetMonsterId")
+    skulls = data.get("skulls", 0)
+    monster_defends = data.get("monsterDefends", True)
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(spell_name, str) or not spell_name.strip():
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="spellName is required")
+    if target_monster_id is not None and not isinstance(target_monster_id, str):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="targetMonsterId must be a string"
+        )
+    if not isinstance(skulls, int) or isinstance(skulls, bool) or skulls < 0:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="skulls must be a non-negative integer"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        result = _apply_cast_spell(
+            transaction, db, game_ref, hero_id, spell_name, target_monster_id, skulls, bool(monster_defends)
+        )
+    except InvalidSpellError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {
+        "heroId": result.hero_id,
+        "spellName": result.spell_name,
+        "targetMonsterId": result.target_monster_id,
+        "defeated": result.defense.defeated if result.defense else False,
+        "bodyPointsAfter": result.defense.body_points_after if result.defense else None,
         "log": result.log,
     }
 

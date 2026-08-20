@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import {
+  castSpell,
   endTurn,
   openDoor,
   recordHeroDefense,
@@ -36,6 +37,10 @@ export function GameView({ gameId }: GameViewProps) {
   const [wanderingDrawn, setWanderingDrawn] = useState(false);
   const [attackMonsterId, setAttackMonsterId] = useState<string>("");
   const [attackSkulls, setAttackSkulls] = useState(0);
+  const [spellName, setSpellName] = useState("");
+  const [spellSkulls, setSpellSkulls] = useState(0);
+  const [spellDefends, setSpellDefends] = useState(true);
+  const [spellTargetsMonster, setSpellTargetsMonster] = useState(true);
   const [trapDieFace, setTrapDieFace] = useState<CombatDieFace>("white_shield");
   const [hasToolKit, setHasToolKit] = useState(false);
   const [rolledTurn, setRolledTurn] = useState<{
@@ -164,6 +169,27 @@ export function GameView({ gameId }: GameViewProps) {
         })
         .map(([id, t]) => ({ id, ...t }))
     : [];
+
+  // Only the Elf and Wizard hold spell cards (rulebook, Dividing The
+  // Spells). The cards themselves stay physical -- the app enforces the
+  // frame around them: caster, sightline, one cast per quest.
+  const isCaster = heroId === "elf" || heroId === "wizard";
+
+  const handleCastSpell = async () => {
+    if (!heroId || !spellName.trim()) return;
+    const result = await runAction(() =>
+      castSpell({
+        gameId,
+        heroId,
+        spellName: spellName.trim(),
+        ...(spellTargetsMonster && attackMonsterId ? { targetMonsterId: attackMonsterId } : {}),
+        ...(spellTargetsMonster ? { skulls: spellSkulls, monsterDefends: spellDefends } : {}),
+      })
+    );
+    if (!result) return;
+    setSpellName("");
+    setSpellSkulls(0);
+  };
 
   const handleTrapAction = async (
     trapId: string,
@@ -463,6 +489,67 @@ export function GameView({ gameId }: GameViewProps) {
                 </span>
               )}
             </div>
+
+            {isCaster && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #4a5a7a", padding: 8 }}>
+                <span className="hint">
+                  Cast a spell (instead of attacking). The card stays on the table &mdash; name it, and if it
+                  attacks, report the skulls you rolled.
+                </span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    placeholder="spell name, e.g. Ball of Flame"
+                    value={spellName}
+                    onChange={(e) => setSpellName(e.target.value)}
+                    style={{ minWidth: 200 }}
+                  />
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={spellTargetsMonster}
+                      onChange={(e) => setSpellTargetsMonster(e.target.checked)}
+                    />{" "}
+                    at the selected monster
+                  </label>
+                </div>
+                {spellTargetsMonster && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <label>
+                      Skulls:{" "}
+                      <input
+                        type="number"
+                        min={0}
+                        value={spellSkulls}
+                        onChange={(e) => setSpellSkulls(Number(e.target.value))}
+                        style={{ width: 48 }}
+                      />
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={spellDefends}
+                        onChange={(e) => setSpellDefends(e.target.checked)}
+                      />{" "}
+                      monster may defend
+                    </label>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    onClick={handleCastSpell}
+                    disabled={busy || !spellName.trim() || (spellTargetsMonster && !attackMonsterId)}
+                  >
+                    Cast spell
+                  </button>
+                  {spellTargetsMonster && !attackMonsterId && (
+                    <span className="hint">pick a target above first</span>
+                  )}
+                  {(game.spellsCast ?? []).length > 0 && (
+                    <span className="hint">spent: {(game.spellsCast ?? []).join(", ")}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <button onClick={handleEndTurn} disabled={busy}>
