@@ -38,7 +38,7 @@ from .targeting import (
     should_guard,
     spawn_wandering_monster_from_turn_roll,
 )
-from .turn import MonsterTurnResult, take_monster_turn
+from .turn import DEFAULT_WITHDRAW_POLICY, MonsterTurnResult, take_monster_turn
 
 
 @dataclass
@@ -126,6 +126,7 @@ def resolve_zargon_turn(
     game_state: dict,
     turn_type: str,
     lowest_bp_hero_id: str | None = None,
+    withdraw_policy: str = DEFAULT_WITHDRAW_POLICY,
     rng: random.Random | None = None,
 ) -> ZargonTurnResult:
     if turn_type not in ("normal", "cunning", "wandering"):
@@ -275,11 +276,18 @@ def resolve_zargon_turn(
             target_hero_name=target_hero.get("name", target_id),
             target_hero_pos=tuple(target_hero["pos"]),
             guarding=False,
+            hero_squares=set(hero_positions.values()),
+            withdraw_policy=withdraw_policy,
             rng=rng,
         )
         monster_positions[monster_id] = tr.end_pos
         updated_positions[monster_id] = tr.end_pos
-        action = "moved_and_attacked" if tr.attacked else ("moved" if tr.moved else "held")
+        if tr.attacked and tr.withdrew:
+            action = "attacked_and_withdrew"  # attack THEN move; see engine/turn.py
+        elif tr.attacked:
+            action = "moved_and_attacked"
+        else:
+            action = "moved" if tr.moved else "held"
         results.append(
             MonsterActionResult(monster_id=monster_id, monster_name=monster_name, action=action, turn_result=tr, log=tr.log)
         )

@@ -137,6 +137,37 @@ def find_path(
     return None
 
 
+def reachable_within(
+    board: Board,
+    revealed: set[Coord],
+    door_edges: set[frozenset],
+    occupied: set[Coord],
+    start: Coord,
+    move_points: int,
+) -> dict[Coord, int]:
+    """Every square the figure could stand on this turn, mapped to the
+    number of steps it takes to get there (the start square is 0).
+
+    Same passability rules as find_path -- revealed squares only, open
+    doors only, no walking over a figure. Used for attack-then-move
+    (engine/turn.py), which needs the whole reachable set rather than
+    one shortest path to a goal.
+    """
+    seen = {start: 0}
+    frontier = [start]
+    for step in range(1, max(move_points, 0) + 1):
+        next_frontier = []
+        for cur in frontier:
+            for n in _neighbors(cur, board, revealed, door_edges, occupied):
+                if n not in seen:
+                    seen[n] = step
+                    next_frontier.append(n)
+        frontier = next_frontier
+        if not frontier:
+            break
+    return seen
+
+
 @dataclass
 class MoveResult:
     path: list[Coord]  # full shortest path to the nearest goal, including the start square

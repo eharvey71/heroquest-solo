@@ -136,6 +136,23 @@ The Trial ~119, Rescue of Sir Ragnar ~104, The Fire Mage ~148,
 Targets: 4H 120 / 3H 102 / 2H 84 / 1H 66, all +/-10%; hard +15%.
 Named bosses (Verag, Balur, Gulthor...) priced as base type + override cost.
 
+## Simulator (functions/sim/)
+A headless Monte Carlo playtester. Zargon's whole side is the SHIPPING
+engine (movement, targeting, turn types, combat, traps, fog); the
+heroes are a scripted model -- no equipment past starting weapons, no
+potions, spells or treasure, and Body Points tracked by the sim since
+they are physical in the app. So its ABSOLUTE win rates (91-96%) are
+not a real party's and must never be quoted as one.
+
+What it is for is differences: every cell of a sweep plays the same
+seeds, so two rows differ by one rule. Method for pricing any rule
+change: (1) sweep the budget multiplier to confirm the metric responds
+-- currently ~1.4 Body Points per 10% of budget at 4 heroes; (2) run
+the new rule at 1.0; (3) express the difference in budget-multiplier
+terms. Body Points lost is the primary metric, not win rate, which
+saturates for a healthy 4-hero party. `python -m sim.run --games 200`.
+Findings are written up in sim/results/.
+
 ## Zargon engine details (settled — see functions/engine/)
 Combat die (confirmed against the owner's physical die): 6 faces = 3
 skull, 2 white shield, 1 black shield. Skull = hit for whichever side
@@ -285,15 +302,27 @@ sprung trap, revealed corridor) and a field merge can only add or
 overwrite. Each snapshot carries the label of the step beneath it, so
 the button can name what it will undo without a second read.
 
+ATTACK-THEN-MOVE is built (engine/turn.py WITHDRAW_POLICIES). The
+rulebook lets a monster move then act, OR act then move -- never
+move-partway-act-move, which is why only a monster that STARTED its
+turn adjacent may use it. Three policies:
+- "none": attack and stay put (the original behaviour).
+- "reposition": may move but must stay adjacent to some hero. Measured
+  at 1.2% of monster turns -- being flanked with an escape square is
+  rare -- so it is nearly a no-op. Kept as an option, not the default.
+- "fall_back" (DEFAULT): hit, then step to the NEAREST square out of
+  every hero's reach. Fires on ~47% of monster turns. Not a sprint for
+  the far wall: equally legal, looks absurd on the table, and measured
+  no better.
+A GUARD never withdraws whatever the policy says.
+
+The old worry -- hit-and-run multiplies monster durability, threat cost
+(attack+defend+body) has no term for it, so the calibrated 120 baseline
+silently breaks -- was tested and did not hold. See the sim section
+below: withdrawing trades damage output for survivability, because a
+monster that leaves melee also spends the next turn walking back in.
+
 Not implemented, deliberately:
-- Attack-then-move. The rulebook lets a monster act then move (not
-  move-partway-act-move); the engine only does move-then-attack, so
-  Zargon never hits and withdraws. Tried and reverted: making adjacent
-  monsters attack-then-withdraw is legal by the rules but turns every
-  melee into hit-and-run, which raises effective monster durability a
-  long way. Threat cost (attack+defend+body) has no term for that, so
-  it invalidates the calibrated 120 baseline exactly as chaos spells
-  would. Build it only alongside a re-run of the sim.
 - Chaos spells. Monsters can attack and nothing else; monsters.json
   carries no spell data and no catalog monster is a caster. The
   rulebook does permit spells in custom quests (cast INSTEAD of
@@ -354,9 +383,11 @@ Known gaps, in the owner's priority order:
    searched for treasure before it is searched for traps. Would hook
    into the treasure-search flow. Never built.
 
-Blocked on a Monte Carlo sim re-run (both invalidate the calibrated 120
-baseline, see the notes in "Not implemented, deliberately"): chaos
-spells, and monster attack-then-move.
+Chaos spells stay unbuilt, but are no longer blocked on a missing
+instrument -- functions/sim/ can now price them (see below). What they
+still need is DATA: monsters.json has no spell lists and no caster
+flag, and the quest schema has nowhere to declare which spells a named
+boss knows.
 
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.

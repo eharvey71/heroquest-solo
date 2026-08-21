@@ -27,6 +27,9 @@ sealed room between two wall corners.
 
 from __future__ import annotations
 
+import weakref
+from functools import lru_cache
+
 from validator.catalogs import CORRIDOR, Board
 
 Coord = tuple[int, int]
@@ -36,9 +39,16 @@ Coord = tuple[int, int]
 _SAMPLES_PER_CELL = 64
 
 
+@lru_cache(maxsize=250_000)
 def _cells_along(a: Coord, b: Coord) -> list[Coord]:
     """Ordered, de-duplicated cells the centre-to-centre segment passes
     through, including both endpoints.
+
+    Memoized: it depends on nothing but the two squares, and it is the
+    hottest function in the codebase by a wide margin. Revealing fog for
+    one hero move traces a line to all 148 corridor squares from EVERY
+    square walked, and the simulator (sim/) does that millions of times.
+    The board has 494 squares, so the whole domain fits the cache.
     """
     ax, ay = a[0] + 0.5, a[1] + 0.5
     bx, by = b[0] + 0.5, b[1] + 0.5
@@ -113,6 +123,26 @@ def has_line_of_sight(
     return True
 
 
+# Per-board memo for visible_corridor_squares. A Board can't be a dict
+# key (it holds dicts, so hashing it raises) and can't be weak-key'd
+# either, so entries are filed under id() next to a weak reference that
+# proves the id still means the same object -- a board that goes out of
+# scope can't have its cache handed to whatever gets allocated next.
+_VISIBLE_CACHE: dict = {}
+_VISIBLE_CACHE_LIMIT = 50_000
+
+
+def _board_cache(board: Board) -> dict:
+    entry = _VISIBLE_CACHE.get(id(board))
+    if entry is not None:
+        ref, cache = entry
+        if ref() is board:
+            return cache
+    cache: dict = {}
+    _VISIBLE_CACHE[id(board)] = (weakref.ref(board), cache)
+    return cache
+
+
 def visible_corridor_squares(
     board: Board,
     origin: Coord,
@@ -127,6 +157,14 @@ def visible_corridor_squares(
     in, so room fog stays door-gated and this only handles the "look
     down a corridor" case.
     """
+    # Pure in its inputs (terrain reveal ignores figures deliberately),
+    # so the same square + door state + walls always sees the same thing.
+    key = (origin, frozenset(open_door_edges), frozenset(walls))
+    cache = _board_cache(board)
+    cached = cache.get(key)
+    if cached is not None:
+        return set(cached)
+
     seen: set[Coord] = set()
     for square in board.corridor_squares:
         if has_line_of_sight(
@@ -135,4 +173,8 @@ def visible_corridor_squares(
             seen.add(square)
     if board.area_of.get(origin) == CORRIDOR:
         seen.add(origin)
+
+    if len(cache) >= _VISIBLE_CACHE_LIMIT:
+        cache.clear()
+    cache[key] = frozenset(seen)
     return seen
