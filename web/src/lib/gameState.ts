@@ -60,6 +60,11 @@ export interface GameState {
   spellsCast?: string[];
   /** Zargon's Chaos cards already spent -- one physical card of each. */
   chaosSpellsCast?: string[];
+  /** Which spell elements each caster took at setup: the Wizard three,
+   * the Elf one. Decides which cards they may cast. */
+  spellbooks?: Record<string, string[]>;
+  /** Monsters held by Sleep or Tempest. */
+  monsterStatus?: Record<string, { status: string; spell: string; since: number; missesTurns?: number }[]>;
   /** Chaos spells currently on a hero: asleep / paralyzed / commanded /
    * becalmed stop them acting, afraid only weakens their attack. */
   heroStatus?: Record<string, { status: string; spell: string; since: number; missesTurns?: number }[]>;

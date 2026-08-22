@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createGame, generateQuest } from "../lib/functionsClient";
+import { SPELL_ELEMENTS } from "../data/heroSpells";
 import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
 import { useQuestMap } from "../lib/useQuestMap";
 
@@ -52,6 +53,12 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [difficulty, setDifficulty] = useState<"standard" | "hard">("standard");
   const [size, setSize] = useState<"short" | "full">("full");
   const [theme, setTheme] = useState("");
+
+  // Which spell elements each caster took. The Wizard picks three, the
+  // Elf one of what's left -- one physical set of three cards per
+  // element, so they can't overlap (functions/engine/hero_spells.py).
+  const [wizardElements, setWizardElements] = useState<string[]>(["Fire", "Earth", "Air"]);
+  const [elfElement, setElfElement] = useState<string>("Water");
 
   const [questId, setQuestId] = useState<string | null>(null);
   // The hero count the chosen quest's monster budget was priced for
@@ -114,7 +121,10 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         id: h.id,
         name: heroNames[h.id] || h.name,
       }));
-      const res = await createGame({ questId, heroes });
+      const spellbooks: Record<string, string[]> = {};
+      if (selectedHeroes.has("wizard")) spellbooks.wizard = wizardElements;
+      if (selectedHeroes.has("elf")) spellbooks.elf = [elfElement];
+      const res = await createGame({ questId, heroes, spellbooks });
       onOpenGame(res.gameId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -200,6 +210,60 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
               you have {heroCount} selected. It will still run -- it just won't be balanced.
             </p>
           )}
+          {(selectedHeroes.has("wizard") || selectedHeroes.has("elf")) && (
+            <div className="panel" style={{ maxWidth: 520, marginBottom: 12 }}>
+              <p className="panel-title">Spell cards</p>
+              <div className="panel-stack">
+                <span className="hint">
+                  The Wizard takes three elements, the Elf one of what&apos;s left &mdash; three cards each.
+                </span>
+                {selectedHeroes.has("wizard") && (
+                  <div className="panel-row">
+                    <span style={{ width: 70 }}>Wizard</span>
+                    {SPELL_ELEMENTS.map((element) => {
+                      const taken = wizardElements.includes(element);
+                      const heldByElf = selectedHeroes.has("elf") && elfElement === element;
+                      return (
+                        <label key={element} style={{ opacity: heldByElf ? 0.4 : 1 }}>
+                          <input
+                            type="checkbox"
+                            checked={taken}
+                            disabled={heldByElf || (!taken && wizardElements.length >= 3)}
+                            onChange={() =>
+                              setWizardElements((prev) =>
+                                prev.includes(element)
+                                  ? prev.filter((e) => e !== element)
+                                  : [...prev, element]
+                              )
+                            }
+                          />{" "}
+                          {element}
+                        </label>
+                      );
+                    })}
+                    {wizardElements.length !== 3 && (
+                      <span style={{ color: "#e6a23b" }}>pick {3 - wizardElements.length} more</span>
+                    )}
+                  </div>
+                )}
+                {selectedHeroes.has("elf") && (
+                  <div className="panel-row">
+                    <span style={{ width: 70 }}>Elf</span>
+                    <select value={elfElement} onChange={(e) => setElfElement(e.target.value)}>
+                      {SPELL_ELEMENTS.filter(
+                        (element) => !selectedHeroes.has("wizard") || !wizardElements.includes(element)
+                      ).map((element) => (
+                        <option key={element} value={element}>
+                          {element}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 300 }}>
             {CLASSIC_HEROES.filter((h) => selectedHeroes.has(h.id)).map((h) => (
               <label key={h.id}>
@@ -211,7 +275,11 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
               </label>
             ))}
           </div>
-          <button style={{ marginTop: 8 }} onClick={handleCreateGame} disabled={busy || heroCount < 1}>
+          <button
+            style={{ marginTop: 8 }}
+            onClick={handleCreateGame}
+            disabled={busy || heroCount < 1 || (selectedHeroes.has("wizard") && wizardElements.length !== 3)}
+          >
             {busy ? "Creating..." : "Create Game"}
           </button>
         </div>

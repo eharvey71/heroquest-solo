@@ -39,6 +39,16 @@ from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.hero_spells import (
+    HeroSpellUnavailableError,
+    UnknownHeroSpellError,
+    resolve_hero_spell,
+    validate_spellbooks,
+)
+from engine.monster_status import add_status as add_monster_status
+from engine.monster_status import defend_dice_for as monster_defend_dice
+from engine.hero_status import add_status as add_hero_status
+from engine.hero_status import remove_status as remove_hero_status
 from engine.hero_status import (
     SpellCannotBeBrokenError,
     SpellNotOnHeroError,
@@ -48,7 +58,6 @@ from engine.hero_status import (
 from engine.heroes import HeroAlreadyDeadError, HeroNotFoundError, living_heroes
 from engine.heroes import record_hero_death as record_hero_death_engine
 from engine.objective import check_objective_complete, hero_on_stairway
-from engine.spell import InvalidSpellError, resolve_hero_spell
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
@@ -175,7 +184,7 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     return {"questId": doc_ref.id}
 
 
-def _parse_create_game_request(data) -> tuple[str, list]:
+def _parse_create_game_request(data) -> tuple[str, list, dict]:
     if not isinstance(data, dict):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="request data must be an object"
@@ -183,6 +192,7 @@ def _parse_create_game_request(data) -> tuple[str, list]:
 
     quest_id = data.get("questId")
     heroes = data.get("heroes")
+    spellbooks = data.get("spellbooks") or {}
 
     if not isinstance(quest_id, str) or not quest_id:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="questId is required")
@@ -202,7 +212,19 @@ def _parse_create_game_request(data) -> tuple[str, list]:
             )
         ids.add(h["id"])
 
-    return quest_id, heroes
+    # Which elements each caster took at the table (the Wizard three,
+    # the Elf one) -- see engine/hero_spells.py.
+    if not isinstance(spellbooks, dict):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="spellbooks must be an object"
+        )
+    if spellbooks:
+        try:
+            validate_spellbooks(spellbooks)
+        except HeroSpellUnavailableError as e:
+            raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
+
+    return quest_id, heroes, spellbooks
 
 
 @https_fn.on_call()
@@ -215,7 +237,7 @@ def create_game(req: https_fn.CallableRequest) -> dict:
     """
     _require_owner(req, "sign in to start a game")
 
-    quest_id, heroes = _parse_create_game_request(req.data)
+    quest_id, heroes, spellbooks = _parse_create_game_request(req.data)
 
     db = firestore.client()
     quest_snap = db.collection("quests").document(quest_id).get()
@@ -235,7 +257,9 @@ def create_game(req: https_fn.CallableRequest) -> dict:
             )
 
     try:
-        game_state = build_initial_game_state(quest=quest, catalogs=_catalogs, heroes=heroes)
+        game_state = build_initial_game_state(
+            quest=quest, catalogs=_catalogs, heroes=heroes, spellbooks=spellbooks
+        )
     except InvalidRosterError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
 
@@ -428,6 +452,15 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         for t in result.newly_found_traps:
             traps_found[t.trap_id] = {"type": t.trap_type, "pos": list(t.pos)}
         updates["trapsFound"] = to_firestore_coords(traps_found)
+
+    # Veil of Mist and Pass Through Rock last exactly one move.
+    for status in result.spent_move_spells:
+        remove_hero_status(game_state, hero_id, status)
+        new_log_entries.append(
+            {"turn": turn, "text": f"The spell fades -- {hero_id}'s next move is an ordinary one."}
+        )
+    if result.spent_move_spells:
+        updates["heroStatus"] = game_state.get("heroStatus", {})
 
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
@@ -975,7 +1008,7 @@ def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
 
 
 @firestore.transactional
-def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_monster_id, skulls, monster_defends):
+def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_id, target_monster_id, target_hero_id, door_id, genie_mode):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
     before = copy.deepcopy(game_state)
@@ -985,25 +1018,62 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_mon
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
         )
 
+    hero = next((h for h in living_heroes(game_state) if h["id"] == hero_id), None)
+    if hero is None:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"hero '{hero_id}' is not in this game, or has fallen"
+        )
+
     result = resolve_hero_spell(
         board=_catalogs.board, catalogs=_catalogs, quest=quest, game_state=game_state,
-        hero_id=hero_id, spell_name=spell_name, target_monster_id=target_monster_id,
-        skulls=skulls, monster_defends=monster_defends,
+        heroes=living_heroes(game_state), caster_id=hero_id, caster_name=hero.get("name", hero_id),
+        caster_pos=tuple(hero["pos"]), spell_id=spell_id, target_monster_id=target_monster_id,
+        target_hero_id=target_hero_id, door_id=door_id, genie_mode=genie_mode,
     )
 
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
+    updates: dict = {"spellsCast": sorted(set(game_state.get("spellsCast", [])) | {result.spell_id})}
 
-    updates: dict = {"spellsCast": sorted(set(game_state.get("spellsCast", [])) | {result.spell_name})}
+    for monster_id, damage in result.monster_damage.items():
+        monster = game_state["monsters"][monster_id]
+        body = max(0, int(monster.get("currentBody", 0)) - int(damage))
+        monster["currentBody"] = body
+        monster["alive"] = body > 0
+        updates[f"monsters.{monster_id}.currentBody"] = body
+        updates[f"monsters.{monster_id}.alive"] = body > 0
 
-    if result.defense is not None and target_monster_id:
-        monster = game_state["monsters"][target_monster_id]
-        monster["currentBody"] = result.defense.body_points_after
-        updates[f"monsters.{target_monster_id}.currentBody"] = result.defense.body_points_after
-        if result.defense.defeated:
-            monster["alive"] = False
-            updates[f"monsters.{target_monster_id}.alive"] = False
+    for status in result.monster_statuses:
+        add_monster_status(
+            game_state, status["monsterId"], status=status["status"],
+            spell=result.spell_id, turn=turn, misses_turns=status.get("missesTurns", 0),
+        )
+    if result.monster_statuses:
+        updates["monsterStatus"] = game_state.get("monsterStatus", {})
+
+    for status in result.hero_statuses:
+        add_hero_status(
+            game_state, status["heroId"], status=status["status"], spell=result.spell_id, turn=turn
+        )
+    if result.hero_statuses:
+        updates["heroStatus"] = game_state.get("heroStatus", {})
+
+    # The Genie opens any door on the board, seen or not -- so this
+    # reuses the door engine rather than the hero's own reach check.
+    if result.opened_door_id:
+        door = next((d for d in quest.get("doors", []) if d["id"] == result.opened_door_id), None)
+        if door is None:
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"no door '{result.opened_door_id}' in this quest"
+            )
+        updates[f"doors.{result.opened_door_id}"] = "open"
+        room = _room_behind_door(_catalogs.board, door, game_state)
+        if room:
+            revealed_rooms = sorted(set(game_state.get("revealed", {}).get("rooms", [])) | {room})
+            updates["revealed.rooms"] = revealed_rooms
+            game_state["revealed"]["rooms"] = revealed_rooms
+            new_log_entries.append({"turn": turn, "text": f"{room} revealed."})
 
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
@@ -1013,41 +1083,43 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_name, target_mon
     return result
 
 
+def _room_behind_door(board, door, game_state) -> str | None:
+    """The unrevealed room a door leads into, if any."""
+    revealed = set(game_state.get("revealed", {}).get("rooms", []))
+    for square in door.get("squares", []):
+        area = board.area_of.get(tuple(square))
+        if area and area != "CORRIDOR" and area not in revealed:
+            return area
+    return None
+
+
 @https_fn.on_call()
 def cast_spell(req: https_fn.CallableRequest) -> dict:
-    """The Elf or Wizard casts a spell instead of attacking.
+    """The Elf or Wizard casts one of the twelve base-game spell cards,
+    instead of attacking, at a target they can SEE.
 
-    Spell cards are physical, so the app never learns what a spell
-    does: the player names the card, and for an attack spell reports
-    the skulls it rolled, exactly as with a weapon attack. What the app
-    enforces is the rulebook's frame -- caster class, line of sight to
-    the target, and one cast per spell per quest. See
-    functions/engine/spell.py.
+    Which cards a hero holds was decided at game creation (the Wizard
+    took three elements, the Elf one), and each card is spent once per
+    quest. What the app applies and what it hands back to the table is
+    split card by card -- see engine/hero_spells.py.
     """
     _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
     hero_id = data.get("heroId")
-    spell_name = data.get("spellName")
+    spell_id = data.get("spellId")
     target_monster_id = data.get("targetMonsterId")
-    skulls = data.get("skulls", 0)
-    monster_defends = data.get("monsterDefends", True)
+    target_hero_id = data.get("targetHeroId")
+    door_id = data.get("doorId")
+    genie_mode = data.get("genieMode")
 
     if not isinstance(game_id, str) or not game_id:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
     if not isinstance(hero_id, str) or not hero_id:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
-    if not isinstance(spell_name, str) or not spell_name.strip():
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="spellName is required")
-    if target_monster_id is not None and not isinstance(target_monster_id, str):
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="targetMonsterId must be a string"
-        )
-    if not isinstance(skulls, int) or isinstance(skulls, bool) or skulls < 0:
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="skulls must be a non-negative integer"
-        )
+    if not isinstance(spell_id, str) or not spell_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="spellId is required")
 
     db = firestore.client()
     game_ref = db.collection("games").document(game_id)
@@ -1055,22 +1127,22 @@ def cast_spell(req: https_fn.CallableRequest) -> dict:
 
     try:
         result = _apply_cast_spell(
-            transaction, db, game_ref, hero_id, spell_name, target_monster_id, skulls, bool(monster_defends)
+            transaction, db, game_ref, hero_id, spell_id, target_monster_id, target_hero_id, door_id, genie_mode
         )
-    except InvalidSpellError as e:
+    except UnknownHeroSpellError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=str(e)) from e
+    except HeroSpellUnavailableError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
     return {
-        "heroId": result.hero_id,
+        "spellId": result.spell_id,
         "spellName": result.spell_name,
-        "targetMonsterId": result.target_monster_id,
-        "defeated": result.defense.defeated if result.defense else False,
-        "bodyPointsAfter": result.defense.body_points_after if result.defense else None,
+        "monsterDamage": result.monster_damage,
+        "monsterStatuses": result.monster_statuses,
+        "heroStatuses": result.hero_statuses,
+        "openedDoorId": result.opened_door_id,
         "log": result.log,
     }
-
-
-VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
 
 
 @https_fn.on_call()
@@ -1145,6 +1217,9 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
 
     for monster_id, new_pos in result.updated_monster_positions.items():
         updates[f"monsters.{monster_id}.pos"] = to_firestore_coords(list(new_pos))
+
+    # resolve_zargon_turn rolls Sleep/Tempest saves in place.
+    updates["monsterStatus"] = game_state.get("monsterStatus", {})
 
     # Chaos spells: the engine decided, this writes it down. Hero damage
     # is NOT written -- Body Points are physical, so it only ever reaches
@@ -1303,7 +1378,9 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=f"unknown monster type '{monster_def['type']}'"
         )
     overrides = monster_def.get("overrides", {})
-    defend_dice = overrides.get("defend", catalog_entry["defend"])
+    # "cannot move, attack, or defend itself" -- a sleeping monster
+    # rolls nothing (engine/monster_status.py).
+    defend_dice = monster_defend_dice(game_state, monster_id, overrides.get("defend", catalog_entry["defend"]))
     monster_name = monster_def.get("name") or monster_def["type"]
 
     result = resolve_hero_attack_engine(

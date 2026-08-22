@@ -30,6 +30,8 @@ interface RawGameDoc {
   trapsTriggered?: string[];
   trapsFound?: GameState["trapsFound"];
   chaosSpellsCast?: string[];
+  spellbooks?: Record<string, string[]>;
+  monsterStatus?: GameState["monsterStatus"];
   heroStatus?: GameState["heroStatus"];
   undoDepth?: number;
   undoLabel?: string;
@@ -55,6 +57,8 @@ function toGameState(raw: RawGameDoc): GameState {
     trapsTriggered: raw.trapsTriggered ?? [],
     trapsFound: raw.trapsFound ?? {},
     chaosSpellsCast: raw.chaosSpellsCast ?? [],
+    spellbooks: raw.spellbooks ?? {},
+    monsterStatus: raw.monsterStatus ?? {},
     heroStatus: raw.heroStatus ?? {},
     // Without these two the Undo button is permanently greyed out and
     // the Chaos-spell panel never appears: this function builds the

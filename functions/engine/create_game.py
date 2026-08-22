@@ -56,9 +56,16 @@ def _initial_door_states(quest: dict) -> dict:
     return states
 
 
-def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[dict]) -> dict:
+def build_initial_game_state(
+    *, quest: dict, catalogs: Catalogs, heroes: list[dict], spellbooks: dict | None = None
+) -> dict:
     """heroes: [{"id": "barbarian", "name": "Barbarian"}, ...], 1-4
     entries, order picks which stairway square each hero starts on.
+
+    spellbooks: {"wizard": ["Fire","Air","Earth"], "elf": ["Water"]} --
+    which elements each caster took at the table. The Wizard picks
+    three, the Elf one of what's left (engine/hero_spells.py), and a
+    hero can only cast from their own elements.
     """
     if not 1 <= len(heroes) <= 4:
         raise InvalidRosterError(f"heroCount must be 1-4, got {len(heroes)}")
@@ -96,8 +103,10 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "trapsFound": [],  # traps the party knows about but are still armed
         "collapsedSquares": [],  # squares sealed by a sprung falling block
         "searched": {},
+        "spellbooks": spellbooks or {},  # caster -> elements taken at setup
         "spellsCast": [],  # each hero spell card is spent once per quest
         "chaosSpellsCast": [],  # ...and so is each of Zargon's twelve
         "heroStatus": {},  # asleep / paralyzed / commanded / becalmed / afraid
+        "monsterStatus": {},  # asleep (Sleep) / becalmed (Tempest)
         "log": [{"turn": 1, "text": "The party begins their quest."}],
     }

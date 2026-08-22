@@ -1,0 +1,111 @@
+{
+  "water_of_healing": {
+    "name": "Water of Healing",
+    "element": "Water",
+    "text": "This spell may be cast on any one Hero, including yourself. Contact with this revitalizing water will restore up to 4 lost Body Points, but will not give a Hero more than his starting number.",
+    "effect": "narrate_hero",
+    "target": "hero",
+    "prompt": "Restore up to 4 lost Body Points on the hero sheet -- never above their starting number."
+  },
+  "sleep": {
+    "name": "Sleep",
+    "element": "Water",
+    "text": "This spell puts a monster into a deep sleep so it cannot move, attack, or defend itself. The spell can be broken at once or on a future turn by a monster rolling one red die for each of its Mind Points. If a 6 is rolled, the spell is broken. May not be used against Mummies, Zombies or Skeletons.",
+    "effect": "monster_status",
+    "target": "monster",
+    "status": "asleep",
+    "excludedTypes": ["mummy", "zombie", "skeleton"]
+  },
+  "veil_of_mist": {
+    "name": "Veil of Mist",
+    "element": "Water",
+    "text": "This spell may be cast on any one Hero, including yourself. On the Hero's next move, he may move unseen through spaces that are occupied by monsters.",
+    "effect": "hero_status",
+    "target": "hero",
+    "status": "veiled",
+    "consumedByMove": true
+  },
+  "heal_body": {
+    "name": "Heal Body",
+    "element": "Earth",
+    "text": "This spell may be cast on any one Hero, including yourself. Its magical power will immediately restore up to 4 lost Body Points, but does not give a Hero more than his starting number.",
+    "effect": "narrate_hero",
+    "target": "hero",
+    "prompt": "Restore up to 4 lost Body Points on the hero sheet -- never above their starting number."
+  },
+  "rock_skin": {
+    "name": "Rock Skin",
+    "element": "Earth",
+    "text": "This spell may be cast on any one Hero, including yourself. That Hero may throw one extra combat die when defending. The spell is broken when the Hero suffers 1 point of Body damage.",
+    "effect": "hero_status",
+    "target": "hero",
+    "status": "rock_skin",
+    "playerCleared": true,
+    "prompt": "One extra defend die until this hero takes a point of damage."
+  },
+  "pass_through_rock": {
+    "name": "Pass Through Rock",
+    "element": "Earth",
+    "text": "This spell can be cast on any one Hero, including yourself. That Hero may then move through walls on his next move. He may move through as many walls as his dice roll allows. Caution! There are shaded areas on each Quest Map which indicate solid rock. If a Hero ends his move in one of these areas, he is trapped forever!",
+    "effect": "hero_status",
+    "target": "hero",
+    "status": "through_rock",
+    "consumedByMove": true
+  },
+  "courage": {
+    "name": "Courage",
+    "element": "Fire",
+    "text": "This spell may be cast on any one Hero, including yourself. The next time that Hero attacks, he may roll two extra combat dice. The spell is broken the moment the Hero can no longer \"see\" a monster.",
+    "effect": "hero_status",
+    "target": "hero",
+    "status": "courageous",
+    "playerCleared": true,
+    "prompt": "Two extra attack dice on this hero's next attack."
+  },
+  "ball_of_flame": {
+    "name": "Ball of Flame",
+    "element": "Fire",
+    "text": "This spell may be cast on any one monster, enveloping it in a ball of fire. It will inflict 2 Body Points of damage. The monster then rolls two red dice. For each 5 or 6 rolled, the damage is reduced by 1 point.",
+    "effect": "damage_monster",
+    "target": "monster",
+    "damage": 2,
+    "saveDice": 2,
+    "saveOn": 5
+  },
+  "fire_of_wrath": {
+    "name": "Fire of Wrath",
+    "element": "Fire",
+    "text": "This spell may be cast on any one monster, blasting it with flames. It will inflict 1 Body Point of damage, unless the monster can immediately roll a 5 or 6 using one red die.",
+    "effect": "damage_monster",
+    "target": "monster",
+    "damage": 1,
+    "saveDice": 1,
+    "saveOn": 5,
+    "saveNegatesAll": true
+  },
+  "tempest": {
+    "name": "Tempest",
+    "element": "Air",
+    "text": "This spell creates a small whirlwind that envelops one monster of your choice. That monster will then miss its next turn.",
+    "effect": "monster_status",
+    "target": "monster",
+    "status": "becalmed",
+    "missesTurns": 1
+  },
+  "swift_wind": {
+    "name": "Swift Wind",
+    "element": "Air",
+    "text": "This spell may be cast on any one Hero, including yourself. Its powerful burst of energy enables that Hero to roll twice as many red dice as normal the next time he moves.",
+    "effect": "narrate_hero",
+    "target": "hero",
+    "prompt": "Roll 4 red dice instead of 2 for this hero's next move."
+  },
+  "genie": {
+    "name": "Genie",
+    "element": "Air",
+    "text": "This spell conjures up a Genie who will do one of the following: open any door on the board (revealing what lies beyond), OR use 5 combat dice to attack any monster within your line of sight.",
+    "effect": "genie",
+    "target": "choice",
+    "attackDice": 5
+  }
+}

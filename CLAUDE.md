@@ -276,16 +276,40 @@ closed and secret are walls to Zargon (engine/movement.py
 passable_door_edges). Monsters also never spring traps, and need not
 spend their full movement allowance.
 
-Hero spells (1989 rulebook, Action 2 -- engine/spell.py): the Elf and
-Wizard only, cast INSTEAD of attacking, at any target they can SEE
-(the real line-of-sight rule), once per spell per quest
-(game state's spellsCast). Spell CARDS stay physical -- the app has no
-spell catalogue and never learns what a card does. The player names
-the card; for an attack spell they report the skulls it rolled and the
-engine applies damage exactly as for a weapon attack, with a
-monsterDefends flag for cards that allow no defence roll. A spell
-aimed at a hero (healing, buffs) touches only physical state, so the
-app logs it, spends the card, and changes nothing else.
+HERO SPELLS are built the same way as Zargon's (engine/hero_spells.py,
+all twelve 1989 cards transcribed verbatim into data/hero_spells.json).
+Cast INSTEAD of attacking, at a target the caster can SEE, once per
+card per quest (spellsCast). WHICH cards a hero holds is chosen at game
+creation: the Wizard takes three elements, the Elf one of what is left,
+and no element is in two hands -- each element is one physical set of
+three cards. Stored as game state's spellbooks; a hero can only cast
+from their own elements, and the UI only offers those.
+
+The split, card by card:
+- App applies: Ball of Flame and Fire of Wrath (damage, less the
+  MONSTER's own red-dice save -- Zargon's dice, so Zargon rolls them);
+  Sleep and Tempest (monster statuses, below); the Genie both ways --
+  opening any door on the board (seen or not) and attacking with its
+  own 5 combat dice.
+- App announces: Heal Body and Water of Healing (Body Points), Rock
+  Skin and Courage (hero dice), Swift Wind (the doubled movement roll).
+  Those are the player's sheet and the player's dice.
+- App enforces as movement: Veil of Mist ("through spaces occupied by
+  monsters") and Pass Through Rock ("through walls"). Both are
+  one-move statuses the tracer and the engine honour, spent by the move
+  that uses them. Pass Through Rock's "trapped forever in solid rock"
+  has no equivalent here -- every square on this board is room or
+  corridor, so there is nothing to be stranded in.
+
+MONSTER STATUSES (engine/monster_status.py) are the mirror of
+hero_status, and deliberately a separate module because the two sides
+aren't symmetrical. A held HERO is stopped by refusing their actions
+and breaks the spell with their own dice; a held MONSTER is stopped by
+Zargon skipping its turn, and the app rolls its save (one red die per
+Mind Point, a 6 wakes it) because monster Mind Points are digital.
+Sleep also zeroes a monster's DEFEND dice -- "cannot move, attack, or
+defend itself" -- which is what makes the card worth holding. Sleep may
+not be used on mummies, zombies or skeletons.
 
 HERO DEATH is reported, not deduced: Body Points are physical, so the
 player presses "[hero] has fallen" and the app applies everything that

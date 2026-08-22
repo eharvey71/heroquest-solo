@@ -20,7 +20,7 @@ import {
   type CombatDieFace,
   undoLastAction,
 } from "../lib/functionsClient";
-import { HERO_SPELL_ELEMENTS } from "../data/heroSpells";
+import { spellCard, spellsForElements } from "../data/heroSpells";
 import { livingHeroes, revealedSquareKeys, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, useQuestMap } from "../lib/useQuestMap";
@@ -84,10 +84,10 @@ export function GameView({ gameId }: GameViewProps) {
   const [wanderingDrawn, setWanderingDrawn] = useState(false);
   const [attackMonsterId, setAttackMonsterId] = useState<string>("");
   const [attackSkulls, setAttackSkulls] = useState(0);
-  const [spellName, setSpellName] = useState("");
-  const [spellSkulls, setSpellSkulls] = useState(0);
-  const [spellDefends, setSpellDefends] = useState(true);
-  const [spellTargetsMonster, setSpellTargetsMonster] = useState(true);
+  const [spellId, setSpellId] = useState("");
+  const [spellTargetHeroId, setSpellTargetHeroId] = useState("");
+  const [genieMode, setGenieMode] = useState<"attack" | "door">("attack");
+  const [genieDoorId, setGenieDoorId] = useState("");
   const [trapDieFace, setTrapDieFace] = useState<CombatDieFace>("white_shield");
   const [hasToolKit, setHasToolKit] = useState(false);
   const [rolledTurn, setRolledTurn] = useState<{
@@ -238,6 +238,12 @@ export function GameView({ gameId }: GameViewProps) {
   const playable = game.status !== "complete" && game.status !== "lost";
 
   const activeHero = heroes.find((h) => h.id === heroId);
+  // Only the cards this hero is actually holding: the elements were
+  // chosen when the game was created (game state's spellbooks).
+  const heldSpells = spellsForElements(game.spellbooks?.[heroId]);
+  const chosenCard = spellId ? spellCard(spellId) : undefined;
+  const spellWantsMonster =
+    chosenCard?.target === "monster" || (chosenCard?.target === "choice" && genieMode === "attack");
 
   // Hero attacks are WARNED about, never blocked: the app can't see
   // hero weapons (physical/digital boundary), and the rulebook's staff
@@ -309,25 +315,24 @@ export function GameView({ gameId }: GameViewProps) {
         .map(([id, t]) => ({ id, ...t }))
     : [];
 
-  // Only the Elf and Wizard hold spell cards (rulebook, Dividing The
-  // Spells). The cards themselves stay physical -- the app enforces the
-  // frame around them: caster, sightline, one cast per quest.
-  const isCaster = heroId === "elf" || heroId === "wizard";
 
   const handleCastSpell = async () => {
-    if (!heroId || !spellName.trim()) return;
+    if (!heroId || !spellId) return;
+    const card = spellCard(spellId);
+    const wantsMonster = card?.target === "monster" || (card?.target === "choice" && genieMode === "attack");
     const result = await runAction(() =>
       castSpell({
         gameId,
         heroId,
-        spellName: spellName.trim(),
-        ...(spellTargetsMonster && attackMonsterId ? { targetMonsterId: attackMonsterId } : {}),
-        ...(spellTargetsMonster ? { skulls: spellSkulls, monsterDefends: spellDefends } : {}),
+        spellId,
+        ...(wantsMonster && attackMonsterId ? { targetMonsterId: attackMonsterId } : {}),
+        ...(card?.target === "hero" ? { targetHeroId: spellTargetHeroId || heroId } : {}),
+        ...(card?.target === "choice" ? { genieMode, ...(genieMode === "door" ? { doorId: genieDoorId } : {}) } : {}),
       })
     );
     if (!result) return;
-    setSpellName("");
-    setSpellSkulls(0);
+    setSpellId("");
+    setOpenAction(null);
   };
 
   const handleTrapAction = async (
@@ -673,7 +678,7 @@ export function GameView({ gameId }: GameViewProps) {
                         Open door
                       </button>
                     )}
-                    {isCaster && (
+                    {heldSpells.length > 0 && (
                       <button onClick={() => setOpenAction("spell")} disabled={busy}>
                         Cast spell
                       </button>
@@ -795,75 +800,117 @@ export function GameView({ gameId }: GameViewProps) {
 
               {openAction === "spell" && (
                 <div className="panel-stack">
-                  <span className="hint">
-                    Cast instead of attacking. The card stays on the table &mdash; pick it here, and if it
-                    attacks, report the skulls you rolled.
-                  </span>
-                  <select value={spellName} onChange={(e) => setSpellName(e.target.value)}>
-                    <option value="">Which card?</option>
-                    {HERO_SPELL_ELEMENTS.map((group) => (
-                      <optgroup key={group.element} label={group.element}>
-                        {group.spells.map((name) => {
-                          // The app already knows what has been spent --
-                          // one cast per spell per quest.
-                          const spent = (game.spellsCast ?? []).some(
-                            (cast) => cast.toLowerCase() === name.toLowerCase()
-                          );
+                  {heldSpells.length === 0 ? (
+                    <span className="hint">
+                      This hero holds no spell cards. The Wizard and Elf pick their elements when the game
+                      is created.
+                    </span>
+                  ) : (
+                    <>
+                      <select value={spellId} onChange={(e) => setSpellId(e.target.value)}>
+                        <option value="">Which card?</option>
+                        {heldSpells.map((card) => {
+                          const spent = (game.spellsCast ?? []).includes(card.id);
                           return (
-                            <option key={name} value={name} disabled={spent}>
-                              {name}
-                              {spent ? " -- already cast" : ""}
+                            <option key={card.id} value={card.id} disabled={spent}>
+                              {card.element} &middot; {card.name}
+                              {spent ? " -- cast" : ""}
                             </option>
                           );
                         })}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={spellTargetsMonster}
-                      onChange={(e) => setSpellTargetsMonster(e.target.checked)}
-                    />{" "}
-                    aimed at a monster
-                  </label>
-                  {spellTargetsMonster && (
-                    <>
+                      </select>
+                      {chosenCard && <span className="hint">{chosenCard.summary}</span>}
+
+                      {chosenCard?.target === "hero" && (
+                        <label>
+                          On:{" "}
+                          <select
+                            value={spellTargetHeroId || heroId}
+                            onChange={(e) => setSpellTargetHeroId(e.target.value)}
+                          >
+                            {heroes.map((h) => (
+                              <option key={h.id} value={h.id}>
+                                {h.name}
+                                {h.id === heroId ? " (self)" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {chosenCard?.target === "choice" && (
+                        <div className="panel-row">
+                          <label>
+                            <input
+                              type="radio"
+                              checked={genieMode === "attack"}
+                              onChange={() => setGenieMode("attack")}
+                            />{" "}
+                            attack
+                          </label>
+                          <label>
+                            <input
+                              type="radio"
+                              checked={genieMode === "door"}
+                              onChange={() => setGenieMode("door")}
+                            />{" "}
+                            open a door
+                          </label>
+                        </div>
+                      )}
+
+                      {chosenCard?.target === "choice" && genieMode === "door" && (
+                        <label>
+                          Door:{" "}
+                          <select value={genieDoorId} onChange={(e) => setGenieDoorId(e.target.value)}>
+                            <option value="">Which one?</option>
+                            {resolvedDoors
+                              .filter((d) => d.state !== "open")
+                              .map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.id} &mdash; [{d.squares[0][0]},{d.squares[0][1]}]
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      )}
+
+                      {spellWantsMonster && (
+                        <label>
+                          Target:{" "}
+                          <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
+                            <option value="">Which monster?</option>
+                            {targetableMonsters.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+
                       <div className="panel-row">
-                        <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
-                          <option value="">Target...</option>
-                          {targetableMonsters.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.type} ({m.id}) &mdash; {m.currentBody} BP
-                            </option>
-                          ))}
-                        </select>
-                        <DiceInput label="Skulls:" value={spellSkulls} onChange={setSpellSkulls} />
+                        <button
+                          className="primary"
+                          onClick={handleCastSpell}
+                          disabled={
+                            busy ||
+                            !spellId ||
+                            (spellWantsMonster && !attackMonsterId) ||
+                            (chosenCard?.target === "choice" && genieMode === "door" && !genieDoorId)
+                          }
+                        >
+                          Cast
+                        </button>
+                        <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
+                          Back
+                        </button>
                       </div>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={spellDefends}
-                          onChange={(e) => setSpellDefends(e.target.checked)}
-                        />{" "}
-                        the monster may defend
-                      </label>
+                      <span className="hint">
+                        The app applies what it can see and tells you the rest &mdash; Body Points and your
+                        own dice stay on the table.
+                      </span>
                     </>
-                  )}
-                  <div className="panel-row">
-                    <button
-                      className="primary"
-                      onClick={handleCastSpell}
-                      disabled={busy || !spellName.trim() || (spellTargetsMonster && !attackMonsterId)}
-                    >
-                      Cast
-                    </button>
-                    <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
-                      Back
-                    </button>
-                  </div>
-                  {(game.spellsCast ?? []).length > 0 && (
-                    <span className="hint">spent: {(game.spellsCast ?? []).join(", ")}</span>
                   )}
                 </div>
               )}

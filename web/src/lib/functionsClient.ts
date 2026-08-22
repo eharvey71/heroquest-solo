@@ -42,6 +42,9 @@ export const generateQuest = call<GenerateQuestRequest, GenerateQuestResponse>("
 export interface CreateGameRequest {
   questId: string;
   heroes: { id: string; name?: string }[];
+  /** Which spell elements each caster took at the table: the Wizard
+   * three, the Elf one of what's left. */
+  spellbooks?: Record<string, string[]>;
 }
 export interface CreateGameResponse {
   gameId: string;
@@ -160,18 +163,21 @@ export const searchTrapsAndSecretDoors = call<SearchTrapsAndSecretDoorsRequest, 
 export interface CastSpellRequest {
   gameId: string;
   heroId: string;
-  /** Named off the physical card -- the app has no spell catalogue. */
-  spellName: string;
+  spellId: string;
   targetMonsterId?: string;
-  skulls?: number;
-  monsterDefends?: boolean;
+  targetHeroId?: string;
+  /** Genie only: which door to throw open. */
+  doorId?: string;
+  /** Genie only: "door" or "attack". */
+  genieMode?: "door" | "attack";
 }
 export interface CastSpellResponse {
-  heroId: string;
+  spellId: string;
   spellName: string;
-  targetMonsterId: string | null;
-  defeated: boolean;
-  bodyPointsAfter: number | null;
+  monsterDamage: Record<string, number>;
+  monsterStatuses: { monsterId: string; status: string; missesTurns: number }[];
+  heroStatuses: { heroId: string; status: string; consumedByMove: boolean; playerCleared: boolean }[];
+  openedDoorId: string | null;
   log: string[];
 }
 export const castSpell = call<CastSpellRequest, CastSpellResponse>("cast_spell");

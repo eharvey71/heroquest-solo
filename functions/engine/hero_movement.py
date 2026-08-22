@@ -52,6 +52,7 @@ from validator.catalogs import CORRIDOR, Board, Catalogs
 from validator.geometry import furniture_squares
 
 from .doors import effective_door_state
+from .hero_status import statuses_for
 from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
 from .line_of_sight import visible_corridor_squares
 from .movement import passable_door_edges
@@ -92,6 +93,9 @@ class HeroMovementResult:
     stopped_reason: str | None = None
     stopped_at_door_id: str | None = None
     stopped_at_trap_id: str | None = None
+    # One-move hero spells this move used up: "veiled" (Veil of Mist),
+    # "through_rock" (Pass Through Rock). The caller clears them.
+    spent_move_spells: list[str] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
     # Everything a caller needs to merge back into game state -- the
@@ -195,6 +199,16 @@ def resolve_hero_movement(
     trap_lookup = _build_trap_lookup(quest)
     door_by_edge = _door_by_edge(quest.get("doors", []))
 
+    # Two hero spells change what a legal path even is, for one move:
+    # Veil of Mist walks "unseen through spaces that are occupied by
+    # monsters", Pass Through Rock "through walls ... as many walls as
+    # his dice roll allows". Both are spent by the move that uses them
+    # (engine/hero_spells.py), so they are read here and reported back
+    # for the caller to clear.
+    hero_spell_statuses = {e.get("status") for e in statuses_for(game_state, hero_id)}
+    walks_through_monsters = "veiled" in hero_spell_statuses
+    walks_through_walls = "through_rock" in hero_spell_statuses
+
     newly_revealed_rooms: list[str] = []
     newly_revealed_corridor: list[Coord] = []
     triggered: list[TriggeredTrap] = []
@@ -205,6 +219,7 @@ def resolve_hero_movement(
     stopped_reason: str | None = None
     stopped_door_id: str | None = None
     stopped_trap_id: str | None = None
+    spent_move_spells = [s for s in ("veiled", "through_rock") if s in hero_spell_statuses]
 
     for prev, cur in zip(path, path[1:]):
         if board.area_of.get(cur) is None:
@@ -216,7 +231,7 @@ def resolve_hero_movement(
         if cur in furniture:
             stopped_reason = "furniture_blocked"
             break
-        if cur in monster_squares:
+        if cur in monster_squares and not walks_through_monsters:
             stopped_reason = "monster_blocked"
             break
 
@@ -226,6 +241,9 @@ def resolve_hero_movement(
         if cur_area != prev_area:
             door = door_by_edge.get(frozenset((prev, cur)))
             if door is None:
+                if walks_through_walls:
+                    applied_path.append(cur)
+                    continue  # straight through the stone
                 stopped_reason = "no_door"
                 break
             door_id = door["id"]
@@ -360,6 +378,7 @@ def resolve_hero_movement(
         stopped_reason=stopped_reason,
         stopped_at_door_id=stopped_door_id,
         stopped_at_trap_id=stopped_trap_id,
+        spent_move_spells=spent_move_spells,
         log=log,
         revealed_rooms=revealed_rooms,
         revealed_corridor_squares=revealed_corridor,

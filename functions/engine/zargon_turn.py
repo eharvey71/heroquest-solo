@@ -32,6 +32,7 @@ from .hero_movement import shareable_squares
 from .movement import Coord, passable_door_edges, revealed_squares
 from .chaos_spells import ChaosSpellUnavailableError, choose_spell, resolve_chaos_spell
 from .heroes import living_heroes
+from .monster_status import is_held, roll_break_attempts
 from .targeting import (
     guard_engaged_by,
     select_cunning_target,
@@ -220,6 +221,11 @@ def resolve_zargon_turn(
     monster_defs = _monster_defs(quest)
     objective_room_id = _objective_room_id(quest, game_state, board)
 
+    # Sleep and Tempest are Zargon's problem to shake off, and monster
+    # Mind Points are digital -- so the app rolls these saves itself,
+    # before anything moves (engine/monster_status.py).
+    status_log = roll_break_attempts(game_state, monster_defs, catalogs, turn=game_state.get("turn", 0), rng=rng)
+
     monster_positions: dict[str, Coord] = {
         mid: tuple(m["pos"]) for mid, m in game_state.get("monsters", {}).items() if m.get("alive")
     }
@@ -233,6 +239,22 @@ def resolve_zargon_turn(
     for monster_id, pos in list(monster_positions.items()):
         mdef = monster_defs.get(monster_id)
         if mdef is None:
+            continue
+
+        held = is_held(game_state, monster_id)
+        if held is not None:
+            line = (
+                f"{mdef.get('name') or mdef['type']} is asleep and does nothing."
+                if held.get("status") == "asleep"
+                else f"{mdef.get('name') or mdef['type']} is still caught in the whirlwind."
+            )
+            results.append(
+                MonsterActionResult(
+                    monster_id=monster_id, monster_name=mdef.get("name") or mdef["type"],
+                    action="held", turn_result=None, log=[line],
+                )
+            )
+            turn_log.append(line)
             continue
 
         current_room = board.area_of.get(pos)
@@ -369,6 +391,8 @@ def resolve_zargon_turn(
             MonsterActionResult(monster_id=monster_id, monster_name=monster_name, action=action, turn_result=tr, log=tr.log)
         )
         turn_log.extend(tr.log)
+
+    turn_log = [*status_log, *turn_log]
 
     focus_hero = heroes_by_id.get(resolved_lowest_bp) if resolved_lowest_bp else None
     opening = _turn_opening(turn_type, focus_hero.get("name", resolved_lowest_bp) if focus_hero else None)
