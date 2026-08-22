@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
+import { crossingKey } from "../lib/boardGeometry";
+import { furnitureSquareKeys } from "../lib/furniture";
+import { usePathInput } from "../hooks/usePathInput";
 import {
   attemptBreakSpell,
   castSpell,
@@ -146,6 +149,46 @@ export function GameView({ gameId }: GameViewProps) {
   );
   const [narrativeOpen, setNarrativeOpen] = useState(false);
 
+  // Path tracing lives HERE rather than in BoardView so that "Moving
+  // Barbarian -- Confirm" can sit in the rail beside the board. Under
+  // the board it was 800px below the thing you had just drawn, and
+  // easy to miss entirely. Hooks can't run conditionally, so these are
+  // computed before the loading/error returns below.
+  const heroTokens = useMemo(() => (game ? livingHeroes(game.heroes) : []), [game]);
+  const boardRevealed = useMemo(
+    () => (game ? revealedSquareKeys(staticBoard, game.revealed) : new Set<string>()),
+    [game]
+  );
+  const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
+  // A blocked square and a collapsed ceiling are the same thing to a
+  // hero tracing a path: impassable terrain the app can see. A blocked
+  // square only counts once it has been SEEN -- the quest's fence is
+  // hidden until the fog lifts, and a tracer that refused to draw
+  // through an unrevealed one would give it away. The server stops the
+  // move there anyway (and calls for the tile).
+  const impassableKeys = useMemo(
+    () =>
+      new Set([
+        ...(game?.collapsedSquares ?? []).map((sq) => squareKey(sq[0], sq[1])),
+        ...blockedSquares.map((sq) => squareKey(sq[0], sq[1])).filter((key) => boardRevealed.has(key)),
+      ]),
+    [game?.collapsedSquares, blockedSquares, boardRevealed]
+  );
+  const doorEdges = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of resolvedDoors) map.set(crossingKey(d.squares[0], d.squares[1]), d.state);
+    return map;
+  }, [resolvedDoors]);
+  const pathInput = usePathInput({
+    board: staticBoard,
+    heroes: heroTokens,
+    monsters: game?.monsters ?? [],
+    revealed: boardRevealed,
+    furniture: furnitureKeys,
+    collapsed: impassableKeys,
+    doorEdges,
+  });
+
   if (loading) return <p>Loading game...</p>;
   if (error) return <p style={{ color: "#e66" }}>Error: {error}</p>;
   if (!game) return null;
@@ -203,6 +246,16 @@ export function GameView({ gameId }: GameViewProps) {
           d.squares.some((sq) => sq[0] === activeHero.pos[0] && sq[1] === activeHero.pos[1])
       )
     : [];
+
+  const movingHero = heroes.find((h) => h.id === pathInput.selectedHeroId);
+  const tracedSteps = Math.max(pathInput.path.length - 1, 0);
+
+  const handleConfirmTracedMove = async () => {
+    if (!movingHero || !pathInput.canConfirm) return;
+    const path = pathInput.path;
+    pathInput.clear();
+    await handleConfirmMove(movingHero.id, path);
+  };
 
   const handleConfirmMove = async (movingHeroId: string, path: Coord[]) => {
     // Every consequence -- tile instructions, trap springs, why a move
@@ -421,7 +474,7 @@ export function GameView({ gameId }: GameViewProps) {
         <div className="board-pane">
           <BoardView
             gameState={game}
-            onConfirmMove={handleConfirmMove}
+            pathInput={pathInput}
             onSelectHero={setHeroId}
             onSelectMonster={setAttackMonsterId}
             doors={resolvedDoors}
@@ -547,6 +600,29 @@ export function GameView({ gameId }: GameViewProps) {
               )}
             </div>
           </div>
+
+          {playable && game.phase === "hero" && movingHero && tracedSteps > 0 && (
+            <div className="panel">
+              <p className="panel-title">Move</p>
+              <div className="panel-stack">
+                <span>
+                  {movingHero.name} &mdash; {tracedSteps} step{tracedSteps === 1 ? "" : "s"} traced
+                </span>
+                {pathInput.blockedHint && <span style={{ color: "#e6a23b" }}>{pathInput.blockedHint}</span>}
+                {!pathInput.blockedHint && pathInput.endSquareOccupied && (
+                  <span style={{ color: "#e6a23b" }}>can&apos;t end the move on an occupied square</span>
+                )}
+                <div className="panel-row">
+                  <button className="primary" onClick={handleConfirmTracedMove} disabled={busy || !pathInput.canConfirm}>
+                    Confirm move
+                  </button>
+                  <button className="quiet" onClick={pathInput.clear} disabled={busy}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {playable && game.phase === "hero" && (
             <div className="panel">

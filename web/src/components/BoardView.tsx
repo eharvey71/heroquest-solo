@@ -1,37 +1,38 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
-import { crossingKey } from "../lib/boardGeometry";
-import { furnitureSquareKeys } from "../lib/furniture";
 import { livingHeroes, revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
 import { Furniture } from "./Furniture";
 import { PathOverlay } from "./PathOverlay";
 import { Tokens } from "./Tokens";
-import { usePathInput } from "../hooks/usePathInput";
+import type { usePathInput } from "../hooks/usePathInput";
 
 interface BoardViewProps {
   gameState: GameState;
   cellSize?: number;
-  onConfirmMove?: (heroId: string, path: Coord[]) => void;
   onSelectHero?: (heroId: string) => void;
   onSelectMonster?: (monsterId: string) => void;
   doors?: QuestDoor[];
   stairway?: QuestStairway | null;
   furniture?: QuestFurniture[];
   blockedSquares?: Coord[];
+  /** Path-tracing state, owned by GameView so that "Moving X -- Confirm"
+   * can sit in the rail beside the board rather than below it, where it
+   * was easy to miss entirely. */
+  pathInput: ReturnType<typeof usePathInput>;
 }
 
 export function BoardView({
   gameState,
   cellSize = 28,
-  onConfirmMove,
   onSelectHero,
   onSelectMonster,
   doors,
   stairway,
   furniture = [],
   blockedSquares = [],
+  pathInput,
 }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
@@ -40,50 +41,7 @@ export function BoardView({
   // A fallen hero's figure comes off the board: nothing to draw, nothing
   // to select, and the square is free again (see engine/heroes.py).
   const heroes = useMemo(() => livingHeroes(gameState.heroes), [gameState.heroes]);
-  const furnitureKeys = useMemo(() => furnitureSquareKeys(furniture), [furniture]);
-  // A blocked square and a collapsed ceiling are the same thing to a
-  // hero tracing a path: impassable terrain the app can see. A blocked
-  // square only counts once it has been SEEN, though -- the quest's
-  // fence is hidden information until the fog lifts, and a tracer that
-  // refused to draw through an unrevealed one would give it away. The
-  // server stops the move there anyway (and calls for the tile).
-  const collapsedKeys = useMemo(
-    () =>
-      new Set([
-        ...(gameState.collapsedSquares ?? []).map((sq) => squareKey(sq[0], sq[1])),
-        ...blockedSquares.map((sq) => squareKey(sq[0], sq[1])).filter((key) => revealed.has(key)),
-      ]),
-    [gameState.collapsedSquares, blockedSquares, revealed]
-  );
-  // `doors` arrives with live game state already merged in (GameView's
-  // resolvedDoors), so an entry here is the door's state right now.
-  const doorEdges = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const d of doors ?? []) map.set(crossingKey(d.squares[0], d.squares[1]), d.state);
-    return map;
-  }, [doors]);
-
-  const {
-    selectedHeroId,
-    path,
-    isDragging,
-    selectHero,
-    extendTo,
-    startDragging,
-    stopDragging,
-    clear,
-    canConfirm,
-    endSquareOccupied,
-    blockedHint,
-  } = usePathInput({
-    board: staticBoard,
-    heroes,
-    monsters: gameState.monsters,
-    revealed,
-    furniture: furnitureKeys,
-    collapsed: collapsedKeys,
-    doorEdges,
-  });
+  const { selectedHeroId, path, isDragging, selectHero, extendTo, startDragging, stopDragging } = pathInput;
 
   const coordFromEvent = useCallback(
     (e: React.PointerEvent<SVGSVGElement>): Coord | null => {
@@ -181,14 +139,6 @@ export function BoardView({
     stopDragging();
   }, [stopDragging]);
 
-  const selectedHero = heroes.find((h) => h.id === selectedHeroId);
-
-  const handleConfirm = () => {
-    if (!selectedHero || !canConfirm) return;
-    onConfirmMove?.(selectedHero.id, path);
-    clear();
-  };
-
   return (
     <div>
       <svg
@@ -237,21 +187,6 @@ export function BoardView({
         <span>a secret door looks like plain wall until it is found</span>
       </div>
 
-      {selectedHero && (
-        <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span>
-            Moving {selectedHero.name}: {Math.max(path.length - 1, 0)} step(s)
-          </span>
-          <button onClick={handleConfirm} disabled={!canConfirm}>
-            Confirm move
-          </button>
-          <button onClick={clear}>Cancel</button>
-          {blockedHint && <span style={{ color: "#e6a23b" }}>{blockedHint}</span>}
-          {!blockedHint && endSquareOccupied && (
-            <span style={{ color: "#e6a23b" }}>can't end the move on an occupied square</span>
-          )}
-        </div>
-      )}
     </div>
   );
 }

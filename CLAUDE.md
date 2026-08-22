@@ -52,7 +52,9 @@ wrong), app enforces via searched.<room>.treasureBy.
   underfoot) sit above things you may choose to do. Hero actions are a
   menu that expands one at a time, because the rulebook gives a hero
   one action per turn; showing six forms at once misrepresented that
-  and buried the log below all of them.
+  and buried the log below all of them. Path tracing state lives in
+  GameView, not BoardView, so "Confirm move" sits in the rail next to
+  the board instead of under it.
 - State: Firestore. Collections: quests (validated definitions),
   games (runtime state). A quest never changes after generation, so the
   setup screen lists both: pick a past quest to start a fresh game on
