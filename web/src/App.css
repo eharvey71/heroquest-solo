@@ -1,7 +1,141 @@
+/* Layout: the board is the thing you look at, so it gets a column of its
+ * own and stays put; everything you press lives in a rail beside it.
+ * Below ~1100px the rail drops underneath, which is the old single
+ * column and the right answer on a tablet. */
+
 .app {
-  max-width: 900px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px 24px 40px;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.game-layout {
+  display: grid;
+  /* The rail is capped rather than elastic: past ~440px the controls
+     just drift apart, and the width is better spent on the board. */
+  grid-template-columns: minmax(0, auto) minmax(300px, 440px);
+  justify-content: start;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .board-pane {
+    position: static;
+  }
+}
+
+.board-pane {
+  position: sticky;
+  top: 12px;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* A panel is one idea: who is acting, what they may do, what happened.
+ * Card edges are what stop the rail reading as one long wall. */
+.panel {
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #1c1c1c;
+  padding: 10px 12px;
+}
+
+.panel-title {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a8272;
+  margin: 0 0 8px;
+}
+
+.panel-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.panel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Something the app is waiting on: a defence roll, a spell holding a
+ * hero, a trap underfoot. These sit at the top of the rail and are the
+ * only things allowed to shout. */
+.alert {
+  border: 1px solid #7a5a2a;
+  border-left: 4px solid #e8b04a;
+  border-radius: 6px;
+  background: #241d10;
+  padding: 10px 12px;
+}
+
+.alert-spell {
+  border-color: #6a3a7a;
+  border-left-color: #c79ad6;
+  background: #201426;
+}
+
+.alert-title {
+  color: #e8c34a;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 8px;
+}
+
+.alert-spell .alert-title {
+  color: #c79ad6;
+}
+
+.banner {
+  border: 2px solid #e8c34a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: #2a230f;
+}
+
+.banner h2 {
+  margin: 0;
+  color: #e8c34a;
+}
+
+.banner-objective {
+  border-color: #7fb0ff;
+  background: #16233a;
+}
+
+.banner-objective h2 {
+  color: #7fb0ff;
+}
+
+.banner-lost {
+  border-color: #e05c5c;
+  background: #2e1414;
+}
+
+.banner-lost h2 {
+  color: #e05c5c;
 }
 
 .hint {
@@ -9,9 +143,8 @@
   font-size: 0.9rem;
 }
 
-.last-move {
-  margin-top: 12px;
-  font-size: 0.9rem;
+.setup {
+  max-width: 820px;
 }
 
 button {
@@ -23,7 +156,52 @@ button {
   cursor: pointer;
 }
 
+button:hover:not(:disabled) {
+  border-color: #6a6a6a;
+  background: #333;
+}
+
 button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* The button that finishes what you started. One per panel, at most. */
+button.primary {
+  background: #3d4f2a;
+  border-color: #6a8a44;
+  color: #f0f4e8;
+}
+
+button.primary:hover:not(:disabled) {
+  background: #4a6033;
+  border-color: #8ab05a;
+}
+
+button.quiet {
+  background: transparent;
+  border-color: #3a3a3a;
+  color: #9a917c;
+}
+
+/* The action buttons are a menu, not a form: one gets picked and the
+ * rest step aside (a hero takes ONE action per turn). */
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.log-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.log-tile {
+  color: #e8b04a;
 }

@@ -45,7 +45,14 @@ wrong), app enforces via searched.<room>.treasureBy.
 
 ## Architecture
 - Frontend: React + SVG/Canvas grid, Firebase Hosting. Renders board,
-  fog of war, tokens, path input, Zargon narration log.
+  fog of war, tokens, path input, Zargon narration log. Layout (App.css
+  + GameView): the board is sticky on the left, everything you press is
+  in a rail on the right, and the rail is ordered by urgency -- things
+  the app is WAITING on (defence rolls, a spell holding a hero, a trap
+  underfoot) sit above things you may choose to do. Hero actions are a
+  menu that expands one at a time, because the rulebook gives a hero
+  one action per turn; showing six forms at once misrepresented that
+  and buried the log below all of them.
 - State: Firestore. Collections: quests (validated definitions),
   games (runtime state). A quest never changes after generation, so the
   setup screen lists both: pick a past quest to start a fresh game on

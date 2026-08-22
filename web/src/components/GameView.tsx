@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import {
   attemptBreakSpell,
@@ -33,6 +33,18 @@ interface PendingDefense {
   skulls: number;
 }
 
+/** A hero takes ONE action per turn (1989 rulebook), so the panel shows
+ * a menu of them and expands whichever is picked -- rather than laying
+ * every form out at once and letting the player find the right one. */
+type ActionKey = "attack" | "search" | "door" | "spell";
+
+const ACTION_LABELS: Record<ActionKey, string> = {
+  attack: "Attack",
+  search: "Search the room",
+  door: "Open a door",
+  spell: "Cast a spell",
+};
+
 export function GameView({ gameId }: GameViewProps) {
   const { game, loading, error } = useLiveGame(gameId);
 
@@ -53,8 +65,10 @@ export function GameView({ gameId }: GameViewProps) {
   } | null>(null);
   const [lowestBpHeroId, setLowestBpHeroId] = useState<string>("");
   const [pendingDefenses, setPendingDefenses] = useState<PendingDefense[]>([]);
+  const [openAction, setOpenAction] = useState<ActionKey | null>(null);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const logRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     // A hero who has fallen can't be the active one -- hand the
@@ -63,6 +77,19 @@ export function GameView({ gameId }: GameViewProps) {
       setHeroId(livingHeroes(game.heroes)[0]?.id ?? "");
     }
   }, [game, heroId]);
+
+  // Switching hero or phase abandons a half-filled action form: those
+  // numbers belonged to the hero who was up a moment ago.
+  useEffect(() => {
+    setOpenAction(null);
+  }, [heroId, game?.phase, game?.heroPhaseSegment]);
+
+  // The newest line is the one you need; without this the log opens
+  // scrolled to turn 1 and every entry pushes the interesting end away.
+  useEffect(() => {
+    const list = logRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [game?.log?.length]);
 
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true);
@@ -320,36 +347,18 @@ export function GameView({ gameId }: GameViewProps) {
   return (
     <div className="game-view">
       {game.status === "complete" && narrative && (
-        <div
-          style={{
-            border: "2px solid #e8c34a",
-            borderRadius: 6,
-            padding: 12,
-            marginBottom: 16,
-            background: "#2a230f",
-            maxWidth: 700,
-          }}
-        >
-          <h2 style={{ margin: 0, color: "#e8c34a" }}>Quest Complete!</h2>
+        <div className="banner">
+          <h2>Quest Complete!</h2>
           <p style={{ fontStyle: "italic", color: "#e8dfc8" }}>{narrative.completionText}</p>
         </div>
       )}
 
       {game.status === "lost" && (
-        <div
-          style={{
-            border: "2px solid #e05c5c",
-            borderRadius: 6,
-            padding: 12,
-            marginBottom: 16,
-            background: "#2e1414",
-            maxWidth: 700,
-          }}
-        >
-          <h2 style={{ margin: 0, color: "#e05c5c" }}>Quest lost</h2>
+        <div className="banner banner-lost">
+          <h2>Quest lost</h2>
           <p style={{ color: "#f0cccc", margin: "6px 0 0" }}>
-            Every hero has fallen. Zargon holds the dungeon &mdash; start a new game, or undo if that
-            last death was reported by mistake.
+            Every hero has fallen. Zargon holds the dungeon &mdash; start a new game, or undo if that last
+            death was reported by mistake.
           </p>
         </div>
       )}
@@ -357,25 +366,16 @@ export function GameView({ gameId }: GameViewProps) {
       {/* The objective is only half the quest -- the rulebook ends it at
           the stairway, so say so until a hero actually gets there. */}
       {game.status !== "complete" && game.objectiveComplete && (
-        <div
-          style={{
-            border: "2px solid #7fb0ff",
-            borderRadius: 6,
-            padding: 12,
-            marginBottom: 16,
-            background: "#16233a",
-            maxWidth: 700,
-          }}
-        >
-          <h2 style={{ margin: 0, color: "#7fb0ff" }}>Objective complete &mdash; get back to the stairway</h2>
+        <div className="banner banner-objective">
+          <h2>Objective complete &mdash; get back to the stairway</h2>
           <p style={{ color: "#cfe0ff", margin: "6px 0 0" }}>
             A quest is only safely finished at the stairway. Any hero reaching it ends the quest.
           </p>
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <h2>
+      <div className="app-header">
+        <h2 style={{ margin: 0 }}>
           Turn {game.turn} &mdash;{" "}
           {game.phase === "hero"
             ? game.heroes.length === 1
@@ -384,124 +384,129 @@ export function GameView({ gameId }: GameViewProps) {
             : "Zargon's turn"}
         </h2>
         <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          {narrative && (
+            <button className="quiet" onClick={() => setNarrativeOpen((v) => !v)}>
+              {narrativeOpen ? "Hide" : "Story"}
+            </button>
+          )}
           <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
             {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
           </button>
           <span className="hint">
-            Game <code>{gameId}</code>
+            <code>{gameId}</code>
           </span>
         </span>
       </div>
 
-      {narrative && (
-        <div style={{ marginBottom: 12 }}>
-          <button onClick={() => setNarrativeOpen((v) => !v)}>
-            {narrativeOpen ? "Hide" : "Show"} quest story: {narrative.title}
-          </button>
-          {narrativeOpen && (
-            <div style={{ maxWidth: 700 }}>
-              <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
-              {narrative.objective && (
-                <p>
-                  <strong>Objective:</strong> {narrative.objective}
-                </p>
-              )}
-            </div>
+      {narrative && narrativeOpen && (
+        <div className="panel" style={{ maxWidth: 720, marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>{narrative.title}</h3>
+          <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+          {narrative.objective && (
+            <p style={{ margin: 0 }}>
+              <strong>Objective:</strong> {narrative.objective}
+            </p>
           )}
         </div>
       )}
 
-      <BoardView
-        gameState={game}
-        onConfirmMove={handleConfirmMove}
-        onSelectHero={setHeroId}
-        onSelectMonster={setAttackMonsterId}
-        doors={resolvedDoors}
-        stairway={stairway}
-        furniture={furniture}
-        blockedSquares={blockedSquares}
-      />
-
       {errorMsg && <p style={{ color: "#e66" }}>Error: {errorMsg}</p>}
 
-      <div className="actions" style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          Active hero:{" "}
-          <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
-            {heroes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
-          {activeHeroRoomId && <span className="hint"> in {activeHeroRoomId}</span>}{" "}
-          {activeHero && playable && (
-            <button onClick={() => handleHeroDeath(activeHero.id, activeHero.name)} disabled={busy}>
-              {activeHero.name} has fallen
-            </button>
+      <div className="game-layout">
+        <div className="board-pane">
+          <BoardView
+            gameState={game}
+            // Bigger squares than the old single-column layout could
+            // afford -- tracing a path is the one thing you do with a
+            // mouse here, so the board gets the width the rail saved.
+            cellSize={34}
+            onConfirmMove={handleConfirmMove}
+            onSelectHero={setHeroId}
+            onSelectMonster={setAttackMonsterId}
+            doors={resolvedDoors}
+            stairway={stairway}
+            furniture={furniture}
+            blockedSquares={blockedSquares}
+          />
+        </div>
+
+        <div className="rail">
+          {/* Anything the app is WAITING on comes first, before the
+              things you might choose to do. */}
+          {pendingDefenses.length > 0 && (
+            <div className="alert">
+              <p className="alert-title">Report defence rolls</p>
+              <div className="panel-stack">
+                {pendingDefenses.map((d) => (
+                  <DefenseForm key={d.key} defense={d} busy={busy} onSubmit={handleRecordDefense} />
+                ))}
+              </div>
+            </div>
           )}
-        </label>
 
-        {fallenHeroes.length > 0 && (
-          <span className="hint">
-            Fallen: {fallenHeroes.map((h) => h.name).join(", ")} &mdash; off the board, out of Zargon's reach.
-          </span>
-        )}
-
-        {activeHeroStatuses.length > 0 && (
-          <div style={{ border: "1px solid #7a4b8a", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ color: "#c79ad6" }}>
-              Under a Chaos spell: {activeHeroStatuses.map((s) => `${s.status} (${s.spell})`).join(", ")}
-            </span>
-            {breakableStatus ? (
-              <>
-                <span className="hint">
-                  Roll one red die for each of this hero&apos;s Mind Points. A 6 breaks the spell.
+          {activeHeroStatuses.length > 0 && (
+            <div className="alert alert-spell">
+              <p className="alert-title">
+                {activeHero?.name ?? "This hero"} is under a Chaos spell
+              </p>
+              <div className="panel-stack">
+                <span style={{ color: "#c79ad6" }}>
+                  {activeHeroStatuses.map((s) => `${s.status} (${s.spell})`).join(", ")}
                 </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={() => handleBreakSpell(heroId, true)} disabled={busy}>
-                    Rolled a 6 &mdash; break free
-                  </button>
-                  <button onClick={() => handleBreakSpell(heroId, false)} disabled={busy}>
-                    No 6 &mdash; still held
-                  </button>
+                {breakableStatus ? (
+                  <>
+                    <span className="hint">
+                      Roll one red die for each of this hero&apos;s Mind Points. A 6 breaks the spell.
+                    </span>
+                    <div className="panel-row">
+                      <button className="primary" onClick={() => handleBreakSpell(heroId, true)} disabled={busy}>
+                        Rolled a 6
+                      </button>
+                      <button onClick={() => handleBreakSpell(heroId, false)} disabled={busy}>
+                        No 6 &mdash; still held
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <span className="hint">
+                    The whirlwind passes on its own &mdash; this hero simply misses a turn.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {playable && game.phase === "hero" && adjacentKnownTraps.length > 0 && (
+            <div className="alert">
+              <p className="alert-title">A known trap is underfoot</p>
+              <div className="panel-stack">
+                <span className="hint">
+                  Roll 1 combat die and report the face &mdash; the app never rolls it for you.
+                </span>
+                <div className="panel-row">
+                  <label>
+                    Die:{" "}
+                    <select value={trapDieFace} onChange={(e) => setTrapDieFace(e.target.value as CombatDieFace)}>
+                      <option value="skull">skull</option>
+                      <option value="white_shield">white shield</option>
+                      <option value="black_shield">black shield</option>
+                    </select>
+                  </label>
+                  <label>
+                    <input type="checkbox" checked={hasToolKit} onChange={(e) => setHasToolKit(e.target.checked)} />{" "}
+                    tool kit
+                  </label>
                 </div>
-              </>
-            ) : (
-              <span className="hint">The whirlwind passes on its own &mdash; this hero simply misses a turn.</span>
-            )}
-          </div>
-        )}
-
-        {playable && game.phase === "hero" && (
-          <>
-            {adjacentKnownTraps.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #6a5a3a", padding: 8 }}>
-                <span className="hint">
-                  You know a trap is there. Roll 1 combat die and report the face &mdash; the app never rolls it.
-                </span>
-                <label>
-                  Die:{" "}
-                  <select value={trapDieFace} onChange={(e) => setTrapDieFace(e.target.value as CombatDieFace)}>
-                    <option value="skull">skull</option>
-                    <option value="white_shield">white shield</option>
-                    <option value="black_shield">black shield</option>
-                  </select>
-                </label>
-                <label>
-                  <input type="checkbox" checked={hasToolKit} onChange={(e) => setHasToolKit(e.target.checked)} /> hero
-                  has a tool kit (the Dwarf never needs one)
-                </label>
                 {adjacentKnownTraps.map((t) => (
-                  <div key={t.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div key={t.id} className="panel-row">
                     <span>
-                      {t.type.replace(/_/g, " ")} at [{t.pos[0]},{t.pos[1]}]
+                      {t.type} at [{t.pos[0]},{t.pos[1]}]
                     </span>
                     <button onClick={() => handleTrapAction(t.id, "jump", t.pos)} disabled={busy}>
-                      Jump it
+                      Jump
                     </button>
                     <button onClick={() => handleTrapAction(t.id, "disarm", t.pos)} disabled={busy}>
-                      Disarm it
+                      Disarm
                     </button>
                     <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
                       Step on it
@@ -509,96 +514,198 @@ export function GameView({ gameId }: GameViewProps) {
                   </div>
                 ))}
               </div>
-            )}
-
-            {openableDoors.length > 0 && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                {openableDoors.map((d) => (
-                  <button key={d.id} onClick={() => handleOpenDoor(d.id)} disabled={busy}>
-                    Open door {d.id}
-                  </button>
-                ))}
-                <span className="hint">(opens from the doorway -- the room is revealed without stepping in)</span>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={handleSearchTreasure} disabled={busy || !activeHeroRoomId || heroSearchedTreasureHere}>
-                Search treasure
-              </button>
-              {activeHeroRoomId && !roomAlreadySearchedTraps && (
-                // Derived from what the PARTY has done, not from what the
-                // quest hides -- no information leak, just a reminder that
-                // greed before caution sets off trapped furniture.
-                <span className="hint">this room hasn't been searched for traps yet</span>
-              )}
-              <label>
-                <input type="checkbox" checked={wanderingDrawn} onChange={(e) => setWanderingDrawn(e.target.checked)} />{" "}
-                wandering monster card drawn
-              </label>
-              {heroSearchedTreasureHere && (
-                <span className="hint">(this hero already searched this room -- once per hero per room)</span>
-              )}
             </div>
+          )}
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <button
-                onClick={() => handleSearchTraps("traps")}
-                disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTraps}
-              >
-                Search for traps
-              </button>
-              {roomAlreadySearchedTraps && <span className="hint">(already searched)</span>}
-              <button
-                onClick={() => handleSearchTraps("secret_doors")}
-                disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedSecretDoors}
-              >
-                Search for secret doors
-              </button>
-              {roomAlreadySearchedSecretDoors && <span className="hint">(already searched)</span>}
-              <span className="hint">(two separate actions)</span>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
-                <option value="">Attack target...</option>
-                {targetableMonsters.map((m) => {
-                  const reach = attackReach(m);
-                  return (
-                    <option key={m.id} value={m.id}>
-                      {m.type} ({m.id}) &mdash; {m.currentBody} BP
-                      {reach && ` \u00b7 ${reach}`}
+          <div className="panel">
+            <p className="panel-title">Active hero</p>
+            <div className="panel-stack">
+              <div className="panel-row">
+                <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                  {heroes.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
                     </option>
-                  );
-                })}
-              </select>
-              <label>
-                Skulls: <input type="number" min={0} value={attackSkulls} onChange={(e) => setAttackSkulls(Number(e.target.value))} style={{ width: 48 }} />
-              </label>
-              <button onClick={handleAttack} disabled={busy || !attackMonsterId}>
-                Attack
-              </button>
-              {selectedReach && (
-                <span style={{ color: "#e6a23b" }}>
-                  {selectedReach === "diagonal"
-                    ? "diagonal \u2014 staff or longsword only"
-                    : "not adjacent \u2014 dagger, crossbow or spell only"}
-                </span>
+                  ))}
+                </select>
+                <span className="hint">{activeHeroRoomId ? `in ${activeHeroRoomId}` : "in a corridor"}</span>
+              </div>
+              {fallenHeroes.length > 0 && (
+                <span className="hint">Fallen: {fallenHeroes.map((h) => h.name).join(", ")}</span>
+              )}
+              {activeHero && playable && (
+                <div>
+                  <button
+                    className="quiet"
+                    onClick={() => handleHeroDeath(activeHero.id, activeHero.name)}
+                    disabled={busy}
+                  >
+                    {activeHero.name} has fallen
+                  </button>
+                </div>
               )}
             </div>
+          </div>
 
-            {isCaster && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #4a5a7a", padding: 8 }}>
-                <span className="hint">
-                  Cast a spell (instead of attacking). The card stays on the table &mdash; name it, and if it
-                  attacks, report the skulls you rolled.
-                </span>
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {playable && game.phase === "hero" && (
+            <div className="panel">
+              <p className="panel-title">
+                {openAction ? ACTION_LABELS[openAction] : "Action — one per turn"}
+              </p>
+
+              {openAction === null && (
+                <div className="panel-stack">
+                  <div className="action-grid">
+                    <button onClick={() => setOpenAction("attack")} disabled={busy || targetableMonsters.length === 0}>
+                      Attack
+                    </button>
+                    <button onClick={() => setOpenAction("search")} disabled={busy || !activeHeroRoomId}>
+                      Search
+                    </button>
+                    {openableDoors.length > 0 && (
+                      <button onClick={() => setOpenAction("door")} disabled={busy}>
+                        Open door
+                      </button>
+                    )}
+                    {isCaster && (
+                      <button onClick={() => setOpenAction("spell")} disabled={busy}>
+                        Cast spell
+                      </button>
+                    )}
+                  </div>
+                  <span className="hint">
+                    Trace a path on the board to move. Attacking, searching, opening a door or casting is
+                    the hero&apos;s one action.
+                  </span>
+                  <div>
+                    <button className="primary" onClick={handleEndTurn} disabled={busy}>
+                      {game.heroes.length === 1 && (game.heroPhaseSegment ?? 1) === 1
+                        ? "End action 1 of 2"
+                        : "End turn"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {openAction === "attack" && (
+                <div className="panel-stack">
+                  <div className="panel-row">
+                    <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
+                      <option value="">Target...</option>
+                      {targetableMonsters.map((m) => {
+                        const reach = attackReach(m);
+                        return (
+                          <option key={m.id} value={m.id}>
+                            {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                            {reach && ` · ${reach}`}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <label>
+                      Skulls:{" "}
+                      <input
+                        type="number"
+                        min={0}
+                        value={attackSkulls}
+                        onChange={(e) => setAttackSkulls(Number(e.target.value))}
+                        style={{ width: 48 }}
+                      />
+                    </label>
+                  </div>
+                  {selectedReach && (
+                    <span style={{ color: "#e6a23b" }}>
+                      {selectedReach === "diagonal"
+                        ? "diagonal — staff or longsword only"
+                        : "not adjacent — dagger, crossbow or spell only"}
+                    </span>
+                  )}
+                  <div className="panel-row">
+                    <button className="primary" onClick={handleAttack} disabled={busy || !attackMonsterId}>
+                      Roll it
+                    </button>
+                    <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {openAction === "search" && (
+                <div className="panel-stack">
+                  <div className="panel-row">
+                    <button
+                      onClick={handleSearchTreasure}
+                      disabled={busy || !activeHeroRoomId || heroSearchedTreasureHere}
+                    >
+                      Treasure
+                    </button>
+                    <button
+                      onClick={() => handleSearchTraps("traps")}
+                      disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedTraps}
+                    >
+                      Traps
+                    </button>
+                    <button
+                      onClick={() => handleSearchTraps("secret_doors")}
+                      disabled={busy || !activeHeroRoomId || !!roomAlreadySearchedSecretDoors}
+                    >
+                      Secret doors
+                    </button>
+                  </div>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={wanderingDrawn}
+                      onChange={(e) => setWanderingDrawn(e.target.checked)}
+                    />{" "}
+                    wandering monster card drawn
+                  </label>
+                  <span className="hint">
+                    {heroSearchedTreasureHere
+                      ? "This hero already searched here for treasure -- once per hero per room."
+                      : roomAlreadySearchedTraps
+                        ? "Traps found. Trapped furniture is safe to open now."
+                        : "Searching for treasure before traps sets off any trapped chest in the room."}
+                  </span>
+                  <div>
+                    <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {openAction === "door" && (
+                <div className="panel-stack">
+                  <div className="panel-row">
+                    {openableDoors.map((d) => (
+                      <button key={d.id} className="primary" onClick={() => handleOpenDoor(d.id)} disabled={busy}>
+                        Open {d.id}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="hint">
+                    Opens from the doorway &mdash; the room is revealed without stepping in.
+                  </span>
+                  <div>
+                    <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
+                      Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {openAction === "spell" && (
+                <div className="panel-stack">
+                  <span className="hint">
+                    Cast instead of attacking. The card stays on the table &mdash; name it, and if it attacks,
+                    report the skulls you rolled.
+                  </span>
                   <input
                     placeholder="spell name, e.g. Ball of Flame"
                     value={spellName}
                     onChange={(e) => setSpellName(e.target.value)}
-                    style={{ minWidth: 200 }}
                   />
                   <label>
                     <input
@@ -606,112 +713,117 @@ export function GameView({ gameId }: GameViewProps) {
                       checked={spellTargetsMonster}
                       onChange={(e) => setSpellTargetsMonster(e.target.checked)}
                     />{" "}
-                    at the selected monster
+                    aimed at a monster
                   </label>
-                </div>
-                {spellTargetsMonster && (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <label>
-                      Skulls:{" "}
-                      <input
-                        type="number"
-                        min={0}
-                        value={spellSkulls}
-                        onChange={(e) => setSpellSkulls(Number(e.target.value))}
-                        style={{ width: 48 }}
-                      />
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={spellDefends}
-                        onChange={(e) => setSpellDefends(e.target.checked)}
-                      />{" "}
-                      monster may defend
-                    </label>
-                  </div>
-                )}
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    onClick={handleCastSpell}
-                    disabled={busy || !spellName.trim() || (spellTargetsMonster && !attackMonsterId)}
-                  >
-                    Cast spell
-                  </button>
-                  {spellTargetsMonster && !attackMonsterId && (
-                    <span className="hint">pick a target above first</span>
+                  {spellTargetsMonster && (
+                    <>
+                      <div className="panel-row">
+                        <select value={attackMonsterId} onChange={(e) => setAttackMonsterId(e.target.value)}>
+                          <option value="">Target...</option>
+                          {targetableMonsters.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                            </option>
+                          ))}
+                        </select>
+                        <label>
+                          Skulls:{" "}
+                          <input
+                            type="number"
+                            min={0}
+                            value={spellSkulls}
+                            onChange={(e) => setSpellSkulls(Number(e.target.value))}
+                            style={{ width: 48 }}
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={spellDefends}
+                          onChange={(e) => setSpellDefends(e.target.checked)}
+                        />{" "}
+                        the monster may defend
+                      </label>
+                    </>
                   )}
+                  <div className="panel-row">
+                    <button
+                      className="primary"
+                      onClick={handleCastSpell}
+                      disabled={busy || !spellName.trim() || (spellTargetsMonster && !attackMonsterId)}
+                    >
+                      Cast
+                    </button>
+                    <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
+                      Back
+                    </button>
+                  </div>
                   {(game.spellsCast ?? []).length > 0 && (
                     <span className="hint">spent: {(game.spellsCast ?? []).join(", ")}</span>
                   )}
                 </div>
-              </div>
-            )}
-
-            <div>
-              <button onClick={handleEndTurn} disabled={busy}>
-                {game.heroes.length === 1 && (game.heroPhaseSegment ?? 1) === 1 ? "End action 1 of 2" : "End turn"}
-              </button>
+              )}
             </div>
-          </>
-        )}
+          )}
 
-        {playable && game.phase === "zargon" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {!rolledTurn && (
-              <button onClick={handleRollTurnType} disabled={busy}>
-                Roll Zargon's turn
-              </button>
-            )}
-            {rolledTurn && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span>Rolled: {rolledTurn.turnType}</span>
-                {rolledTurn.needsCunningPrompt && (
-                  <label>
-                    Lowest-BP hero:{" "}
-                    <select value={lowestBpHeroId} onChange={(e) => setLowestBpHeroId(e.target.value)}>
-                      <option value="">choose...</option>
-                      {rolledTurn.heroes.map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+          {playable && game.phase === "zargon" && (
+            <div className="panel">
+              <p className="panel-title">Zargon&apos;s turn</p>
+              <div className="panel-stack">
+                {!rolledTurn && (
+                  <div>
+                    <button className="primary" onClick={handleRollTurnType} disabled={busy}>
+                      Roll Zargon&apos;s turn
+                    </button>
+                  </div>
                 )}
-                <button onClick={handleResolveTurn} disabled={busy}>
-                  Resolve turn
-                </button>
+                {rolledTurn && (
+                  <>
+                    <span>
+                      Rolled: <strong>{rolledTurn.turnType}</strong>
+                    </span>
+                    {rolledTurn.needsCunningPrompt && (
+                      <label>
+                        Lowest-BP hero:{" "}
+                        <select value={lowestBpHeroId} onChange={(e) => setLowestBpHeroId(e.target.value)}>
+                          <option value="">choose...</option>
+                          {rolledTurn.heroes.map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    <div>
+                      <button className="primary" onClick={handleResolveTurn} disabled={busy}>
+                        Resolve turn
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {pendingDefenses.length > 0 && (
-          <div className="defenses">
-            <h3>Report defenses</h3>
-            {pendingDefenses.map((d) => (
-              <DefenseForm key={d.key} defense={d} busy={busy} onSubmit={handleRecordDefense} />
-            ))}
+          <div className="panel">
+            <p className="panel-title">Log</p>
+            <ul className="log-list" ref={logRef}>
+              {(game.log ?? []).map((entry, i) => {
+                // Tile instructions are the lines the player must act on
+                // physically, so they stay visually distinct. Matched on
+                // our own generated wording -- see the engines'
+                // placement_instruction strings.
+                const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
+                return (
+                  <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
+                    [{entry.turn}] {entry.text}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        )}
-
-        <div className="log">
-          <h3>Log</h3>
-          <ul style={{ maxHeight: 240, overflowY: "auto", fontFamily: "monospace", fontSize: "0.85rem" }}>
-            {(game.log ?? []).map((entry, i) => {
-              // Tile instructions are the lines the player must act on
-              // physically, so they stay visually distinct. Matched on
-              // our own generated wording -- see the engines'
-              // placement_instruction strings.
-              const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
-              return (
-                <li key={`g${i}`} style={{ color: isTileInstruction ? "#e8b04a" : undefined }}>
-                  [{entry.turn}] {entry.text}
-                </li>
-              );
-            })}
-          </ul>
         </div>
       </div>
     </div>
