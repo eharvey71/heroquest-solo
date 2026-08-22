@@ -18,6 +18,7 @@ from validator.balance import (
     MIN_DEPTH_BY_SIZE,
     ROOM_CAP_BY_HERO_COUNT,
     WANDERING_MAX_COST_LOW_HERO_COUNT,
+    caster_types,
 )
 from engine.chaos_spells import CHAOS_SPELLS
 from validator.catalogs import Catalogs
@@ -39,6 +40,10 @@ def _furniture_catalog_json(catalogs: Catalogs) -> str:
         for name, entry in catalogs.furniture.items()
     }
     return json.dumps(furniture, sort_keys=True)
+
+
+def _caster_types_line(catalogs: Catalogs) -> str:
+    return ", ".join(caster_types(catalogs))
 
 
 def _chaos_spell_lines() -> str:
@@ -164,15 +169,18 @@ when a physical tile should go on the board.
 {_chaos_spell_lines()}
 A quest MAY hand Chaos spells to monsters, per the cards' own rule:
 "You must give your Chaos spells to specific monsters called for in the
-Quest notes." So only a NAMED monster (a boss, or at most one
-lieutenant -- {MAX_SPELL_CASTERS} casters in the whole quest) may carry
-them, via that monster's `spells` array. Never the rank and file. There is one physical card of each, so no
-spell may appear twice in a quest. A caster spends one instead of
-attacking, only on a hero it can see, once per quest.
+Quest notes." So only a NAMED monster of a spellcasting TYPE
+({_caster_types_line(catalogs)}) may carry them, via that monster's
+`spells` array -- at most {MAX_SPELL_CASTERS} casters in the whole
+quest. Never the rank and file, and never the shambling undead.
+There is one physical card of each, so no spell may appear twice in a
+quest. A caster spends one instead of attacking, only on a hero it can
+see, once per quest.
 Two or three spells on the quest's boss is a good use of them; a
 spell-less quest is also fine. Each spell you hand out costs
-{CHAOS_SPELL_THREAT_COST} points of the monster budget, so count them in. If you give a monster `escape`, you must
-also set the quest's `escapeDestination` to the square it teleports to.
+{CHAOS_SPELL_THREAT_COST} points of the monster budget, so count them
+in. If you give a monster `escape`, you must also set the quest's
+`escapeDestination` to the square it teleports to.
 
 ### ROOM OBJECT
 Every entry in `rooms` must include all four fields: `revealText`,

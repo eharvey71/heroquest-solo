@@ -56,6 +56,17 @@ BLOCKED_DOUBLE_TILES = 2
 BLOCKED_SQUARE_CAP = BLOCKED_SINGLE_TILES + 2 * BLOCKED_DOUBLE_TILES
 
 
+def caster_types(catalogs) -> list[str]:
+    """Monster types that may carry Chaos spells at all.
+
+    The quest book's casters are chaos warriors, warlocks and sorcerers
+    -- never an orc in the crowd, and never the shambling undead. Marked
+    with "caster": true in data/monsters.json so the list lives with the
+    stats rather than in a constant here.
+    """
+    return sorted(name for name, entry in catalogs.monsters.items() if entry.get("caster"))
+
+
 def _has_disjoint_pairs(pairs: list, count: int) -> bool:
     """Can `count` of these pairs be chosen without sharing a square?
     Brute force is fine: count is at most BLOCKED_DOUBLE_TILES (2).
@@ -255,6 +266,11 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
                 errors.append(
                     f"monster {monster.get('id', '?')} in {room_id} carries Chaos spells but has no name -- "
                     f"the cards go to \"specific monsters called for in the Quest notes\""
+                )
+            if spells and monster.get("type") not in set(caster_types(catalogs)):
+                errors.append(
+                    f"a {monster.get('type')} can't carry Chaos spells -- only "
+                    f"{', '.join(caster_types(catalogs))} cast in the quest book"
                 )
             for spell_id in spells:
                 if spell_id not in CHAOS_SPELLS:

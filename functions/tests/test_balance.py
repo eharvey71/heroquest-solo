@@ -228,3 +228,17 @@ def test_only_a_couple_of_monsters_may_carry_spells(good_quest_4h, good_quest_4h
             armed += 1
     errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
     assert any("more than the 2 the quest book ever arms" in e for e in errors)
+
+
+def test_only_a_spellcasting_type_may_carry_chaos_spells(good_quest_4h, good_quest_4h_params, catalogs):
+    # An orc with a name is still an orc: the quest book's casters are
+    # chaos warriors, warlocks and sorcerers.
+    monster = good_quest_4h["rooms"]["R2"]["monsters"][0]
+    monster["type"] = "orc"
+    monster["name"] = "Grukk the Loud"
+    monster["spells"] = ["fear"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("can't carry Chaos spells" in e for e in errors)
+
+    monster["type"] = "chaos_warrior"
+    assert not any("can't carry Chaos spells" in e for e in check_balance(good_quest_4h, good_quest_4h_params, catalogs))

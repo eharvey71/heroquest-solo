@@ -113,7 +113,12 @@ def build_quest(
 
     # The objective's boss goes down first, then the rest of the budget
     # is spread over the other rooms.
-    boss_type = rng.choice(BOSS_TYPES)
+    boss_choices = BOSS_TYPES
+    if boss_spells:
+        # A boss holding Chaos spells has to be a type that can cast
+        # them at all (validator.balance.caster_types).
+        boss_choices = [t for t in BOSS_TYPES if catalogs.monsters[t].get("caster")] or BOSS_TYPES
+    boss_type = rng.choice(boss_choices)
     boss_entry = catalogs.monsters[boss_type]
     boss_squares = sorted(board.room_squares[objective_room] - stair_squares)
     monster_index += 1
