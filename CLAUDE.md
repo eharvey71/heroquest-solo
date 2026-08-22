@@ -371,16 +371,23 @@ fed to the generator prompt. The owner set it to the three figures
 worth arming: chaos_warrior (4 owned), chaos_warlock (1), gargoyle (1).
 A named orc is still an orc, and the shambling undead never cast.
 
-chaos_warlock had no entry in data/monsters.json until the cards
-needed one -- the 1989 rulebook's monster table has eight rows and the
-Warlock is not among them, because the figure stands in for named
-quest villains whose stats are printed in that quest's own notes. Its
-catalog row is therefore a HOUSE BASELINE, not a transcription:
-move 6 / attack 2 / defend 4 / body 3 / mind 6, threat 9. Frail in a
-swing and hard to put to sleep, so his threat comes from the Chaos
-cards he carries rather than from swinging; a quest wanting him
-tougher uses the named-monster `overrides`. Replace the row if the
-quest book ever supplies real base stats.
+chaos_warlock is not in the rulebook's eight-row monster table: the
+figure stands in for named quest villains whose stats are printed in
+that quest's own notes. Its catalog row is BALUR, the Fire Mage
+(Quest 8) -- move 8 / attack 2 / defend 5 / body 3 / mind 7, threat
+10. Frail in a swing and very hard to put to sleep, so his threat is
+the Chaos cards he carries, not his sword. Balur is the lighter of the
+book's two Warlocks; the Witch Lord (Quest 14) is move 10 / attack 5 /
+defend 6 / body 4 / mind 6, threat 15 -- that gap is what the
+named-monster `overrides` are for, so the catalog row is the floor,
+not the ceiling.
+
+Both book Warlocks carry FIVE OR SIX spells, not the two or three the
+generator prompt suggests, and the Witch Lord casts Fear TWICE. The
+validator's one-card-per-quest rule reads that as an error; it is
+right about two different monsters sharing a card and wrong about one
+monster holding two copies. Unfixed -- chaosSpellsCast is a set of
+spell ids, so counting repeats needs engine work too.
 
 The physical/digital line runs straight through the middle of the deck:
 - The app applies what it owns: damage to MONSTERS, summons (capped by
