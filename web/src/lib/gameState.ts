@@ -78,6 +78,10 @@ export interface GameState {
   undoDepth?: number;
   /** What the next undo would roll back, e.g. "the hero's move". */
   undoLabel?: string;
+  /** Monster attacks from Zargon's last turn still awaiting the
+   * hero's shield report. Game-owned so undo and a page refresh both
+   * do the right thing. */
+  pendingDefenses?: { id: string; heroId: string; heroName: string; skulls: number }[];
 }
 
 /** Heroes still on the board: the ones that can act, block squares and

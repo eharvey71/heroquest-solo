@@ -35,6 +35,7 @@ interface RawGameDoc {
   heroStatus?: GameState["heroStatus"];
   undoDepth?: number;
   undoLabel?: string;
+  pendingDefenses?: GameState["pendingDefenses"];
   log?: LogEntry[];
 }
 
@@ -66,6 +67,7 @@ function toGameState(raw: RawGameDoc): GameState {
     // dropped on the floor no matter what the document holds.
     undoDepth: raw.undoDepth ?? 0,
     undoLabel: raw.undoLabel,
+    pendingDefenses: raw.pendingDefenses ?? [],
     log: raw.log ?? [],
   };
 }

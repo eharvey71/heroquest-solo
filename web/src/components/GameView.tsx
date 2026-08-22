@@ -31,7 +31,7 @@ interface GameViewProps {
 }
 
 interface PendingDefense {
-  key: string;
+  id: string;
   heroId: string;
   heroName: string;
   skulls: number;
@@ -96,7 +96,6 @@ export function GameView({ gameId }: GameViewProps) {
     heroes: { id: string; name: string }[];
   } | null>(null);
   const [lowestBpHeroId, setLowestBpHeroId] = useState<string>("");
-  const [pendingDefenses, setPendingDefenses] = useState<PendingDefense[]>([]);
   const [openAction, setOpenAction] = useState<ActionKey | null>(null);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -148,13 +147,16 @@ export function GameView({ gameId }: GameViewProps) {
   };
 
   const handleUndo = async () => {
-    await runAction(() => undoLastAction({ gameId }));
-  };
-
-  const enqueueDefense = (heroName: string, skulls: number) => {
-    const hero = game?.heroes.find((h) => h.name === heroName);
-    if (!hero) return;
-    setPendingDefenses((prev) => [...prev, { key: `${hero.id}-${Date.now()}-${Math.random()}`, heroId: hero.id, heroName, skulls }]);
+    const result = await runAction(() => undoLastAction({ gameId }));
+    if (!result) return;
+    // Anything half-entered belonged to the action just rolled back:
+    // a traced path, an expanded action form, a rolled-but-unresolved
+    // Zargon turn. The defence queue is game state now, so the restore
+    // handles that one on its own.
+    pathInput.clear();
+    setOpenAction(null);
+    setRolledTurn(null);
+    setLowestBpHeroId("");
   };
 
   // Door/stairway geometry is quest-owned (fetched once); door
@@ -221,6 +223,11 @@ export function GameView({ gameId }: GameViewProps) {
   if (loading) return <p>Loading game...</p>;
   if (error) return <p style={{ color: "#e66" }}>Error: {error}</p>;
   if (!game) return null;
+
+  // Zargon's unanswered attacks, straight off the live document: held
+  // in React state they outlived an undo of the very turn that raised
+  // them, and a refresh lost them altogether.
+  const pendingDefenses: PendingDefense[] = game.pendingDefenses ?? [];
 
   // Fog of war: hidden monsters must never appear in the attack list --
   // the dropdown otherwise leaks every unrevealed room's contents.
@@ -383,7 +390,9 @@ export function GameView({ gameId }: GameViewProps) {
     );
     if (!result) return;
     setWanderingDrawn(false);
-    if (result.monsterAttack) enqueueDefense(result.monsterAttack.heroName, result.monsterAttack.skulls);
+    // A drawn wandering monster attacks at once; search_treasure queues
+    // that prompt in the game document, so it arrives with the live
+    // state like any other.
   };
 
   const handleSearchTraps = async (searchType: "traps" | "secret_doors") => {
@@ -427,18 +436,21 @@ export function GameView({ gameId }: GameViewProps) {
       })
     );
     if (!result) return;
-    for (const mr of result.monsterResults) {
-      if (mr.attackedHeroName && mr.skulls !== null) enqueueDefense(mr.attackedHeroName, mr.skulls);
-    }
+    // The prompts arrive through the live game document, which
+    // resolve_zargon_turn has already written -- nothing to mirror here.
     setRolledTurn(null);
   };
 
   const handleRecordDefense = async (defense: PendingDefense, shieldsReported: number) => {
-    const result = await runAction(() =>
-      recordHeroDefense({ gameId, heroId: defense.heroId, skullsFaced: defense.skulls, shieldsReported })
+    await runAction(() =>
+      recordHeroDefense({
+        gameId,
+        heroId: defense.heroId,
+        skullsFaced: defense.skulls,
+        shieldsReported,
+        defenseId: defense.id,
+      })
     );
-    if (!result) return;
-    setPendingDefenses((prev) => prev.filter((d) => d.key !== defense.key));
   };
 
   return (
@@ -536,7 +548,7 @@ export function GameView({ gameId }: GameViewProps) {
               <p className="alert-title">Report defence rolls</p>
               <div className="panel-stack">
                 {pendingDefenses.map((d) => (
-                  <DefenseForm key={d.key} defense={d} busy={busy} onSubmit={handleRecordDefense} />
+                  <DefenseForm key={d.id} defense={d} busy={busy} onSubmit={handleRecordDefense} />
                 ))}
               </div>
             </div>

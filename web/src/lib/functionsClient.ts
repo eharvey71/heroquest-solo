@@ -295,6 +295,8 @@ export interface RecordHeroDefenseRequest {
   heroId: string;
   skullsFaced: number;
   shieldsReported: number;
+  /** Which queued prompt this answers (game state's pendingDefenses). */
+  defenseId?: string;
 }
 export interface RecordHeroDefenseResponse {
   log: string;

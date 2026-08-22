@@ -709,6 +709,21 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
             }
         )
 
+    # The drawn monster attacks the searcher at once, so its defence
+    # prompt joins the queue (see _apply_zargon_turn for why the queue
+    # is game state). APPENDED, not written whole: a prompt from
+    # Zargon's last turn may still be unanswered.
+    if result.monster_attack:
+        hero_ids_by_name = {h.get("name"): h.get("id") for h in game_state.get("heroes", [])}
+        updates["pendingDefenses"] = list(game_state.get("pendingDefenses", [])) + [
+            {
+                "id": f"{turn}:treasure:{hero_id}",
+                "heroId": hero_ids_by_name.get(result.monster_attack.hero_name, ""),
+                "heroName": result.monster_attack.hero_name,
+                "skulls": result.monster_attack.skulls,
+            }
+        ]
+
     _push_undo(transaction, game_ref, before, updates, "the treasure search")
     transaction.update(game_ref, updates)
     return result
@@ -1282,6 +1297,24 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
             }
         )
 
+    # Defence prompts belong to the GAME, not to the browser tab that
+    # happened to resolve the turn. Held in client state they outlived
+    # an undo of this very turn -- the restore rewrites the document,
+    # not React -- and a refresh lost them entirely, quietly costing
+    # the monster its hit. Written WHOLE here, so prompts the player
+    # never answered cannot leak into the next Zargon turn.
+    hero_ids_by_name = {h.get("name"): h.get("id") for h in game_state.get("heroes", [])}
+    updates["pendingDefenses"] = [
+        {
+            "id": f"{turn}:{mr.monster_id}",
+            "heroId": hero_ids_by_name.get(mr.turn_result.attack.hero_name, ""),
+            "heroName": mr.turn_result.attack.hero_name,
+            "skulls": mr.turn_result.attack.skulls,
+        }
+        for mr in result.monster_results
+        if mr.turn_result and mr.turn_result.attack
+    ]
+
     _push_undo(transaction, game_ref, before, updates, "Zargon's turn")
     transaction.update(game_ref, updates)
     return result
@@ -1452,7 +1485,7 @@ def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
 
 
 @firestore.transactional
-def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported):
+def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported, defense_id=None):
     game_state = _load_game(game_ref, transaction)
     _require_playable(game_state)
     before = copy.deepcopy(game_state)
@@ -1470,6 +1503,20 @@ def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shi
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     updates = {"log": existing_log + [{"turn": turn, "text": log_line}]}
+
+    # Answering a prompt takes it off the queue. Matched by id; a client
+    # that sends none falls back to the first prompt with this hero and
+    # skull count, which is what a pre-queue client's call looks like.
+    pending = game_state.get("pendingDefenses", [])
+    for i, entry in enumerate(pending):
+        matches = (
+            entry.get("id") == defense_id
+            if defense_id
+            else entry.get("heroId") == hero_id and entry.get("skulls") == skulls_faced
+        )
+        if matches:
+            updates["pendingDefenses"] = pending[:i] + pending[i + 1:]
+            break
     _push_undo(transaction, game_ref, before, updates, "the defence roll")
     transaction.update(game_ref, updates)
 
@@ -1512,7 +1559,9 @@ def record_hero_defense(req: https_fn.CallableRequest) -> dict:
     game_ref = db.collection("games").document(game_id)
     transaction = db.transaction()
 
-    log_line = _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shields_reported)
+    log_line = _apply_record_hero_defense(
+        transaction, game_ref, hero_id, skulls_faced, shields_reported, data.get("defenseId")
+    )
 
     return {"log": log_line}
 

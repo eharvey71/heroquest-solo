@@ -333,8 +333,21 @@ falls the status becomes "lost" -- the app's only end state other than
 "complete" -- and a finished quest, won or lost, takes no further
 actions (undo still works, so a misreported death is recoverable).
 
+PENDING DEFENCE PROMPTS are GAME state (pendingDefenses), not client
+state. When a monster attacks, the app names the skulls and waits for
+the player's shield report; holding that queue in React meant it
+outlived an UNDO of the very turn that raised it (a restore rewrites
+the document, not the browser) and vanished on a refresh, quietly
+costing the monster its hit. Zargon's turn writes the queue WHOLE, so
+unanswered prompts can't leak into the next turn; a treasure-card
+wandering monster APPENDS, since a prompt from Zargon's last turn may
+still be open. Answering one removes it by id.
+
 UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
 action at a time, all the way to the start of the game if need be.
+Undo also clears the transient client state that belonged to the
+rolled-back action -- a traced path, an open action form, a
+rolled-but-unresolved Zargon turn.
 Every mutating endpoint deep-copies the pre-action state and files it
 under games/{id}/undo/{n} inside its OWN transaction, so an action that
 raises leaves no snapshot and a snapshot never exists without its
