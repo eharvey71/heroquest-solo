@@ -23,6 +23,7 @@ from engine.dice import roll_attack, roll_hero_defend
 from engine.doors import InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.hero_status import add_status, attempt_break, blocking_status, expire_turn_statuses
 from engine.heroes import living_heroes, record_hero_death
 from engine.movement import find_path, passable_door_edges, squares_adjacent_to
 from engine.objective import check_objective_complete, hero_on_stairway
@@ -191,6 +192,16 @@ def _take_hero_turn(board, catalogs, quest, game_state, card: HeroCard, body: di
     if hero is None:
         return 0
 
+    # Held by a Chaos spell: the turn goes on shaking it off instead --
+    # one red die per Mind Point, a 6 frees them (engine/hero_status.py).
+    if blocking_status(game_state, card.id) is not None:
+        rolled_six = any(rng.randint(1, 6) == 6 for _ in range(card.mind))
+        try:
+            attempt_break(game_state, card.id, card.name, rolled_six)
+        except Exception:  # noqa: BLE001 -- becalmed can't be rolled against
+            pass
+        return 0
+
     killed = 0
     # In contact already? Then fighting is the whole turn.
     engaged = _adjacent_monster(game_state, tuple(hero["pos"]))
@@ -270,6 +281,40 @@ def _take_hero_turn(board, catalogs, quest, game_state, card: HeroCard, body: di
     return killed
 
 
+def _apply_chaos_casts(catalogs, game_state, result, body: dict, cards: dict, turn: int, rng) -> None:
+    """What a spell does to the sim's own bookkeeping. The engine decided
+    all of it; this is the sim playing the part main.py plays in the app.
+    """
+    for cast in getattr(result, "chaos_casts", []):
+        game_state.setdefault("chaosSpellsCast", []).append(cast.spell_id)
+
+        for hit in cast.hero_hits:
+            saved = sum(1 for _ in range(hit.get("reductionDice", 0)) if rng.randint(1, 6) >= 5)
+            body[hit["heroId"]] -= max(0, hit["damage"] - saved)
+
+        for monster_id, damage in cast.monster_damage.items():
+            state = game_state["monsters"].get(monster_id)
+            if state is None:
+                continue
+            state["currentBody"] = max(0, state["currentBody"] - damage)
+            state["alive"] = state["currentBody"] > 0
+
+        for status in cast.statuses:
+            add_status(
+                game_state, status["heroId"], status=status["status"],
+                spell=cast.spell_id, turn=turn, misses_turns=status.get("missesTurns", 0),
+            )
+
+        for index, summon in enumerate(cast.summons):
+            new_id = f"C{len(game_state['monsters']) + index + 1}"
+            game_state["monsters"][new_id] = {
+                "type": summon["type"],
+                "pos": list(summon["pos"]),
+                "currentBody": catalogs.monsters[summon["type"]]["body"],
+                "alive": True,
+            }
+
+
 def _apply_zargon_attacks(game_state, result, body: dict, cards: dict, rng) -> None:
     for mr in result.monster_results:
         attack = mr.turn_result.attack if mr.turn_result else None
@@ -328,6 +373,7 @@ def play_quest(
             if not living_heroes(game_state):
                 return Outcome("wiped", turn, heroes_lost, monsters_killed, seed,
                                damage_taken=starting_body - sum(body.values()))
+            expire_turn_statuses(game_state, turn)
             phase = resolve_end_turn(game_state)
             game_state["phase"] = phase.new_phase
             game_state["heroPhaseSegment"] = phase.new_segment
@@ -365,6 +411,7 @@ def play_quest(
                 "alive": True,
             }
 
+        _apply_chaos_casts(catalogs, game_state, result, body, cards, turn, rng)
         _apply_zargon_attacks(game_state, result, body, cards, rng)
         heroes_lost += _bury_the_dead(game_state, body)
         if not living_heroes(game_state):

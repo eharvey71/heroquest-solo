@@ -322,14 +322,38 @@ silently breaks -- was tested and did not hold. See the sim section
 below: withdrawing trades damage output for survivability, because a
 monster that leaves melee also spends the next turn walking back in.
 
+CHAOS SPELLS are built (engine/chaos_spells.py, all twelve 1989 cards
+transcribed verbatim into data/chaos_spells.json). The cards' own rule:
+"give your Chaos spells to specific monsters called for in the Quest
+notes", cast INSTEAD of attacking, only on a hero the caster can SEE,
+once per quest each, then discarded. So spells are quest data
+(monster.spells, validator-checked: named monsters only, one physical
+card of each) and the app decides when to spend them
+(chaos_spells.choose_spell -- room-wide cards wait for a crowd).
+
+The physical/digital line runs straight through the middle of the deck:
+- The app applies what it owns: damage to MONSTERS, summons (capped by
+  free minis, proxy suggested otherwise), the Escape teleport, and the
+  status a spell leaves on a hero.
+- It announces what it doesn't: hero Body Points, the "roll two red
+  dice, each 5-6 saves a point" reductions, Rust's ruined weapon, and
+  every Mind Point break roll. Those are the player's dice and the
+  player's sheet, same handoff as skulls and shields.
+
+Five cards leave a STATUS (engine/hero_status.py): asleep, paralyzed
+(Cloud of Chaos), commanded, becalmed (Tempest) all stop a hero acting
+-- enforced at every hero endpoint via heroes.require_hero_can_act --
+and afraid only costs attack dice, so it is shown, never enforced
+(hero dice are physical). Breaking one is the hero's own roll reported
+through attempt_break_spell; Tempest can't be broken, it just expires
+when the missed turn passes.
+
 Not implemented, deliberately:
-- Chaos spells. Monsters can attack and nothing else; monsters.json
-  carries no spell data and no catalog monster is a caster. The
-  rulebook does permit spells in custom quests (cast INSTEAD of
-  attacking, only on a hero the caster can see, once per quest each),
-  so this is a real feature if wanted -- the cost is that threat cost
-  (attack+defend+body) has no term for spell value, so adding casters
-  invalidates the calibrated 120 baseline until the sim is re-run.
+- Command moves a hero on Zargon's turn. The app marks the hero as
+  commanded and hands Zargon the figure, but does not path or attack
+  with it: hero movement is 2d6 physical and hero attack dice depend on
+  equipment the app cannot see. The player moves the commanded hero as
+  Zargon directs.
 
 Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:

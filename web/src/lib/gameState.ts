@@ -58,6 +58,11 @@ export interface GameState {
   collapsedSquares?: Coord[];
   /** Spell cards already spent this quest (one cast each). */
   spellsCast?: string[];
+  /** Zargon's Chaos cards already spent -- one physical card of each. */
+  chaosSpellsCast?: string[];
+  /** Chaos spells currently on a hero: asleep / paralyzed / commanded /
+   * becalmed stop them acting, afraid only weakens their attack. */
+  heroStatus?: Record<string, { status: string; spell: string; since: number; missesTurns?: number }[]>;
   /** Traps already sprung. */
   trapsTriggered?: string[];
   /** Traps the party found by searching -- known, but still armed.

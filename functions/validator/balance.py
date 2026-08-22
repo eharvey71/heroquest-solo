@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from collections import Counter, deque
 
+from engine.chaos_spells import CHAOS_SPELLS
+
 from .catalogs import Catalogs
 from .reachability import NON_SECRET_STATES, _door_edges, _objective_target_room
 
@@ -223,6 +225,32 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
             continue  # geometry check already reported unknown type
         if count > entry["owned"]:
             errors.append(f"quest uses {count} '{ftype}' pieces, exceeding the owned count of {entry['owned']}")
+
+    # -- Chaos spell cards (physical: one of each in the box) --
+    assigned: Counter = Counter()
+    for room_id, room in quest_rooms.items():
+        for monster in room.get("monsters", []):
+            spells = monster.get("spells") or []
+            if spells and not monster.get("name"):
+                errors.append(
+                    f"monster {monster.get('id', '?')} in {room_id} carries Chaos spells but has no name -- "
+                    f"the cards go to \"specific monsters called for in the Quest notes\""
+                )
+            for spell_id in spells:
+                if spell_id not in CHAOS_SPELLS:
+                    errors.append(f"monster {monster.get('id', '?')} carries unknown Chaos spell '{spell_id}'")
+                    continue
+                assigned[spell_id] += 1
+                if CHAOS_SPELLS[spell_id].get("requiresEscapeDestination") and not quest.get("escapeDestination"):
+                    errors.append(
+                        f"{CHAOS_SPELLS[spell_id]['name']} needs quest.escapeDestination -- "
+                        f"the card teleports its caster to a place marked on the map"
+                    )
+    for spell_id, count in assigned.items():
+        if count > 1:
+            errors.append(
+                f"Chaos spell '{spell_id}' is given to {count} monsters, but there is one physical card of each"
+            )
 
     # -- blocked square tiles (physical, don't recycle) --
     blocked = [

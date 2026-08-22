@@ -40,6 +40,12 @@ from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.hero_status import (
+    SpellCannotBeBrokenError,
+    SpellNotOnHeroError,
+    attempt_break,
+    expire_turn_statuses,
+)
 from engine.heroes import HeroAlreadyDeadError, HeroNotFoundError, living_heroes
 from engine.heroes import record_hero_death as record_hero_death_engine
 from engine.objective import check_objective_complete, hero_on_stairway
@@ -480,9 +486,15 @@ def _apply_end_turn(transaction, game_ref):
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
 
+    # A Tempest costs its victim one turn -- that turn has now passed.
+    if game_state.get("heroStatus"):
+        expiry_log = expire_turn_statuses(game_state, turn)
+        new_log_entries.extend({"turn": turn, "text": line} for line in expiry_log)
+
     updates = {
         "phase": result.new_phase,
         "heroPhaseSegment": result.new_segment,
+        "heroStatus": game_state.get("heroStatus", {}),
         "log": existing_log + new_log_entries,
     }
     _push_undo(transaction, game_ref, before, updates, "ending the hero phase")
@@ -1129,6 +1141,53 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
     for monster_id, new_pos in result.updated_monster_positions.items():
         updates[f"monsters.{monster_id}.pos"] = to_firestore_coords(list(new_pos))
 
+    # Chaos spells: the engine decided, this writes it down. Hero damage
+    # is NOT written -- Body Points are physical, so it only ever reaches
+    # the log and the client's prompt (engine/chaos_spells.py).
+    if result.chaos_casts:
+        spells_cast = set(game_state.get("chaosSpellsCast", []))
+        hero_status = copy.deepcopy(game_state.get("heroStatus", {}))
+        monsters = game_state.get("monsters", {})
+        summon_index = 0
+
+        for cast in result.chaos_casts:
+            spells_cast.add(cast.spell_id)
+
+            for monster_id, damage in cast.monster_damage.items():
+                state = monsters.get(monster_id)
+                if state is None:
+                    continue
+                body = max(0, int(state.get("currentBody", 0)) - int(damage))
+                state["currentBody"] = body
+                state["alive"] = body > 0
+                updates[f"monsters.{monster_id}.currentBody"] = body
+                updates[f"monsters.{monster_id}.alive"] = body > 0
+
+            for status in cast.statuses:
+                entries = [e for e in hero_status.get(status["heroId"], []) if e.get("status") != status["status"]]
+                entry = {"status": status["status"], "spell": cast.spell_id, "since": turn}
+                if status.get("missesTurns"):
+                    entry["missesTurns"] = status["missesTurns"]
+                entries.append(entry)
+                hero_status[status["heroId"]] = entries
+
+            for summon in cast.summons:
+                summon_index += 1
+                new_id = _next_wandering_monster_id(set(monsters) | {f"S{summon_index}"})
+                catalog_entry = _catalogs.monsters.get(summon["type"], {})
+                spawned = {
+                    "type": summon["type"],
+                    "pos": list(summon["pos"]),
+                    "currentBody": catalog_entry.get("body", 1),
+                    "alive": True,
+                }
+                monsters[new_id] = spawned
+                updates[f"monsters.{new_id}"] = to_firestore_coords(spawned)
+
+        updates["chaosSpellsCast"] = sorted(spells_cast)
+        if hero_status:
+            updates["heroStatus"] = hero_status
+
     if result.spawned_monster:
         existing_ids = set(game_state.get("monsters", {}).keys())
         new_monster_id = _next_wandering_monster_id(existing_ids)
@@ -1196,6 +1255,18 @@ def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
             for mr in result.monster_results
         ],
         "spawnedMonster": result.spawned_monster,
+        "chaosCasts": [
+            {
+                "monsterId": c.monster_id,
+                "monsterName": c.monster_name,
+                "spellId": c.spell_id,
+                "spellName": c.spell_name,
+                "heroHits": c.hero_hits,
+                "statuses": c.statuses,
+                "summons": [{"type": s["type"], "pos": list(s["pos"])} for s in c.summons],
+            }
+            for c in result.chaos_casts
+        ],
         "log": result.log,
     }
 
@@ -1494,3 +1565,68 @@ def undo_last_action(req: https_fn.CallableRequest) -> dict:
     transaction = db.transaction()
 
     return _apply_undo(transaction, game_ref)
+
+
+@firestore.transactional
+def _apply_break_spell(transaction, game_ref, hero_id, rolled_six):
+    game_state = _load_game(game_ref, transaction)
+    _require_playable(game_state)
+    before = copy.deepcopy(game_state)
+
+    hero = next((h for h in living_heroes(game_state) if h["id"] == hero_id), None)
+    if hero is None:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"hero '{hero_id}' is not in this game, or has fallen"
+        )
+
+    broke, lines = attempt_break(game_state, hero_id, hero.get("name", hero_id), rolled_six)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    updates = {
+        "heroStatus": game_state.get("heroStatus", {}),
+        "log": existing_log + [{"turn": turn, "text": line} for line in lines],
+    }
+    _push_undo(transaction, game_ref, before, updates, "the break attempt")
+    transaction.update(game_ref, updates)
+    return broke, lines
+
+
+@https_fn.on_call()
+def attempt_break_spell(req: https_fn.CallableRequest) -> dict:
+    """A hero held by a Chaos spell tries to shake it off.
+
+    "The spell can be broken ... by the Hero rolling one red die for
+    each of his Mind Points. If a 6 is rolled, the spell is broken."
+    Mind Points and red dice are both physical (CLAUDE.md's boundary),
+    so the app never rolls this: the player rolls and reports whether a
+    6 came up, exactly like reporting skulls and shields.
+    """
+    _require_owner(req, "sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    hero_id = data.get("heroId")
+    rolled_six = data.get("rolledSix")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(hero_id, str) or not hero_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
+    if not isinstance(rolled_six, bool):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="rolledSix must be true or false"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        broke, lines = _apply_break_spell(transaction, game_ref, hero_id, rolled_six)
+    except SpellNotOnHeroError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+    except SpellCannotBeBrokenError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    return {"broke": broke, "log": lines}

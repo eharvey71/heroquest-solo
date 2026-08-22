@@ -17,6 +17,7 @@ from validator.balance import (
     ROOM_CAP_BY_HERO_COUNT,
     WANDERING_MAX_COST_LOW_HERO_COUNT,
 )
+from engine.chaos_spells import CHAOS_SPELLS
 from validator.catalogs import Catalogs
 
 SIZE_ROOM_RANGE = {"short": "4-6", "full": "8-12"}
@@ -36,6 +37,16 @@ def _furniture_catalog_json(catalogs: Catalogs) -> str:
         for name, entry in catalogs.furniture.items()
     }
     return json.dumps(furniture, sort_keys=True)
+
+
+def _chaos_spell_lines() -> str:
+    """The twelve cards, so the model assigns real ones -- names and a
+    one-line summary, not the full card text (the app owns resolution).
+    """
+    return "\n".join(
+        f"- {spell_id}: {spell['name']} -- {spell['text'].split('.')[0]}."
+        for spell_id, spell in sorted(CHAOS_SPELLS.items())
+    )
 
 
 def _monster_cost_line(catalogs: Catalogs) -> str:
@@ -138,6 +149,26 @@ monster's base value for any stat you are not changing.
 Chests and tombs may contain a trap, treasure, or both via `contains`. If
 you use `contains`, the schema requires both `trap` and `treasure` —
 use "none" for whichever one doesn't apply.
+A trapped piece goes off when a hero searches that room for TREASURE
+before searching it for TRAPS — and every trapped piece in the room goes
+off at once. So whenever `trap` is not "none", write `trapText`: one
+sentence, second person, saying what the victim suffers ("A needle jabs
+your hand — lose 1 Body Point."). The app narrates that text and the
+player applies it; the app never computes trap damage. Use "chest_trap"
+for the ordinary needle/gas/spring case; "pit" and "falling_block" only
+when a physical tile should go on the board.
+
+### CHAOS SPELLS (Zargon's own cards)
+{_chaos_spell_lines()}
+A quest MAY hand Chaos spells to monsters, per the cards' own rule:
+"You must give your Chaos spells to specific monsters called for in the
+Quest notes." So only a NAMED monster (a boss) may carry them, via that
+monster's `spells` array. There is one physical card of each, so no
+spell may appear twice in a quest. A caster spends one instead of
+attacking, only on a hero it can see, once per quest.
+Two or three spells on the quest's boss is a good use of them; a
+spell-less quest is also fine. If you give a monster `escape`, you must
+also set the quest's `escapeDestination` to the square it teleports to.
 
 ### ROOM OBJECT
 Every entry in `rooms` must include all four fields: `revealText`,

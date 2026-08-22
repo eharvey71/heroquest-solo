@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import {
+  attemptBreakSpell,
   castSpell,
   endTurn,
   openDoor,
@@ -83,6 +84,10 @@ export function GameView({ gameId }: GameViewProps) {
     await runAction(() => recordHeroDeath({ gameId, heroId: id }));
   };
 
+  const handleBreakSpell = async (id: string, rolledSix: boolean) => {
+    await runAction(() => attemptBreakSpell({ gameId, heroId: id, rolledSix }));
+  };
+
   const handleUndo = async () => {
     await runAction(() => undoLastAction({ gameId }));
   };
@@ -124,6 +129,10 @@ export function GameView({ gameId }: GameViewProps) {
   const targetableMonsters = game.monsters.filter((m) => m.alive && revealedKeys.has(squareKey(m.pos[0], m.pos[1])));
 
   const heroes = livingHeroes(game.heroes);
+  // Chaos spells currently holding heroes. `afraid` doesn't stop a turn,
+  // it only costs attack dice, so it shows but never blocks.
+  const activeHeroStatuses = game.heroStatus?.[heroId] ?? [];
+  const breakableStatus = activeHeroStatuses.find((s) => s.status !== "becalmed");
   const fallenHeroes = game.heroes.filter((h) => h.alive === false);
   // A finished quest -- won or lost -- takes no more actions. Undo still
   // works, so a misreported death is recoverable.
@@ -437,6 +446,31 @@ export function GameView({ gameId }: GameViewProps) {
           <span className="hint">
             Fallen: {fallenHeroes.map((h) => h.name).join(", ")} &mdash; off the board, out of Zargon's reach.
           </span>
+        )}
+
+        {activeHeroStatuses.length > 0 && (
+          <div style={{ border: "1px solid #7a4b8a", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "#c79ad6" }}>
+              Under a Chaos spell: {activeHeroStatuses.map((s) => `${s.status} (${s.spell})`).join(", ")}
+            </span>
+            {breakableStatus ? (
+              <>
+                <span className="hint">
+                  Roll one red die for each of this hero&apos;s Mind Points. A 6 breaks the spell.
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => handleBreakSpell(heroId, true)} disabled={busy}>
+                    Rolled a 6 &mdash; break free
+                  </button>
+                  <button onClick={() => handleBreakSpell(heroId, false)} disabled={busy}>
+                    No 6 &mdash; still held
+                  </button>
+                </div>
+              </>
+            ) : (
+              <span className="hint">The whirlwind passes on its own &mdash; this hero simply misses a turn.</span>
+            )}
+          </div>
         )}
 
         {playable && game.phase === "hero" && (

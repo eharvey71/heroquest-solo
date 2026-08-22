@@ -73,6 +73,7 @@ def build_quest(
     hero_count: int,
     size: str = "full",
     budget_multiplier: float = 1.0,
+    boss_spells: tuple = (),
     seed: int = 0,
 ) -> dict:
     """A quest whose monster roster is worth roughly the calibrated
@@ -119,7 +120,15 @@ def build_quest(
     boss_id = f"M{monster_index}"
     rooms[objective_room] = {
         "revealText": "",
-        "monsters": [{"id": boss_id, "type": boss_type, "name": "The Boss", "pos": list(boss_squares[0])}],
+        "monsters": [
+            {
+                "id": boss_id,
+                "type": boss_type,
+                "name": "The Boss",
+                "pos": list(boss_squares[0]),
+                **({"spells": list(boss_spells)} if boss_spells else {}),
+            }
+        ],
         "furniture": [],
         "traps": [],
     }
@@ -161,6 +170,9 @@ def build_quest(
         "startingRoom": "stairway",
         "doors": doors,
         "corridorTraps": [],
+        # Escape needs a marked square; the stairway room's own corner
+        # is a fine "safe place known only to Zargon".
+        "escapeDestination": list(stair_pos),
         "rooms": rooms,
         "completionText": "",
         "generationParams": {"heroCount": hero_count, "difficulty": "standard", "size": size},

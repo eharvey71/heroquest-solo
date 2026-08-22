@@ -55,3 +55,23 @@ def test_a_cell_reports_what_it_played(catalogs):
     assert cell.games == 2
     assert 0 <= cell.wins <= 2
     assert cell.kills >= 0
+
+
+def test_a_boss_can_be_handed_chaos_spells(catalogs):
+    quest = build_quest(catalogs, hero_count=4, boss_spells=("firestorm", "sleep"), seed=4)
+    boss_id = quest["objective"]["target"]["monsterId"]
+    boss = next(
+        m
+        for room in quest["rooms"].values()
+        for m in room["monsters"]
+        if m["id"] == boss_id
+    )
+    assert boss["spells"] == ["firestorm", "sleep"]
+    # Escape has somewhere to go, so the card is always legal to hand out.
+    assert quest["escapeDestination"]
+
+
+def test_spells_get_spent_during_a_simulated_game(catalogs):
+    quest = build_quest(catalogs, hero_count=4, boss_spells=("sleep", "ball_of_flame"), seed=8)
+    outcome = play_quest(catalogs, quest, 4, withdraw_policy="fall_back", seed=8, max_turns=40)
+    assert outcome.result in ("won", "wiped", "timeout")

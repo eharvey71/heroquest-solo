@@ -23,7 +23,7 @@ from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterAttackRoll, roll_monster_attack
 from .furniture_traps import armed_furniture_traps, room_searched_for_traps, spring_furniture_traps
-from .heroes import find_living_hero, living_heroes
+from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
 from .targeting import spawn_wandering_monster_from_treasure_card
 
 Coord = tuple[int, int]
@@ -77,6 +77,10 @@ def resolve_treasure_search(
     hero = find_living_hero(game_state, hero_id)
     if hero is None:
         raise InvalidTreasureSearchError(f"hero '{hero_id}' is not in this game, or has fallen")
+    try:
+        require_hero_can_act(game_state, hero)
+    except HeroCannotActError as e:
+        raise InvalidTreasureSearchError(str(e)) from e
     hero_pos = tuple(hero["pos"])
 
     if board.area_of.get(hero_pos) != room_id:

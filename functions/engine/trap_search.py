@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board
 
 from .hero_movement import _build_trap_lookup
-from .heroes import find_living_hero, living_heroes
+from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
 from .furniture_traps import FurnitureTrap, armed_furniture_traps
 from .line_of_sight import has_line_of_sight
 from .movement import passable_door_edges
@@ -95,6 +95,10 @@ def resolve_trap_search(
     hero = find_living_hero(game_state, hero_id)
     if hero is None:
         raise InvalidTrapSearchError(f"hero '{hero_id}' is not in this game, or has fallen")
+    try:
+        require_hero_can_act(game_state, hero)
+    except HeroCannotActError as e:
+        raise InvalidTrapSearchError(str(e)) from e
     hero_pos = tuple(hero["pos"])
 
     if board.area_of.get(hero_pos) != room_id:

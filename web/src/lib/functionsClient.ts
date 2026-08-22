@@ -242,10 +242,22 @@ export interface MonsterResult {
   attackedHeroName: string | null;
   skulls: number | null;
 }
+/** A Chaos spell a monster spent this turn. Hero damage is announced,
+ * never tracked -- Body Points live on the physical hero sheet. */
+export interface ChaosCast {
+  monsterId: string;
+  monsterName: string;
+  spellId: string;
+  spellName: string;
+  heroHits: { heroId: string; heroName: string; damage: number; reductionDice: number }[];
+  statuses: { heroId: string; heroName: string; status: string; missesTurns: number }[];
+  summons: { type: string; pos: Coord }[];
+}
 export interface ResolveZargonTurnResponse {
   turnType: string;
   monsterResults: MonsterResult[];
   spawnedMonster: { type: string; pos: Coord; attacksImmediately: boolean; placementInstruction: string } | null;
+  chaosCasts: ChaosCast[];
   log: string[];
 }
 export const resolveZargonTurn = call<ResolveZargonTurnRequest, ResolveZargonTurnResponse>("resolve_zargon_turn");
@@ -309,3 +321,18 @@ export interface UndoLastActionResponse {
   undoDepth: number;
 }
 export const undoLastAction = call<UndoLastActionRequest, UndoLastActionResponse>("undo_last_action");
+
+// ---- attemptBreakSpell ----
+
+export interface AttemptBreakSpellRequest {
+  gameId: string;
+  heroId: string;
+  /** The hero rolls one red die per Mind Point (both physical) and
+   * reports whether a 6 came up. */
+  rolledSix: boolean;
+}
+export interface AttemptBreakSpellResponse {
+  broke: boolean;
+  log: string[];
+}
+export const attemptBreakSpell = call<AttemptBreakSpellRequest, AttemptBreakSpellResponse>("attempt_break_spell");

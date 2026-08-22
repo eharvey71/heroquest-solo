@@ -59,6 +59,23 @@ def find_living_hero(game_state: dict, hero_id: str) -> dict | None:
     return hero if hero is not None and is_alive(hero) else None
 
 
+class HeroCannotActError(ValueError):
+    """A Chaos spell has this hero: asleep, paralyzed, commanded, or
+    caught in a Tempest (engine/hero_status.py)."""
+
+
+def require_hero_can_act(game_state: dict, hero: dict) -> None:
+    """Raises when a spell is holding this hero. Called by every hero
+    action after find_living_hero, so "the app enforces what it can see"
+    covers spells the same way it covers walls.
+    """
+    from .hero_status import blocked_message, blocking_status  # local: hero_status imports nothing back
+
+    held = blocking_status(game_state, hero["id"])
+    if held is not None:
+        raise HeroCannotActError(blocked_message(hero.get("name", hero["id"]), held))
+
+
 def record_hero_death(game_state: dict, hero_id: str) -> HeroDeathResult:
     """Marks a hero dead. Raises if they aren't in the game, or are
     already down -- reporting the same death twice is a misclick, not a

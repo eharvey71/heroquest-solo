@@ -29,6 +29,7 @@ count is ~10.
 
 from __future__ import annotations
 
+from engine.chaos_spells import spell_ids as chaos_spell_ids_fn
 from validator.catalogs import Catalogs
 
 POS = {"type": "array", "items": {"type": "integer"}}
@@ -42,6 +43,9 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
             "properties": {
                 "id": {"type": "string"},
                 "type": {"type": "string", "enum": sorted(catalogs.monsters.keys())},
+                # Chaos spells are handed to "specific monsters called
+                # for in the Quest notes" (the cards' own instructions).
+                "spells": {"type": "array", "items": {"type": "string", "enum": chaos_spell_ids_fn()}},
                 "name": {"type": "string"},
                 "pos": POS,
                 "overrides": {
@@ -173,6 +177,10 @@ def build_quest_json_schema(catalogs: Catalogs) -> dict:
                 "additionalProperties": False,
             },
             "blockedSquares": {"type": "array", "items": POS},
+            # Where the Escape card teleports its caster: "a secret
+            # destination known only to Zargon ... marked on the Quest
+            # Map". Required only if some monster carries that card.
+            "escapeDestination": POS,
             "startingRoom": {"type": "string", "const": "stairway"},
             "doors": {"type": "array", "items": {"$ref": "#/$defs/door"}},
             "corridorTraps": {"type": "array", "items": {"$ref": "#/$defs/trap"}},

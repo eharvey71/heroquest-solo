@@ -1,0 +1,159 @@
+{
+  "lightning_bolt": {
+    "name": "Lightning Bolt",
+    "text": "This spell may be cast in a horizontal, vertical, or diagonal direction. The bolt will travel in a straight line until it strikes a wall or closed door. It will inflict 2 points of Body damage on all Heroes or monsters that stand in its path.",
+    "effect": "damage_line",
+    "damage": 2,
+    "target": "line",
+    "hitsMonstersToo": true
+  },
+  "firestorm": {
+    "name": "Firestorm",
+    "text": "This spell creates a roomful of fire that inflicts 3 Body Points of damage on all Heroes and monsters in the same room with the spellcaster. The spellcaster is unaffected. All victims immediately roll two red dice. For each 5 or 6 rolled, the damage is reduced by 1 point. Not used in corridors.",
+    "effect": "damage_room",
+    "damage": 3,
+    "target": "casters_room",
+    "hitsMonstersToo": true,
+    "sparesCaster": true,
+    "reductionDice": 2,
+    "roomsOnly": true
+  },
+  "ball_of_flame": {
+    "name": "Ball of Flame",
+    "text": "This spell can be cast on any one Hero. It will inflict 2 Body Points of damage. The Hero immediately rolls two red dice. For each 5 or 6 rolled, the damage is reduced by 1 point.",
+    "effect": "damage_hero",
+    "damage": 2,
+    "target": "one_hero",
+    "reductionDice": 2
+  },
+  "command": {
+    "name": "Command",
+    "text": "This spell puts any one Hero under Zargon's control. The spell can be broken immediately or on a future turn by the Hero rolling one red die for each of his Mind Points. If a 6 is rolled, the spell is broken. However, until the spell is broken, Zargon, on his turn, can move the Hero as a monster and attack other Heroes.",
+    "effect": "status",
+    "status": "commanded",
+    "target": "one_hero",
+    "breakable": true,
+    "breakImmediately": true
+  },
+  "fear": {
+    "name": "Fear",
+    "text": "This spell causes any one Hero to become so fearful that his attacks are reduced to one combat die. The spell can be broken by the Hero on a future turn by rolling one red die for each of his Mind Points. If a 6 is rolled, the spell is broken.",
+    "effect": "status",
+    "status": "afraid",
+    "target": "one_hero",
+    "breakable": true,
+    "breakImmediately": false
+  },
+  "sleep": {
+    "name": "Sleep",
+    "text": "This spell puts any one Hero into a deep sleep. A sleeping Hero is unable to move, attack, or defend himself. The spell can be broken immediately or on a future turn by the Hero rolling one red die for each of his Mind Points. If a 6 is rolled, the spell is broken.",
+    "effect": "status",
+    "status": "asleep",
+    "target": "one_hero",
+    "breakable": true,
+    "breakImmediately": true
+  },
+  "cloud_of_chaos": {
+    "name": "Cloud of Chaos",
+    "text": "This spell paralyzes all Heroes located in the same room or corridor. A paralyzed Hero is unable to move, attack, or defend himself. The spell can be broken at once or on a future turn by each victim rolling one red die for each of his Mind Points. By rolling a 6, the Hero frees himself.",
+    "effect": "status",
+    "status": "paralyzed",
+    "target": "all_heroes_in_area",
+    "breakable": true,
+    "breakImmediately": true
+  },
+  "tempest": {
+    "name": "Tempest",
+    "text": "This spell creates a small whirlwind that envelops one Hero. That Hero will miss his next turn.",
+    "effect": "status",
+    "status": "becalmed",
+    "target": "one_hero",
+    "breakable": false,
+    "missesTurns": 1
+  },
+  "rust": {
+    "name": "Rust",
+    "text": "This spell causes any one metal sword or helmet to become so thin, brittle and useless that it can never be used again. Not effective against Artifacts.",
+    "effect": "narrate_only",
+    "target": "one_hero"
+  },
+  "summon_orcs": {
+    "name": "Summon Orcs",
+    "text": "This spell conjures up a group of Orcs to surround and protect the spellcaster. Roll one red die: Roll a 1, 2 or 3 = 4 Orcs; Roll a 4 or 5 = 5 Orcs; Roll a 6 = 6 Orcs",
+    "effect": "summon",
+    "target": "caster",
+    "table": [
+      {
+        "rolls": [
+          1,
+          2,
+          3
+        ],
+        "monsters": {
+          "orc": 4
+        }
+      },
+      {
+        "rolls": [
+          4,
+          5
+        ],
+        "monsters": {
+          "orc": 5
+        }
+      },
+      {
+        "rolls": [
+          6
+        ],
+        "monsters": {
+          "orc": 6
+        }
+      }
+    ]
+  },
+  "summon_undead": {
+    "name": "Summon Undead",
+    "text": "This spell conjures up a group of undead to surround and protect the spellcaster. Roll one red die: Roll a 1 or 2 = 4 Skeletons; Roll a 3 or 4 = 3 Skeletons, 2 Zombies; Roll a 5 or 6 = 2 Zombies, 2 Mummies",
+    "effect": "summon",
+    "target": "caster",
+    "table": [
+      {
+        "rolls": [
+          1,
+          2
+        ],
+        "monsters": {
+          "skeleton": 4
+        }
+      },
+      {
+        "rolls": [
+          3,
+          4
+        ],
+        "monsters": {
+          "skeleton": 3,
+          "zombie": 2
+        }
+      },
+      {
+        "rolls": [
+          5,
+          6
+        ],
+        "monsters": {
+          "zombie": 2,
+          "mummy": 2
+        }
+      }
+    ]
+  },
+  "escape": {
+    "name": "Escape",
+    "text": "This spell allows the spellcaster to disappear and instantly teleport to a secret destination known only to Zargon. This \"safe place\" is marked on the Quest Map.",
+    "effect": "teleport_caster",
+    "target": "caster",
+    "requiresEscapeDestination": true
+  }
+}

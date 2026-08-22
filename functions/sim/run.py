@@ -40,12 +40,16 @@ class Cell:
         return 100.0 * self.wins / self.games
 
 
-def run_cell(catalogs, *, policy: str, hero_count: int, budget: float, games: int, size: str, seed_base: int) -> Cell:
+def run_cell(
+    catalogs, *, policy: str, hero_count: int, budget: float, games: int, size: str, seed_base: int,
+    boss_spells: tuple = (),
+) -> Cell:
     outcomes = []
     for i in range(games):
         seed = seed_base + i
         quest = build_quest(
-            catalogs, hero_count=hero_count, size=size, budget_multiplier=budget, seed=seed
+            catalogs, hero_count=hero_count, size=size, budget_multiplier=budget,
+            boss_spells=boss_spells, seed=seed,
         )
         outcomes.append(play_quest(catalogs, quest, hero_count, withdraw_policy=policy, seed=seed))
 
@@ -88,6 +92,10 @@ def main(argv=None) -> int:
     parser.add_argument("--budgets", nargs="+", type=float, default=[1.0])
     parser.add_argument("--size", default="full", choices=("short", "full"))
     parser.add_argument("--seed-base", type=int, default=1000)
+    parser.add_argument(
+        "--boss-spells", nargs="*", default=[],
+        help="Chaos spell ids to hand the quest's boss, for pricing a caster",
+    )
     parser.add_argument("--out", help="also write the table here")
     args = parser.parse_args(argv)
 
@@ -96,6 +104,7 @@ def main(argv=None) -> int:
         run_cell(
             catalogs, policy=policy, hero_count=hero_count, budget=budget,
             games=args.games, size=args.size, seed_base=args.seed_base,
+            boss_spells=tuple(args.boss_spells),
         )
         for policy in args.policies
         for budget in args.budgets
@@ -103,6 +112,8 @@ def main(argv=None) -> int:
     ]
 
     table = format_table(cells)
+    if args.boss_spells:
+        print(f"boss carries: {', '.join(args.boss_spells)}")
     print(table)
     if args.out:
         with open(args.out, "w") as fh:

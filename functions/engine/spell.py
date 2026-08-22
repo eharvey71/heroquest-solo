@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterDefenseResult, resolve_hero_attack
-from .heroes import find_living_hero, living_heroes
+from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
 from .line_of_sight import has_line_of_sight
 from .movement import passable_door_edges
 
@@ -85,6 +85,10 @@ def resolve_hero_spell(
     hero = find_living_hero(game_state, hero_id)
     if hero is None:
         raise InvalidSpellError(f"hero '{hero_id}' is not in this game, or has fallen")
+    try:
+        require_hero_can_act(game_state, hero)
+    except HeroCannotActError as e:
+        raise InvalidSpellError(str(e)) from e
     hero_pos = tuple(hero["pos"])
     hero_name = hero.get("name", hero_id)
 

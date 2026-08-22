@@ -312,3 +312,54 @@ def test_a_fallen_heros_square_no_longer_blocks_a_monster(catalogs):
     result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
 
     assert result.monster_results[0].action == "moved_and_attacked"
+
+
+def test_a_caster_spends_a_spell_instead_of_attacking(catalogs):
+    # "You may cast a spell instead of attacking" -- so a caster in
+    # contact casts rather than swinging.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[
+        {"id": "M1", "type": "chaos_warrior", "name": "Verag", "pos": [6, 2], "spells": ["ball_of_flame"]}
+    ])
+    game_state = _game_state(
+        heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [5, 2], "alive": True}],
+        monsters={"M1": {"pos": [6, 2], "currentBody": 3, "alive": True}},
+    )
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert len(result.chaos_casts) == 1
+    cast = result.chaos_casts[0]
+    assert cast.spell_id == "ball_of_flame"
+    assert cast.hero_hits[0]["heroId"] == "barbarian"
+    assert result.monster_results[0].action == "cast_spell"
+    # It cast INSTEAD of attacking, so no attack roll happened.
+    assert result.monster_results[0].turn_result is None
+
+
+def test_an_unnamed_monster_with_no_spells_just_fights(catalogs):
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[{"id": "M1", "type": "orc", "pos": [6, 2]}])
+    game_state = _game_state(
+        heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [5, 2], "alive": True}],
+        monsters={"M1": {"pos": [6, 2], "currentBody": 1, "alive": True}},
+    )
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+    assert result.chaos_casts == []
+
+
+def test_a_caster_that_cannot_see_a_hero_fights_normally(catalogs):
+    # Hero in the next room with the door closed: no sightline, so the
+    # card stays in Zargon's hand ("only on a Hero that it can see").
+    board, c = catalogs.board, catalogs
+    quest = _quest(
+        monsters=[{"id": "M1", "type": "chaos_warrior", "name": "Verag", "pos": [8, 2], "spells": ["sleep"]}],
+        doors=[D1],
+    )
+    game_state = _game_state(
+        heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [2, 2], "alive": True}],
+        monsters={"M1": {"pos": [8, 2], "currentBody": 3, "alive": True}},
+        doors={"D1": "closed"},
+    )
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+    assert result.chaos_casts == []

@@ -24,13 +24,16 @@ class HeroCard:
     body: int
     attack_dice: int
     defend_dice: int
+    # Mind Points matter for exactly one thing here: shaking off a Chaos
+    # spell is one red die per Mind Point, breaking on a 6.
+    mind: int
 
 
 HERO_CARDS = {
-    "barbarian": HeroCard("barbarian", "Barbarian", body=8, attack_dice=3, defend_dice=2),
-    "dwarf": HeroCard("dwarf", "Dwarf", body=7, attack_dice=2, defend_dice=2),
-    "elf": HeroCard("elf", "Elf", body=6, attack_dice=2, defend_dice=2),
-    "wizard": HeroCard("wizard", "Wizard", body=4, attack_dice=1, defend_dice=2),
+    "barbarian": HeroCard("barbarian", "Barbarian", body=8, attack_dice=3, defend_dice=2, mind=2),
+    "dwarf": HeroCard("dwarf", "Dwarf", body=7, attack_dice=2, defend_dice=2, mind=3),
+    "elf": HeroCard("elf", "Elf", body=6, attack_dice=2, defend_dice=2, mind=4),
+    "wizard": HeroCard("wizard", "Wizard", body=4, attack_dice=1, defend_dice=2, mind=6),
 }
 
 # Party composition by size, strongest first -- a solo player picking one

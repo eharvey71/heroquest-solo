@@ -96,6 +96,8 @@ def build_initial_game_state(*, quest: dict, catalogs: Catalogs, heroes: list[di
         "trapsFound": [],  # traps the party knows about but are still armed
         "collapsedSquares": [],  # squares sealed by a sprung falling block
         "searched": {},
-        "spellsCast": [],  # each spell card is spent once per quest
+        "spellsCast": [],  # each hero spell card is spent once per quest
+        "chaosSpellsCast": [],  # ...and so is each of Zargon's twelve
+        "heroStatus": {},  # asleep / paralyzed / commanded / becalmed / afraid
         "log": [{"turn": 1, "text": "The party begins their quest."}],
     }

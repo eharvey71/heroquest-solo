@@ -30,6 +30,7 @@ from validator.geometry import furniture_squares
 from .hero_movement import shareable_squares
 
 from .movement import Coord, passable_door_edges, revealed_squares
+from .chaos_spells import ChaosSpellUnavailableError, choose_spell, resolve_chaos_spell
 from .heroes import living_heroes
 from .targeting import (
     guard_engaged_by,
@@ -39,6 +40,22 @@ from .targeting import (
     spawn_wandering_monster_from_turn_roll,
 )
 from .turn import DEFAULT_WITHDRAW_POLICY, MonsterTurnResult, take_monster_turn
+
+
+@dataclass
+class ChaosCast:
+    """A spell a monster spent this turn, ready for the caller to apply
+    (main.py owns Firestore; this module owns the decision)."""
+
+    monster_id: str
+    monster_name: str
+    spell_id: str
+    spell_name: str
+    hero_hits: list = field(default_factory=list)
+    monster_damage: dict = field(default_factory=dict)
+    statuses: list = field(default_factory=list)
+    summons: list = field(default_factory=list)
+    caster_new_pos: tuple | None = None
 
 
 @dataclass
@@ -56,17 +73,28 @@ class ZargonTurnResult:
     monster_results: list[MonsterActionResult] = field(default_factory=list)
     spawned_monster: dict | None = None  # {"type", "pos", "attacksImmediately", "placementInstruction"}
     updated_monster_positions: dict[str, Coord] = field(default_factory=dict)
+    # Chaos spells spent this turn -- damage, statuses and summons for
+    # the caller to write down (engine/chaos_spells.py).
+    chaos_casts: list = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
 
 def _monster_defs(quest: dict) -> dict[str, dict]:
-    """monster_id -> {type, overrides, name} from the quest's static
-    declaration -- combat stats don't change at runtime, only position.
+    """monster_id -> {type, overrides, name, spells} from the quest's
+    static declaration -- combat stats don't change at runtime, only
+    position. `spells` has to ride along: the Chaos cards are handed out
+    per monster in quest data, and dropping the field here silently
+    turned every caster back into an ordinary monster.
     """
     defs: dict[str, dict] = {}
     for room in quest.get("rooms", {}).values():
         for m in room.get("monsters", []):
-            defs[m["id"]] = {"type": m["type"], "overrides": m.get("overrides", {}), "name": m.get("name")}
+            defs[m["id"]] = {
+                "type": m["type"],
+                "overrides": m.get("overrides", {}),
+                "name": m.get("name"),
+                "spells": m.get("spells") or [],
+            }
     return defs
 
 
@@ -199,6 +227,7 @@ def resolve_zargon_turn(
 
     results: list[MonsterActionResult] = []
     updated_positions: dict[str, Coord] = {}
+    casts: list[ChaosCast] = []
     turn_log: list[str] = []
 
     for monster_id, pos in list(monster_positions.items()):
@@ -261,6 +290,54 @@ def resolve_zargon_turn(
             )
             continue
 
+        # "You may cast a spell instead of attacking" -- so the spell
+        # decision comes before the monster's ordinary turn, and a
+        # caster that spends one neither moves nor attacks.
+        assigned = mdef.get("spells") or []
+        if assigned:
+            spell_id = choose_spell(
+                board=board, quest=quest, game_state=game_state, heroes=heroes,
+                caster_pos=pos, available=assigned,
+            )
+            if spell_id is not None:
+                try:
+                    spell_result = resolve_chaos_spell(
+                        board=board, catalogs=catalogs, quest=quest, game_state=game_state,
+                        heroes=heroes, caster_id=monster_id, caster_name=monster_name,
+                        caster_pos=pos, spell_id=spell_id, rng=rng,
+                    )
+                except ChaosSpellUnavailableError:
+                    spell_result = None  # conditions changed; fight normally
+                if spell_result is not None:
+                    casts.append(
+                        ChaosCast(
+                            monster_id=monster_id,
+                            monster_name=monster_name,
+                            spell_id=spell_result.spell_id,
+                            spell_name=spell_result.spell_name,
+                            hero_hits=[
+                                {"heroId": h.hero_id, "heroName": h.hero_name,
+                                 "damage": h.damage, "reductionDice": h.reduction_dice}
+                                for h in spell_result.hero_hits
+                            ],
+                            monster_damage=spell_result.monster_damage,
+                            statuses=spell_result.statuses,
+                            summons=spell_result.summons,
+                            caster_new_pos=spell_result.caster_new_pos,
+                        )
+                    )
+                    if spell_result.caster_new_pos is not None:
+                        monster_positions[monster_id] = spell_result.caster_new_pos
+                        updated_positions[monster_id] = spell_result.caster_new_pos
+                    results.append(
+                        MonsterActionResult(
+                            monster_id=monster_id, monster_name=monster_name,
+                            action="cast_spell", turn_result=None, log=spell_result.log,
+                        )
+                    )
+                    turn_log.extend(spell_result.log)
+                    continue
+
         target_hero = heroes_by_id[target_id]
         tr = take_monster_turn(
             board=board,
@@ -304,5 +381,6 @@ def resolve_zargon_turn(
         turn_type=turn_type,
         monster_results=results,
         updated_monster_positions=updated_positions,
+        chaos_casts=casts,
         log=[opening, *turn_log, ZARGON_TURN_END],
     )
