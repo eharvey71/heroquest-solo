@@ -37,6 +37,14 @@ ROOM_TRAP_CAP = 1
 # that cover two adjacent squares. They don't recycle (a tile stays on
 # the board once placed), so 12 squares is the hard ceiling -- and the
 # last 4 of those only exist as adjacent pairs.
+# What a Chaos spell adds to its carrier's threat cost. Measured, not
+# guessed (sim/results/2026-08-chaos-spells.md): a boss holding the three
+# harshest cards costs the party +0.5 Body Points per quest, which the
+# budget sweep prices at about 3.5% of budget -- and only ~0.5 of three
+# assigned cards ever gets spent, because bosses die before they cast.
+# 2 points per spell rounds that up rather than down.
+CHAOS_SPELL_THREAT_COST = 2
+
 BLOCKED_SINGLE_TILES = 8
 BLOCKED_DOUBLE_TILES = 2
 BLOCKED_SQUARE_CAP = BLOCKED_SINGLE_TILES + 2 * BLOCKED_DOUBLE_TILES
@@ -79,7 +87,8 @@ def blocked_squares_fit_tiles(squares) -> bool:
 
 
 def _monster_threat_cost(monster: dict, catalog_entry: dict) -> int:
-    """Base threat cost + extra threat from stat overrides.
+    """Base threat cost, plus extra threat from stat overrides and any
+    Chaos spells the monster carries.
 
     generator-prompt.md: "overrides add its extra threat: +1 per added
     body or attack die" — only increases to attack/body count (a weaker
@@ -91,6 +100,8 @@ def _monster_threat_cost(monster: dict, catalog_entry: dict) -> int:
     for stat in ("attack", "body"):
         if stat in overrides:
             cost += max(0, overrides[stat] - catalog_entry[stat])
+    # A carried Chaos card is threat the base formula can't see.
+    cost += CHAOS_SPELL_THREAT_COST * len(monster.get("spells") or [])
     return cost
 
 

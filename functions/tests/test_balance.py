@@ -165,3 +165,51 @@ def test_eleven_blocked_squares_with_only_one_pair_rejected(good_quest_4h, good_
     good_quest_4h["blockedSquares"] = [[0, 0], [1, 0]] + [[x, 2] for x in range(0, 18, 2)]
     errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
     assert any("can't be laid out with" in e for e in errors)
+
+
+def test_a_carried_chaos_spell_costs_budget(good_quest_4h, good_quest_4h_params, catalogs):
+    from validator.balance import CHAOS_SPELL_THREAT_COST, _monster_threat_cost
+
+    boss = good_quest_4h["rooms"]["R12"]["monsters"][0]
+    entry = catalogs.monsters[boss["type"]]
+    before = _monster_threat_cost(boss, entry)
+    boss["spells"] = ["sleep", "fear"]
+    assert _monster_threat_cost(boss, entry) == before + 2 * CHAOS_SPELL_THREAT_COST
+
+
+def test_only_a_named_monster_may_carry_spells(good_quest_4h, good_quest_4h_params, catalogs):
+    # "You must give your Chaos spells to specific monsters called for in
+    # the Quest notes" -- a nameless orc in the crowd isn't one of those.
+    rank_and_file = good_quest_4h["rooms"]["R2"]["monsters"][0]
+    rank_and_file.pop("name", None)
+    rank_and_file["spells"] = ["fear"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("has no name" in e for e in errors)
+
+
+def test_one_physical_card_of_each_spell(good_quest_4h, good_quest_4h_params, catalogs):
+    for room_id, monster_index in (("R12", 0), ("R2", 0)):
+        monster = good_quest_4h["rooms"][room_id]["monsters"][monster_index]
+        monster["name"] = "A Named Villain"
+        monster["spells"] = ["fear"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("one physical card of each" in e for e in errors)
+
+
+def test_escape_needs_a_destination_on_the_map(good_quest_4h, good_quest_4h_params, catalogs):
+    boss = good_quest_4h["rooms"]["R12"]["monsters"][0]
+    boss["name"] = "Verag"
+    boss["spells"] = ["escape"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("escapeDestination" in e for e in errors)
+
+    good_quest_4h["escapeDestination"] = [3, 10]
+    assert not any("escapeDestination" in e for e in check_balance(good_quest_4h, good_quest_4h_params, catalogs))
+
+
+def test_an_unknown_card_is_rejected(good_quest_4h, good_quest_4h_params, catalogs):
+    boss = good_quest_4h["rooms"]["R12"]["monsters"][0]
+    boss["name"] = "Verag"
+    boss["spells"] = ["meteor_swarm"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("unknown Chaos spell" in e for e in errors)

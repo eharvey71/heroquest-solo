@@ -10,6 +10,7 @@ import random
 
 from validator.balance import (
     BASELINE_BUDGET,
+    CHAOS_SPELL_THREAT_COST,
     BUDGET_TOLERANCE,
     HARD_DIFFICULTY_MULTIPLIER,
     HERO_BUDGET_RATIO,
@@ -167,7 +168,8 @@ monster's `spells` array. There is one physical card of each, so no
 spell may appear twice in a quest. A caster spends one instead of
 attacking, only on a hero it can see, once per quest.
 Two or three spells on the quest's boss is a good use of them; a
-spell-less quest is also fine. If you give a monster `escape`, you must
+spell-less quest is also fine. Each spell you hand out costs
+{CHAOS_SPELL_THREAT_COST} points of the monster budget, so count them in. If you give a monster `escape`, you must
 also set the quest's `escapeDestination` to the square it teleports to.
 
 ### ROOM OBJECT
