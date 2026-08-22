@@ -34,7 +34,8 @@ code enforces geometry, rules, and balance. Invalid output never reaches play.
 ## 3. Monster budget (from the Zargon Deck sim)
 
 Threat cost per monster ≈ attack + defend + body:
-goblin 4, skeleton 5, zombie 6, orc 6, fimir 8, mummy 9, chaos_warrior 11, gargoyle 13.
+goblin 4, skeleton 5, zombie 6, orc 6, fimir 8, mummy 9, chaos_warlock 9,
+chaos_warrior 11, gargoyle 13.
 
 | heroCount | budget (full quest) | max monsters/room | Zargon behavior weights |
 |-----------|--------------------|-------------------|-------------------------|

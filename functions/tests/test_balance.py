@@ -1,4 +1,6 @@
-from validator.balance import check_balance
+import pytest
+
+from validator.balance import caster_types, check_balance
 
 
 def test_budget_too_low_rejected(good_quest_4h, good_quest_4h_params, catalogs):
@@ -230,15 +232,33 @@ def test_only_a_couple_of_monsters_may_carry_spells(good_quest_4h, good_quest_4h
     assert any("more than the 2 the quest book ever arms" in e for e in errors)
 
 
-def test_only_a_spellcasting_type_may_carry_chaos_spells(good_quest_4h, good_quest_4h_params, catalogs):
-    # An orc with a name is still an orc: the quest book's casters are
-    # chaos warriors, warlocks and sorcerers.
+@pytest.mark.parametrize("monster_type", ["orc", "goblin", "skeleton", "zombie", "mummy", "fimir"])
+def test_a_non_casting_type_may_not_carry_chaos_spells(
+    monster_type, good_quest_4h, good_quest_4h_params, catalogs
+):
+    # An orc with a name is still an orc, and the shambling undead
+    # never cast at all.
     monster = good_quest_4h["rooms"]["R2"]["monsters"][0]
-    monster["type"] = "orc"
+    monster["type"] = monster_type
     monster["name"] = "Grukk the Loud"
     monster["spells"] = ["fear"]
     errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
     assert any("can't carry Chaos spells" in e for e in errors)
 
-    monster["type"] = "chaos_warrior"
-    assert not any("can't carry Chaos spells" in e for e in check_balance(good_quest_4h, good_quest_4h_params, catalogs))
+
+@pytest.mark.parametrize("monster_type", ["chaos_warrior", "chaos_warlock", "gargoyle"])
+def test_a_casting_type_may_carry_chaos_spells(
+    monster_type, good_quest_4h, good_quest_4h_params, catalogs
+):
+    # The three figures the owner actually arms: 4 chaos warriors,
+    # 1 chaos warlock, 1 gargoyle.
+    monster = good_quest_4h["rooms"]["R2"]["monsters"][0]
+    monster["type"] = monster_type
+    monster["name"] = "Grukk the Loud"
+    monster["spells"] = ["fear"]
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert not any("can't carry Chaos spells" in e for e in errors)
+
+
+def test_caster_types_are_the_three_owned_figures(catalogs):
+    assert caster_types(catalogs) == ["chaos_warlock", "chaos_warrior", "gargoyle"]

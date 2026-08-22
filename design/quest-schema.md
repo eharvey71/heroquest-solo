@@ -43,6 +43,7 @@ the 1989 board has no printed doors, so both are quest-owned (section 3).
   "mummy":        { "move": 4, "attack": 3, "defend": 4, "body": 2, "mind": 0 },
   "fimir":        { "move": 6, "attack": 3, "defend": 3, "body": 2, "mind": 3 },
   "chaos_warrior":{ "move": 7, "attack": 4, "defend": 4, "body": 3, "mind": 3 },
+  "chaos_warlock":{ "move": 6, "attack": 2, "defend": 4, "body": 3, "mind": 6 },
   "gargoyle":     { "move": 6, "attack": 4, "defend": 5, "body": 4, "mind": 4 }
 }
 ```

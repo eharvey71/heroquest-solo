@@ -23,7 +23,8 @@ to each other ONLY through doors you declare. A door occupies one wall edge
 between two adjacent squares in different areas.
 
 ### MONSTERS (fixed stats, threat cost in parentheses)
-goblin(4) skeleton(5) zombie(6) orc(6) fimir(8) mummy(9) chaos_warrior(11) gargoyle(13)
+goblin(4) skeleton(5) zombie(6) orc(6) fimir(8) mummy(9) chaos_warlock(9)
+chaos_warrior(11) gargoyle(13)
 A named boss = one monster with `name` and optional stat `overrides`
 (overrides add its extra threat: +1 per added body or attack die).
 

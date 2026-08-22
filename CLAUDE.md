@@ -367,10 +367,20 @@ rank and file -- and one physical card of each) and the app decides
 when to spend them (chaos_spells.choose_spell -- room-wide cards wait
 for a crowd). WHICH types may cast is data, not a constant: "caster":
 true in data/monsters.json, read by validator.balance.caster_types and
-fed to the generator prompt. Today that is chaos_warrior alone -- the
-quest book's casters are chaos warriors, warlocks and sorcerers, and
-this catalog has no warlock or sorcerer entry. A named orc is still an
-orc, and the shambling undead never cast.
+fed to the generator prompt. The owner set it to the three figures
+worth arming: chaos_warrior (4 owned), chaos_warlock (1), gargoyle (1).
+A named orc is still an orc, and the shambling undead never cast.
+
+chaos_warlock had no entry in data/monsters.json until the cards
+needed one -- the 1989 rulebook's monster table has eight rows and the
+Warlock is not among them, because the figure stands in for named
+quest villains whose stats are printed in that quest's own notes. Its
+catalog row is therefore a HOUSE BASELINE, not a transcription:
+move 6 / attack 2 / defend 4 / body 3 / mind 6, threat 9. Frail in a
+swing and hard to put to sleep, so his threat comes from the Chaos
+cards he carries rather than from swinging; a quest wanting him
+tougher uses the named-monster `overrides`. Replace the row if the
+quest book ever supplies real base stats.
 
 The physical/digital line runs straight through the middle of the deck:
 - The app applies what it owns: damage to MONSTERS, summons (capped by

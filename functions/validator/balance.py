@@ -59,9 +59,10 @@ BLOCKED_SQUARE_CAP = BLOCKED_SINGLE_TILES + 2 * BLOCKED_DOUBLE_TILES
 def caster_types(catalogs) -> list[str]:
     """Monster types that may carry Chaos spells at all.
 
-    The quest book's casters are chaos warriors, warlocks and sorcerers
-    -- never an orc in the crowd, and never the shambling undead. Marked
-    with "caster": true in data/monsters.json so the list lives with the
+    The owner's box has three figures worth arming -- 4 chaos warriors,
+    1 chaos warlock, 1 gargoyle -- and the cards go to those. Never an
+    orc in the crowd, never the shambling undead. Marked with
+    "caster": true in data/monsters.json so the list lives with the
     stats rather than in a constant here.
     """
     return sorted(name for name, entry in catalogs.monsters.items() if entry.get("caster"))
