@@ -1,18 +1,57 @@
 rules_version = '2';
 
-// Single-owner app: no public signup, no multi-tenant data model.
-// Firebase Auth is still required for client reads/writes so the
-// database isn't open to the internet. Cloud Functions use the Admin
-// SDK and bypass these rules entirely (that's where quest generation
-// and Zargon's turn logic write).
+// Single-owner app: one person, no signup, no multi-tenant data model.
 //
-// TODO: once the owner's Firebase Auth account exists, lock this down
-// further to request.auth.uid == '<owner-uid>' instead of just
-// "signed in."
+// The owner is not hard-coded here -- pasting a uid into a rules file
+// means a deploy with the wrong string locks the owner out of their own
+// dungeon. Instead the uid lives in ONE document, config/owner, and the
+// app claims it the first time the owner signs in with Google. After
+// that the claim is immutable: no update, no delete, from any client.
+//
+// Until it is claimed nothing is readable or writable except the claim
+// itself, so a fresh deploy is closed rather than open. Claim it
+// immediately after deploying (sign in once), or write the document by
+// hand in the Firebase console.
+//
+// Cloud Functions use the Admin SDK and bypass these rules entirely --
+// functions/owner.py enforces the same check on that side.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    function claimed() {
+      return exists(/databases/$(database)/documents/config/owner);
+    }
+
+    function ownerUid() {
+      return get(/databases/$(database)/documents/config/owner).data.uid;
+    }
+
+    function isOwner() {
+      return request.auth != null && claimed() && request.auth.uid == ownerUid();
+    }
+
+    match /config/owner {
+      // Only the owner can read it back; everyone else can't even learn
+      // who owns this.
+      allow read: if isOwner();
+      // One-shot claim: any signed-in user may create it, but only
+      // naming themselves, and only while it doesn't exist yet.
+      allow create: if request.auth != null
+                    && !claimed()
+                    && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /quests/{questId} {
+      allow read, write: if isOwner();
+    }
+
+    match /games/{gameId} {
+      allow read, write: if isOwner();
+      // Undo snapshots live under the game they belong to.
+      match /{document=**} {
+        allow read, write: if isOwner();
+      }
     }
   }
 }

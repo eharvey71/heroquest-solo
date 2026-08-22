@@ -369,25 +369,41 @@ prompts).
 
 Hero death and undo are built (see the engine details above).
 
-Known gaps, in the owner's priority order:
-1. AUTH lock-down (deferred by the owner, on purpose -- recorded so it
-   isn't lost). firebase.ts signs in ANONYMOUSLY, firestore.rules allows
-   any signed-in user, and every Cloud Function checks only
-   `req.auth is None`. So any visitor to the hosted URL can list and
-   resume the owner's games and spend the Anthropic key on
-   generateQuest. The obscure URL is the only thing protecting it.
-   Fix shape (already a TODO in firestore.rules): Google sign-in, pin
-   the owner's uid, `request.auth.uid == '<owner-uid>'` in the rules,
-   same check in a shared helper in main.py.
-2. Chest/furniture traps -- the rulebook springs them when a room is
-   searched for treasure before it is searched for traps. Would hook
-   into the treasure-search flow. Never built.
+Auth is locked to one account (see below), and chest/furniture traps
+are built (see the engine details above).
+
+Known gaps:
+1. Chaos spells -- see "Not implemented, deliberately" above. The owner
+   wants the app to know the cards and resolve them digitally, which
+   needs the card list (name, effect, dice) off the physical cards
+   before anything can be built.
 
 Chaos spells stay unbuilt, but are no longer blocked on a missing
 instrument -- functions/sim/ can now price them (see below). What they
 still need is DATA: monsters.json has no spell lists and no caster
 flag, and the quest schema has nowhere to declare which spells a named
 boss knows.
+
+## Single-owner auth (settled)
+Google sign-in, and the app belongs to exactly ONE account. The uid is
+NOT hard-coded: it lives in the config/owner document, written once by
+the first account to sign in (web/src/lib/firebase.ts claims it), and
+made immutable by firestore.rules -- create only, never update or
+delete. A rules file with a pasted uid was rejected as the fix: one bad
+string in a deploy and the owner is locked out of their own dungeon,
+with no way in through the app.
+
+Three enforcement points, because each covers a hole the others don't:
+- firestore.rules: direct client reads/writes of quests, games and undo
+  snapshots require request.auth.uid == the claimed uid.
+- functions/owner.py + main._require_owner: Cloud Functions use the
+  Admin SDK and BYPASS the rules entirely, so every callable repeats
+  the check itself. Before the claim exists it falls back to "any
+  signed-in user" -- the pre-lock behaviour -- so a fresh deploy is
+  usable in the seconds between deploying and signing in once.
+- The client proves ownership by CAPABILITY, not by comparing uids:
+  config/owner is readable only by the owner, so a successful read is
+  the proof. There is no string the client can lie about.
 
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.

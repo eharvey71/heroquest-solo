@@ -1,21 +1,44 @@
 import { useEffect, useState } from "react";
+import type { User } from "firebase/auth";
 import { GameSetup } from "./components/GameSetup";
 import { GameView } from "./components/GameView";
-import { ensureSignedIn } from "./lib/firebase";
+import { signInWithGoogle, signOut, verifyOwnership, watchUser } from "./lib/firebase";
 import "./App.css";
 
 const GAME_ID_STORAGE_KEY = "heroquest-zargon-game-id";
 
 function App() {
-  const [signedIn, setSignedIn] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [ownership, setOwnership] = useState<"checking" | "owner" | "denied">("checking");
+  const [checkingSession, setCheckingSession] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [gameId, setGameId] = useState<string | null>(() => localStorage.getItem(GAME_ID_STORAGE_KEY));
 
-  useEffect(() => {
-    ensureSignedIn()
-      .then(() => setSignedIn(true))
-      .catch((e) => setAuthError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  useEffect(
+    () =>
+      watchUser((signedIn) => {
+        setUser(signedIn);
+        setCheckingSession(false);
+        if (!signedIn) {
+          setOwnership("checking");
+          return;
+        }
+        // Claims the app if it is unclaimed, then proves ownership by
+        // reading a document only the owner may read.
+        setOwnership("checking");
+        void verifyOwnership(signedIn).then((owner) => setOwnership(owner ? "owner" : "denied"));
+      }),
+    []
+  );
+
+  const handleSignIn = async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const handleOpenGame = (id: string) => {
     localStorage.setItem(GAME_ID_STORAGE_KEY, id);
@@ -29,14 +52,47 @@ function App() {
 
   return (
     <div className="app">
-      <h1>HeroQuest Zargon</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <h1>HeroQuest Zargon</h1>
+        {user && (
+          <span className="hint">
+            {user.email ?? "signed in"}{" "}
+            <button
+              onClick={() => {
+                localStorage.removeItem(GAME_ID_STORAGE_KEY);
+                setGameId(null);
+                void signOut();
+              }}
+            >
+              Sign out
+            </button>
+          </span>
+        )}
+      </div>
 
       {authError && <p style={{ color: "#e66" }}>Sign-in failed: {authError}</p>}
-      {!signedIn && !authError && <p className="hint">Signing in...</p>}
+      {checkingSession && <p className="hint">Checking your session...</p>}
 
-      {signedIn && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
+      {!checkingSession && !user && (
+        <div style={{ maxWidth: 520 }}>
+          <p>This dungeon belongs to one Zargon. Sign in to take your turn.</p>
+          <button onClick={handleSignIn}>Sign in with Google</button>
+        </div>
+      )}
 
-      {signedIn && gameId && (
+      {user && ownership === "checking" && <p className="hint">Checking your account...</p>}
+
+      {user && ownership === "denied" && (
+        <div style={{ maxWidth: 520 }}>
+          <p style={{ color: "#e6a23b" }}>
+            This app already belongs to another account. Sign out and try the account that set it up.
+          </p>
+        </div>
+      )}
+
+      {user && ownership === "owner" && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
+
+      {user && ownership === "owner" && gameId && (
         <>
           <GameView gameId={gameId} />
           <p style={{ marginTop: 16 }}>

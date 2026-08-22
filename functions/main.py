@@ -53,6 +53,7 @@ from engine.undo import NothingToUndoError, build_snapshot, restore as restore_s
 from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
+from owner import check_owner
 from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
 from generator.fence import apply_fence
 from validator.catalogs import load_catalogs
@@ -129,10 +130,7 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     calls. See design/quest-generator-design.md section 4 for the
     generate -> validate -> repair -> retry pipeline this runs.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(
-            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to generate a quest"
-        )
+    _require_owner(req, "sign in to generate a quest")
 
     params = _parse_generation_params(req.data)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
@@ -204,8 +202,7 @@ def create_game(req: https_fn.CallableRequest) -> dict:
     only the stairway room revealed, phase="hero", turn=1. See
     functions/engine/create_game.py for the pure initialization logic.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to start a game")
+    _require_owner(req, "sign in to start a game")
 
     quest_id, heroes = _parse_create_game_request(req.data)
 
@@ -286,6 +283,26 @@ def _load_game_and_quest(db, game_ref, transaction=None) -> tuple[dict, dict]:
     quest = from_firestore_coords(quest_snap.to_dict())
 
     return game_state, quest
+
+
+def _require_owner(req: https_fn.CallableRequest, signed_out_message: str) -> None:
+    """Every endpoint's front door. Cloud Functions bypass
+    firestore.rules, so the rules pinning this app to one account mean
+    nothing here -- this is the same check, server side (owner.py).
+
+    `signed_out_message` is what a signed-OUT caller sees, so it still
+    says which action was refused ("sign in to move a hero").
+    """
+    if req.auth is None:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message=signed_out_message
+        )
+    allowed, _reason = check_owner(firestore.client(), req.auth.uid)
+    if not allowed:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            message="this app belongs to another account",
+        )
 
 
 # Statuses that end a game: no more actions, but undo still works (a
@@ -420,8 +437,7 @@ def resolve_movement(req: https_fn.CallableRequest) -> dict:
     functions/engine/hero_movement.py for the pure resolution logic;
     this is just the Firestore read/write shell around it.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to move a hero")
+    _require_owner(req, "sign in to move a hero")
 
     game_id, hero_id, path = _parse_movement_request(req.data)
 
@@ -483,8 +499,7 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
     2 (the 1-hero-2-actions balance rule) -- see
     functions/engine/end_turn.py for the pure logic.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -547,8 +562,7 @@ def open_door(req: https_fn.CallableRequest) -> dict:
     the pure resolution logic (including why secret doors are
     explicitly out of scope for this button).
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -663,8 +677,7 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
     own physical dice and reports shields via record_hero_defense, same
     as any other monster attack.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -774,8 +787,7 @@ def search_traps_and_secret_doors(req: https_fn.CallableRequest) -> dict:
     secret doors only -- corridor traps and furniture traps are out of
     scope for this button).
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -899,8 +911,7 @@ def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
     applies the consequence. hasToolKit is asserted by the caller
     because inventory is physical (the Dwarf needs no kit).
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -996,8 +1007,7 @@ def cast_spell(req: https_fn.CallableRequest) -> dict:
     the target, and one cast per spell per quest. See
     functions/engine/spell.py.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1057,8 +1067,7 @@ def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
     re-rolling it, which could silently change the outcome between
     asking and answering.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1148,8 +1157,7 @@ def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
     Hands the phase back to "hero" and advances the turn counter. See
     functions/engine/zargon_turn.py for the pure resolution logic.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1255,8 +1263,7 @@ def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
     resulting damage -- the only direction combat touches stored state,
     per CLAUDE.md's "app applies results to monsters only".
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1327,8 +1334,7 @@ def record_hero_defense(req: https_fn.CallableRequest) -> dict:
     resolve_zargon_turn's monsterResults for this hero, echoed back by
     the client rather than re-derived here.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1395,8 +1401,7 @@ def record_hero_death(req: https_fn.CallableRequest) -> dict:
     lost -- the first end state the app has other than "complete". See
     functions/engine/heroes.py.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
@@ -1477,8 +1482,7 @@ def undo_last_action(req: https_fn.CallableRequest) -> dict:
     of the game. A finished quest can still be undone -- reporting the
     last hero's death by mistake has to be recoverable.
     """
-    if req.auth is None:
-        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.UNAUTHENTICATED, message="sign in to play")
+    _require_owner(req, "sign in to play")
 
     data = req.data if isinstance(req.data, dict) else {}
     game_id = data.get("gameId")
