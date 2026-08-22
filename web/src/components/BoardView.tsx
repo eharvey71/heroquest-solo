@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { board as staticBoard, type Coord, squareKey } from "../lib/board";
+import { isOrthogonallyAdjacent } from "../lib/boardGeometry";
 import { livingHeroes, revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
 import { BoardTerrain } from "./BoardTerrain";
@@ -67,10 +68,23 @@ export function BoardView({
       if (!coord) return;
       const key = squareKey(coord[0], coord[1]);
 
+      // Heroes may move THROUGH fellow heroes (CLAUDE.md rules edition),
+      // so a tap on a teammate can mean either "step onto that square"
+      // or "switch to that hero". Adjacency decides: while a hero is
+      // selected, a tap next to the path's end is always a step --
+      // otherwise a teammate standing in a corridor was an unpassable
+      // wall to a click-trace, since every tap on them re-selected them
+      // and reset the path. Tapping a hero further off still switches,
+      // and the rail's hero dropdown switches unconditionally.
+      const last = path[path.length - 1];
+      const steppingOn = selectedHeroId !== null && last !== undefined && isOrthogonallyAdjacent(last, coord);
+
       const heroHere = heroes.find((h) => squareKey(h.pos[0], h.pos[1]) === key);
-      if (heroHere) {
+      if (heroHere && !steppingOn) {
         selectHero(heroHere);
         onSelectHero?.(heroHere.id); // keep the action panel's active hero in sync
+      } else if (heroHere) {
+        extendTo(coord);
       } else if (!selectedHeroId || path.length <= 1) {
         // Not mid-trace: a tap on a visible monster picks it as the
         // attack target instead of starting a path (a path can never
@@ -99,7 +113,7 @@ export function BoardView({
       onSelectHero,
       onSelectMonster,
       selectedHeroId,
-      path.length,
+      path,
       extendTo,
       startDragging,
     ]
