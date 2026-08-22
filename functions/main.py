@@ -29,7 +29,6 @@ can land a hero on the stairs.
 
 import copy
 
-import anthropic
 from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
@@ -137,6 +136,12 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     generate -> validate -> repair -> retry pipeline this runs.
     """
     _require_owner(req, "sign in to generate a quest")
+
+    # Imported HERE, not at module scope: the anthropic package costs
+    # ~3.5s to import, and every function in this file shares one module,
+    # so a cold start on a hero MOVE was paying for the quest generator's
+    # dependency. This is the only endpoint that needs it.
+    import anthropic
 
     params = _parse_generation_params(req.data)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)

@@ -16,7 +16,7 @@ import type { GameState, HeroToken, LogEntry, MonsterToken } from "./gameState";
 interface RawGameDoc {
   questId: string;
   phase: "hero" | "zargon";
-  status?: "in_progress" | "complete";
+  status?: "in_progress" | "complete" | "lost";
   objectiveComplete?: boolean;
   turn: number;
   heroPhaseSegment?: number;
@@ -29,6 +29,10 @@ interface RawGameDoc {
   spellsCast?: string[];
   trapsTriggered?: string[];
   trapsFound?: GameState["trapsFound"];
+  chaosSpellsCast?: string[];
+  heroStatus?: GameState["heroStatus"];
+  undoDepth?: number;
+  undoLabel?: string;
   log?: LogEntry[];
 }
 
@@ -50,6 +54,14 @@ function toGameState(raw: RawGameDoc): GameState {
     spellsCast: raw.spellsCast ?? [],
     trapsTriggered: raw.trapsTriggered ?? [],
     trapsFound: raw.trapsFound ?? {},
+    chaosSpellsCast: raw.chaosSpellsCast ?? [],
+    heroStatus: raw.heroStatus ?? {},
+    // Without these two the Undo button is permanently greyed out and
+    // the Chaos-spell panel never appears: this function builds the
+    // client's GameState field by field, so anything not named here is
+    // dropped on the floor no matter what the document holds.
+    undoDepth: raw.undoDepth ?? 0,
+    undoLabel: raw.undoLabel,
     log: raw.log ?? [],
   };
 }

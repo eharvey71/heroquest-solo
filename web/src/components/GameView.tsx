@@ -20,6 +20,7 @@ import {
   type CombatDieFace,
   undoLastAction,
 } from "../lib/functionsClient";
+import { HERO_SPELL_ELEMENTS } from "../data/heroSpells";
 import { livingHeroes, revealedSquareKeys, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, useQuestMap } from "../lib/useQuestMap";
@@ -34,6 +35,34 @@ interface PendingDefense {
   heroId: string;
   heroName: string;
   skulls: number;
+}
+
+/** A number field that doesn't fight you: an empty box reads as 0, and
+ * focusing selects what's there so typing REPLACES it rather than
+ * landing next to a stubborn leading zero. */
+function DiceInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label: string;
+}) {
+  return (
+    <label>
+      {label}{" "}
+      <input
+        type="number"
+        min={0}
+        value={value === 0 ? "" : value}
+        placeholder="0"
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => onChange(e.target.value === "" ? 0 : Math.max(0, Number(e.target.value)))}
+        style={{ width: 56 }}
+      />
+    </label>
+  );
 }
 
 /** A hero takes ONE action per turn (1989 rulebook), so the panel shows
@@ -574,29 +603,29 @@ export function GameView({ gameId }: GameViewProps) {
           <div className="panel">
             <p className="panel-title">Active hero</p>
             <div className="panel-stack">
-              <div className="panel-row">
-                <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
-                  {heroes.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
-                <span className="hint">{activeHeroRoomId ? `in ${activeHeroRoomId}` : "in a corridor"}</span>
-              </div>
-              {fallenHeroes.length > 0 && (
-                <span className="hint">Fallen: {fallenHeroes.map((h) => h.name).join(", ")}</span>
-              )}
-              {activeHero && playable && (
-                <div>
+              <div className="panel-row" style={{ justifyContent: "space-between" }}>
+                <span className="panel-row">
+                  <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                    {heroes.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="hint">{activeHeroRoomId ? `in ${activeHeroRoomId}` : "in a corridor"}</span>
+                </span>
+                {activeHero && playable && (
                   <button
                     className="quiet"
                     onClick={() => handleHeroDeath(activeHero.id, activeHero.name)}
                     disabled={busy}
                   >
-                    {activeHero.name} has fallen
+                    Has fallen
                   </button>
-                </div>
+                )}
+              </div>
+              {fallenHeroes.length > 0 && (
+                <span className="hint">Fallen: {fallenHeroes.map((h) => h.name).join(", ")}</span>
               )}
             </div>
           </div>
@@ -679,16 +708,7 @@ export function GameView({ gameId }: GameViewProps) {
                         );
                       })}
                     </select>
-                    <label>
-                      Skulls:{" "}
-                      <input
-                        type="number"
-                        min={0}
-                        value={attackSkulls}
-                        onChange={(e) => setAttackSkulls(Number(e.target.value))}
-                        style={{ width: 48 }}
-                      />
-                    </label>
+                    <DiceInput label="Skulls:" value={attackSkulls} onChange={setAttackSkulls} />
                   </div>
                   {selectedReach && (
                     <span style={{ color: "#e6a23b" }}>
@@ -776,14 +796,29 @@ export function GameView({ gameId }: GameViewProps) {
               {openAction === "spell" && (
                 <div className="panel-stack">
                   <span className="hint">
-                    Cast instead of attacking. The card stays on the table &mdash; name it, and if it attacks,
-                    report the skulls you rolled.
+                    Cast instead of attacking. The card stays on the table &mdash; pick it here, and if it
+                    attacks, report the skulls you rolled.
                   </span>
-                  <input
-                    placeholder="spell name, e.g. Ball of Flame"
-                    value={spellName}
-                    onChange={(e) => setSpellName(e.target.value)}
-                  />
+                  <select value={spellName} onChange={(e) => setSpellName(e.target.value)}>
+                    <option value="">Which card?</option>
+                    {HERO_SPELL_ELEMENTS.map((group) => (
+                      <optgroup key={group.element} label={group.element}>
+                        {group.spells.map((name) => {
+                          // The app already knows what has been spent --
+                          // one cast per spell per quest.
+                          const spent = (game.spellsCast ?? []).some(
+                            (cast) => cast.toLowerCase() === name.toLowerCase()
+                          );
+                          return (
+                            <option key={name} value={name} disabled={spent}>
+                              {name}
+                              {spent ? " -- already cast" : ""}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ))}
+                  </select>
                   <label>
                     <input
                       type="checkbox"
@@ -803,16 +838,7 @@ export function GameView({ gameId }: GameViewProps) {
                             </option>
                           ))}
                         </select>
-                        <label>
-                          Skulls:{" "}
-                          <input
-                            type="number"
-                            min={0}
-                            value={spellSkulls}
-                            onChange={(e) => setSpellSkulls(Number(e.target.value))}
-                            style={{ width: 48 }}
-                          />
-                        </label>
+                        <DiceInput label="Skulls:" value={spellSkulls} onChange={setSpellSkulls} />
                       </div>
                       <label>
                         <input

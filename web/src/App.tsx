@@ -55,7 +55,10 @@ function App() {
       <div className="app-header">
         <h1>HeroQuest Zargon</h1>
         {user && (
-          <span className="hint">
+          <span className="hint" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {gameId && ownership === "owner" && (
+              <button onClick={handleLeaveGame}>Back to quests &amp; games</button>
+            )}
             {user.email ?? "signed in"}{" "}
             <button
               onClick={() => {
@@ -92,14 +95,7 @@ function App() {
 
       {user && ownership === "owner" && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
 
-      {user && ownership === "owner" && gameId && (
-        <>
-          <GameView gameId={gameId} />
-          <p style={{ marginTop: 16 }}>
-            <button onClick={handleLeaveGame}>Back to quests &amp; games</button>
-          </p>
-        </>
-      )}
+      {user && ownership === "owner" && gameId && <GameView gameId={gameId} />}
     </div>
   );
 }
