@@ -226,6 +226,17 @@ def resolve_hero_spell(
         if genie_mode == "door":
             if not door_id:
                 raise HeroSpellUnavailableError("name the door for the Genie to open")
+            # "Open any door ON THE BOARD" -- the doors on the board are
+            # the ones that have been placed, i.e. found. A door in a
+            # room nobody has opened yet isn't on the table to point at,
+            # and offering it would hand the player the map.
+            door = next((d for d in quest.get("doors", []) if d.get("id") == door_id), None)
+            if door is None:
+                raise HeroSpellUnavailableError(f"no door '{door_id}' in this quest")
+            if not _door_is_on_the_board(board, door, game_state):
+                raise HeroSpellUnavailableError(
+                    f"door '{door_id}' hasn't been found yet -- the Genie can only open a door on the board"
+                )
             result.opened_door_id = door_id
             result.log.append(
                 f"The Genie throws open door {door_id} -- anywhere on the board, seen or not."
@@ -254,6 +265,25 @@ def resolve_hero_spell(
         return result
 
     raise UnknownHeroSpellError(f"hero spell '{spell_id}' has an unknown effect '{effect}'")
+
+
+def _door_is_on_the_board(board: Board, door: dict, game_state: dict) -> bool:
+    """A door is physically on the table once one of its squares has
+    been revealed and it isn't still a secret. Same rule the renderer
+    uses to decide whether to draw it (web BoardTerrain).
+    """
+    if door.get("state") == "secret" and game_state.get("doors", {}).get(door["id"]) is None:
+        return False
+    if game_state.get("doors", {}).get(door["id"]) == "secret":
+        return False
+    revealed_rooms = set(game_state.get("revealed", {}).get("rooms", []))
+    revealed_corridor = {tuple(sq) for sq in game_state.get("revealed", {}).get("corridorSquares", [])}
+    for square in door.get("squares", []):
+        square = tuple(square)
+        area = board.area_of.get(square)
+        if area in revealed_rooms or square in revealed_corridor:
+            return True
+    return False
 
 
 def _status_prompt(status: str) -> str:

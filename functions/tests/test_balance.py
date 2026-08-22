@@ -213,3 +213,18 @@ def test_an_unknown_card_is_rejected(good_quest_4h, good_quest_4h_params, catalo
     boss["spells"] = ["meteor_swarm"]
     errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
     assert any("unknown Chaos spell" in e for e in errors)
+
+
+def test_only_a_couple_of_monsters_may_carry_spells(good_quest_4h, good_quest_4h_params, catalogs):
+    # The quest book arms the villain and maybe a lieutenant. A dungeon
+    # of casters is a different game.
+    armed = 0
+    for room in good_quest_4h["rooms"].values():
+        for monster in room["monsters"]:
+            if armed >= 3:
+                break
+            monster["name"] = f"Villain {armed}"
+            monster["spells"] = [["fear"], ["sleep"], ["rust"]][armed]
+            armed += 1
+    errors = check_balance(good_quest_4h, good_quest_4h_params, catalogs)
+    assert any("more than the 2 the quest book ever arms" in e for e in errors)

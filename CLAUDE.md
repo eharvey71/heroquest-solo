@@ -360,8 +360,10 @@ transcribed verbatim into data/chaos_spells.json). The cards' own rule:
 "give your Chaos spells to specific monsters called for in the Quest
 notes", cast INSTEAD of attacking, only on a hero the caster can SEE,
 once per quest each, then discarded. So spells are quest data
-(monster.spells, validator-checked: named monsters only, one physical
-card of each) and the app decides when to spend them
+(monster.spells, validator-checked: NAMED monsters only, at most
+MAX_SPELL_CASTERS=2 of them in a quest -- the quest book arms the
+villain and maybe a lieutenant, never the rank and file -- and one
+physical card of each) and the app decides when to spend them
 (chaos_spells.choose_spell -- room-wide cards wait for a crowd).
 
 The physical/digital line runs straight through the middle of the deck:

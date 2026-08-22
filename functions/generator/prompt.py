@@ -11,6 +11,7 @@ import random
 from validator.balance import (
     BASELINE_BUDGET,
     CHAOS_SPELL_THREAT_COST,
+    MAX_SPELL_CASTERS,
     BUDGET_TOLERANCE,
     HARD_DIFFICULTY_MULTIPLIER,
     HERO_BUDGET_RATIO,
@@ -163,8 +164,9 @@ when a physical tile should go on the board.
 {_chaos_spell_lines()}
 A quest MAY hand Chaos spells to monsters, per the cards' own rule:
 "You must give your Chaos spells to specific monsters called for in the
-Quest notes." So only a NAMED monster (a boss) may carry them, via that
-monster's `spells` array. There is one physical card of each, so no
+Quest notes." So only a NAMED monster (a boss, or at most one
+lieutenant -- {MAX_SPELL_CASTERS} casters in the whole quest) may carry
+them, via that monster's `spells` array. Never the rank and file. There is one physical card of each, so no
 spell may appear twice in a quest. A caster spends one instead of
 attacking, only on a hero it can see, once per quest.
 Two or three spells on the quest's boss is a good use of them; a

@@ -242,6 +242,16 @@ export function GameView({ gameId }: GameViewProps) {
   // chosen when the game was created (game state's spellbooks).
   const heldSpells = spellsForElements(game.spellbooks?.[heroId]);
   const chosenCard = spellId ? spellCard(spellId) : undefined;
+  // "Open any door ON THE BOARD": the doors on the board are the ones
+  // that have been placed. Listing every door in the quest would hand
+  // over the map -- same visibility rule the renderer uses.
+  const genieDoors = resolvedDoors
+    .filter((d) => d.state === "closed" && d.squares.some((sq) => revealedKeys.has(squareKey(sq[0], sq[1]))))
+    .map((d) => {
+      const seenFrom = d.squares.find((sq) => revealedKeys.has(squareKey(sq[0], sq[1]))) ?? d.squares[0];
+      const area = staticBoard.areaOf.get(squareKey(seenFrom[0], seenFrom[1]));
+      return { ...d, label: `${area === CORRIDOR ? "corridor" : area} at [${seenFrom[0]},${seenFrom[1]}]` };
+    });
   const spellWantsMonster =
     chosenCard?.target === "monster" || (chosenCard?.target === "choice" && genieMode === "attack");
 
@@ -859,18 +869,23 @@ export function GameView({ gameId }: GameViewProps) {
                         </div>
                       )}
 
-                      {chosenCard?.target === "choice" && genieMode === "door" && (
+                      {chosenCard?.target === "choice" && genieMode === "door" && genieDoors.length === 0 && (
+                        <span style={{ color: "#e6a23b" }}>
+                          No closed door is on the board yet &mdash; the Genie can only open one the party
+                          has found.
+                        </span>
+                      )}
+
+                      {chosenCard?.target === "choice" && genieMode === "door" && genieDoors.length > 0 && (
                         <label>
                           Door:{" "}
                           <select value={genieDoorId} onChange={(e) => setGenieDoorId(e.target.value)}>
                             <option value="">Which one?</option>
-                            {resolvedDoors
-                              .filter((d) => d.state !== "open")
-                              .map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.id} &mdash; [{d.squares[0][0]},{d.squares[0][1]}]
-                                </option>
-                              ))}
+                            {genieDoors.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.label}
+                              </option>
+                            ))}
                           </select>
                         </label>
                       )}

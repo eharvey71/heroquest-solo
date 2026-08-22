@@ -192,3 +192,20 @@ def test_the_wizard_takes_three_elements_and_the_elf_one():
 def test_bad_spellbooks_rejected(books):
     with pytest.raises(HeroSpellUnavailableError):
         validate_spellbooks(books)
+
+
+def test_the_genie_only_opens_a_door_that_is_on_the_board(catalogs):
+    # "Open any door on the board" -- a door in a room nobody has found
+    # isn't on the table, and offering it would hand over the map.
+    hidden = {"id": "D9", "squares": [[20, 15], [20, 16]], "state": "closed"}
+    quest = _quest(doors=[D1, hidden])
+    with pytest.raises(HeroSpellUnavailableError) as excinfo:
+        _cast(catalogs, "genie", caster="elf", quest=quest, genie_mode="door", door_id="D9")
+    assert "hasn't been found" in str(excinfo.value)
+
+
+def test_the_genie_will_not_open_an_undiscovered_secret_door(catalogs):
+    secret = {"id": "D7", "squares": [[4, 2], [5, 2]], "state": "secret"}
+    quest = _quest(doors=[D1, secret])
+    with pytest.raises(HeroSpellUnavailableError):
+        _cast(catalogs, "genie", caster="elf", quest=quest, genie_mode="door", door_id="D7")

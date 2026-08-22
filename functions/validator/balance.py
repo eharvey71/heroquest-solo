@@ -45,6 +45,12 @@ ROOM_TRAP_CAP = 1
 # 2 points per spell rounds that up rather than down.
 CHAOS_SPELL_THREAT_COST = 2
 
+# How many monsters in one quest may carry Chaos spells. The quest book
+# hands them to the villain and at most a lieutenant -- never to the
+# rank and file -- and a dungeon with four casters in it reads as a
+# different game.
+MAX_SPELL_CASTERS = 2
+
 BLOCKED_SINGLE_TILES = 8
 BLOCKED_DOUBLE_TILES = 2
 BLOCKED_SQUARE_CAP = BLOCKED_SINGLE_TILES + 2 * BLOCKED_DOUBLE_TILES
@@ -239,9 +245,12 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
 
     # -- Chaos spell cards (physical: one of each in the box) --
     assigned: Counter = Counter()
+    casters: list[str] = []
     for room_id, room in quest_rooms.items():
         for monster in room.get("monsters", []):
             spells = monster.get("spells") or []
+            if spells:
+                casters.append(monster.get("id", "?"))
             if spells and not monster.get("name"):
                 errors.append(
                     f"monster {monster.get('id', '?')} in {room_id} carries Chaos spells but has no name -- "
@@ -257,6 +266,13 @@ def check_balance(quest: dict, params: dict, catalogs: Catalogs) -> list:
                         f"{CHAOS_SPELLS[spell_id]['name']} needs quest.escapeDestination -- "
                         f"the card teleports its caster to a place marked on the map"
                     )
+    if len(casters) > MAX_SPELL_CASTERS:
+        errors.append(
+            f"{len(casters)} monsters carry Chaos spells ({', '.join(sorted(casters))}), more than the "
+            f"{MAX_SPELL_CASTERS} the quest book ever arms -- spells go to the villain and a lieutenant, "
+            f"not to the rank and file"
+        )
+
     for spell_id, count in assigned.items():
         if count > 1:
             errors.append(
