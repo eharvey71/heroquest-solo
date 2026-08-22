@@ -458,17 +458,17 @@ Hero death and undo are built (see the engine details above).
 Auth is locked to one account (see below), and chest/furniture traps
 are built (see the engine details above).
 
-Known gaps:
-1. Chaos spells -- see "Not implemented, deliberately" above. The owner
-   wants the app to know the cards and resolve them digitally, which
-   needs the card list (name, effect, dice) off the physical cards
-   before anything can be built.
+Chaos spells and hero spells are both built and priced (see the engine
+details above). All twelve cards of each deck are transcribed, the
+three caster types are flagged in monsters.json, and the quest schema
+carries monster.spells.
 
-Chaos spells stay unbuilt, but are no longer blocked on a missing
-instrument -- functions/sim/ can now price them (see below). What they
-still need is DATA: monsters.json has no spell lists and no caster
-flag, and the quest schema has nowhere to declare which spells a named
-boss knows.
+Known gaps:
+1. Command moves a hero on Zargon's turn -- deliberately left to the
+   player, see "Not implemented, deliberately" above.
+2. The app has never been played through a full quest on the physical
+   board. Everything below is verified by tests and the simulator,
+   which is not the same thing.
 
 ## Single-owner auth (settled)
 Google sign-in, and the app belongs to exactly ONE account. The uid is
