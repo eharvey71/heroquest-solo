@@ -15,7 +15,16 @@ turn log/narration.
 PHYSICAL: board, minis, hero sheets (BP/MP/gold/inventory), hero dice rolls,
 treasure/spell/equipment card decks.
 INTERFACE: hero movement entered as a path drag/click-trace on the app board
-(required so traps trigger mid-move and Zargon knows positions). Everything
+(required so traps trigger mid-move and Zargon knows positions). TRACING
+IS SETTLED -- click-to-destination with an auto-routed path, and
+range-dots driven by a typed movement roll, were both weighed and
+declined. Traps are the only reason the route is needed at all; revisit
+after a real quest has been played, not before. A hero may trace THROUGH
+a fellow hero: the tracing hook always allowed it, but BoardView's
+pointer-down re-selected any hero whose square was tapped, so a teammate
+in a corridor was a wall to a click-trace. Adjacency now decides -- while
+a hero is selected, a tap next to the path's end is a step; a tap
+further off switches heroes. Everything
 else is a button: open door, search treasure, search traps/secret doors,
 attack [target], end turn. The app NEVER asks for movement roll totals,
 hero BP, gold, or inventory. Hero rolls their own combat dice and reports
