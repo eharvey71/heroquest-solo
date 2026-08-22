@@ -29,7 +29,12 @@ A named boss = one monster with `name` and optional stat `overrides`
 
 ### FURNITURE (footprint w x h, max count = physical pieces owned)
 {{FURNITURE_CATALOG_JSON}}
-Chests and tombs may contain a trap, treasure, or both.
+Chests and tombs may contain a trap, treasure, or both. A trapped piece
+springs when the room is searched for TREASURE before TRAPS, and every
+trapped piece in the room springs together. Whenever `trap` is not
+"none", write `trapText` -- one sentence in quest-book voice saying what
+the victim suffers. Type "chest_trap" has no tile; "pit" and
+"falling_block" put one on the board.
 
 ### PHYSICAL COMPONENT CAPS
 Per-ROOM monster caps (minis recycle across the quest, but one room can

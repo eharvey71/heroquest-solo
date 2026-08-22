@@ -492,6 +492,12 @@ export function GameView({ gameId }: GameViewProps) {
               <button onClick={handleSearchTreasure} disabled={busy || !activeHeroRoomId || heroSearchedTreasureHere}>
                 Search treasure
               </button>
+              {activeHeroRoomId && !roomAlreadySearchedTraps && (
+                // Derived from what the PARTY has done, not from what the
+                // quest hides -- no information leak, just a reminder that
+                // greed before caution sets off trapped furniture.
+                <span className="hint">this room hasn't been searched for traps yet</span>
+              )}
               <label>
                 <input type="checkbox" checked={wanderingDrawn} onChange={(e) => setWanderingDrawn(e.target.checked)} />{" "}
                 wandering monster card drawn

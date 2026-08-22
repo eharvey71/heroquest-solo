@@ -618,10 +618,18 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
-    updates: dict = {
-        f"searched.{room_id}.treasureBy": firestore.ArrayUnion([hero_id]),
-        "log": existing_log + new_log_entries,
-    }
+    updates: dict = {"log": existing_log + new_log_entries}
+
+    if result.sprung_furniture_traps:
+        # The room went off instead of paying out. The hero's search was
+        # interrupted, so it isn't spent -- they can try again once the
+        # traps are inert. Sprung pieces join trapsTriggered, the registry
+        # that already means "gone for good".
+        updates["trapsTriggered"] = sorted(
+            set(game_state.get("trapsTriggered", [])) | {t.trap_id for t in result.sprung_furniture_traps}
+        )
+    else:
+        updates[f"searched.{room_id}.treasureBy"] = firestore.ArrayUnion([hero_id])
 
     if result.spawned_monster:
         existing_ids = set(game_state.get("monsters", {}).keys())
@@ -688,6 +696,11 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
 
     return {
         "roomId": result.room_id,
+        "treasureDrawn": result.treasure_drawn,
+        "sprungFurnitureTraps": [
+            {"trapId": t.trap_id, "furnitureType": t.furniture_type, "type": t.trap_type, "pos": list(t.pos)}
+            for t in result.sprung_furniture_traps
+        ],
         "spawnedMonster": result.spawned_monster,
         "monsterAttack": (
             {
@@ -796,6 +809,10 @@ def search_traps_and_secret_doors(req: https_fn.CallableRequest) -> dict:
 
     return {
         "roomId": result.room_id,
+        "foundFurnitureTraps": [
+            {"furnitureType": t.furniture_type, "type": t.trap_type, "pos": list(t.pos)}
+            for t in result.found_furniture_traps
+        ],
         "foundTraps": [
             {"trapId": t.trap_id, "type": t.trap_type, "pos": list(t.pos), "placementInstruction": t.placement_instruction}
             for t in result.found_traps

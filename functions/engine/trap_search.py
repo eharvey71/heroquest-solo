@@ -16,11 +16,15 @@ doors flip from "secret" to "closed": now a normal door, still
 requiring the separate "open door" button per the interface list.
 
 Scoped to the searching hero's room only: this room's floor traps
-(quest.rooms[room_id].traps) and any secret door bordering it. Corridor
-traps and furniture-contained traps (chest/tomb "contains.trap") are
-out of scope for this button -- corridor traps are found by walking
-into them (hero_movement.py), and furniture traps are a treasure-
-search-time concern, not built yet.
+(quest.rooms[room_id].traps), any secret door bordering it, and any
+trapped chest or tomb standing in it. Corridor traps are out of scope
+-- those are found by walking into them (hero_movement.py).
+
+A trapped piece of furniture is REPORTED here rather than added to
+trapsFound: there is nothing to jump or disarm, and searching the room
+for traps is itself what makes opening it safe (engine/furniture_traps.py
+gates on searched.<room>.traps). Search for loot without doing this
+first and the whole room goes off.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from validator.catalogs import Board
 
 from .hero_movement import _build_trap_lookup
 from .heroes import find_living_hero, living_heroes
+from .furniture_traps import FurnitureTrap, armed_furniture_traps
 from .line_of_sight import has_line_of_sight
 from .movement import passable_door_edges
 
@@ -68,6 +73,9 @@ class TrapSearchResult:
     room_id: str
     found_traps: list[FoundTrap] = field(default_factory=list)
     found_secret_doors: list[FoundSecretDoor] = field(default_factory=list)
+    # Trapped chests/tombs spotted. Reported, not registered: see the
+    # module docstring for why they don't go in trapsFound.
+    found_furniture_traps: list = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
 
@@ -135,6 +143,18 @@ def resolve_trap_search(
         found_traps.append(FoundTrap(trap_id=trap_id, trap_type=trap_type, pos=pos, placement_instruction=instruction))
         log.append(f"{hero_id} finds a {trap_type} trap at [{pos[0]},{pos[1]}]. {instruction}")
 
+    # A trapped chest or tomb: nothing to disarm, but knowing about it is
+    # exactly what stops the room going off when someone searches for
+    # loot (engine/furniture_traps.py).
+    found_furniture: list[FurnitureTrap] = []
+    if search_type == "traps":
+        for trap in armed_furniture_traps(quest, game_state, room_id):
+            found_furniture.append(trap)
+            log.append(
+                f"{hero_id} finds that the {trap.furniture_type} at [{trap.pos[0]},{trap.pos[1]}] is trapped. "
+                f"Leave it be, or open it carefully -- searching this room for treasure is safe now."
+            )
+
     found_doors: list[FoundSecretDoor] = []
     door_states = game_state.get("doors", {})
     room_squares = board.room_squares[room_id]
@@ -147,7 +167,13 @@ def resolve_trap_search(
         found_doors.append(FoundSecretDoor(door_id=d["id"], squares=squares, placement_instruction=instruction))
         log.append(f"{hero_id} finds a secret door at {list(squares[0])}-{list(squares[1])}! {instruction}")
 
-    if not found_traps and not found_doors:
+    if not found_traps and not found_doors and not found_furniture:
         log.append("Nothing found.")
 
-    return TrapSearchResult(room_id=room_id, found_traps=found_traps, found_secret_doors=found_doors, log=log)
+    return TrapSearchResult(
+        room_id=room_id,
+        found_traps=found_traps,
+        found_secret_doors=found_doors,
+        found_furniture_traps=found_furniture,
+        log=log,
+    )

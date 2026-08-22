@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterAttackRoll, roll_monster_attack
+from .furniture_traps import armed_furniture_traps, room_searched_for_traps, spring_furniture_traps
 from .heroes import find_living_hero, living_heroes
 from .targeting import spawn_wandering_monster_from_treasure_card
 
@@ -46,7 +47,16 @@ class TreasureSearchResult:
     room_id: str
     spawned_monster: dict | None = None  # {"type","pos","attacksImmediately","placementInstruction"}
     monster_attack: MonsterAttackRoll | None = None
+    # Chest/tomb traps set off by searching for loot before searching for
+    # traps. When this is non-empty NOTHING else happened: no treasure was
+    # drawn, and the search doesn't count against the hero.
+    sprung_furniture_traps: list = field(default_factory=list)
+    placement_instructions: list[str] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
+
+    @property
+    def treasure_drawn(self) -> bool:
+        return not self.sprung_furniture_traps
 
 
 def resolve_treasure_search(
@@ -89,7 +99,23 @@ def resolve_treasure_search(
     if hero_id in game_state.get("searched", {}).get(room_id, {}).get("treasureBy", []):
         raise InvalidTreasureSearchError(f"hero '{hero_id}' has already searched room '{room_id}' for treasure")
 
-    log = [f"{hero_id} searches {room_id} for treasure."]
+    hero_name = hero.get("name", hero_id)
+    log = [f"{hero_name} searches {room_id} for treasure."]
+
+    # Greedy first, careful second: a room that hasn't been searched for
+    # traps sets off EVERY trapped piece in it (owner's rulebook reading).
+    # That ends the turn, so the treasure is never drawn.
+    if not room_searched_for_traps(game_state, room_id):
+        armed = armed_furniture_traps(quest, game_state, room_id)
+        if armed:
+            sprung = spring_furniture_traps(armed, hero_name)
+            return TreasureSearchResult(
+                room_id=room_id,
+                sprung_furniture_traps=sprung.sprung,
+                placement_instructions=sprung.placement_instructions,
+                log=log + sprung.log,
+            )
+
     spawn = None
     monster_attack = None
 
@@ -103,7 +129,7 @@ def resolve_treasure_search(
             catalog_entry = catalogs.monsters.get(spawn["type"], {})
             monster_attack = roll_monster_attack(
                 monster_name=spawn["type"],
-                hero_name=hero.get("name", hero_id),
+                hero_name=hero_name,
                 attack_dice=catalog_entry.get("attack", 0),
                 rng=rng,
             )

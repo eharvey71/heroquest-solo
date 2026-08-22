@@ -69,7 +69,16 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                 "contains": {
                     "type": "object",
                     "properties": {
-                        "trap": {"type": "string", "enum": ["pit", "falling_block", "none"]},
+                        # "chest_trap" is the usual case: a needle, a gas,
+                        # a spring -- narrated, no tile. pit/falling_block
+                        # are for the rare piece standing over one, and
+                        # they DO put a tile on the board.
+                        "trap": {"type": "string", "enum": ["chest_trap", "pit", "falling_block", "none"]},
+                        # What springing it does, in the quest book's own
+                        # voice. The app never computes trap damage --
+                        # Body Points are physical -- so this text IS the
+                        # effect (see engine/furniture_traps.py).
+                        "trapText": {"type": "string"},
                         "treasure": {"type": "string"},
                     },
                     "required": ["trap", "treasure"],

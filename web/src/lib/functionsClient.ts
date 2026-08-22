@@ -102,8 +102,20 @@ export interface MonsterAttack {
   diceRolled: number;
   skulls: number;
 }
+/** A chest or tomb that went off because the room was searched for
+ * treasure before it was searched for traps. */
+export interface FurnitureTrap {
+  trapId?: string;
+  furnitureType: string;
+  type: string;
+  pos: Coord;
+}
 export interface SearchTreasureResponse {
   roomId: string;
+  /** False when trapped furniture sprang instead -- no card is drawn,
+   * the turn ends, and the search isn't spent. */
+  treasureDrawn: boolean;
+  sprungFurnitureTraps: FurnitureTrap[];
   spawnedMonster: { type: string; pos: Coord; attacksImmediately: boolean; placementInstruction: string } | null;
   monsterAttack: MonsterAttack | null;
   log: string[];
@@ -132,6 +144,9 @@ export interface FoundSecretDoor {
 }
 export interface SearchTrapsAndSecretDoorsResponse {
   roomId: string;
+  /** Trapped chests/tombs spotted -- knowing about them is what keeps a
+   * later treasure search from setting the room off. */
+  foundFurnitureTraps: FurnitureTrap[];
   foundTraps: FoundTrap[];
   foundSecretDoors: FoundSecretDoor[];
   log: string[];
