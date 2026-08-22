@@ -52,7 +52,7 @@ function App() {
 
   return (
     <div className="app">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+      <div className="app-header">
         <h1>HeroQuest Zargon</h1>
         {user && (
           <span className="hint">

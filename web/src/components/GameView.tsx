@@ -385,8 +385,8 @@ export function GameView({ gameId }: GameViewProps) {
         </h2>
         <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
           {narrative && (
-            <button className="quiet" onClick={() => setNarrativeOpen((v) => !v)}>
-              {narrativeOpen ? "Hide" : "Story"}
+            <button className="quiet" onClick={() => setNarrativeOpen(true)}>
+              Story
             </button>
           )}
           <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
@@ -399,14 +399,19 @@ export function GameView({ gameId }: GameViewProps) {
       </div>
 
       {narrative && narrativeOpen && (
-        <div className="panel" style={{ maxWidth: 720, marginBottom: 12 }}>
-          <h3 style={{ marginTop: 0 }}>{narrative.title}</h3>
-          <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
-          {narrative.objective && (
-            <p style={{ margin: 0 }}>
-              <strong>Objective:</strong> {narrative.objective}
-            </p>
-          )}
+        // Click anywhere outside to put it away -- it is read-aloud text,
+        // not a form.
+        <div className="story-overlay" onClick={() => setNarrativeOpen(false)}>
+          <div className="story-card" onClick={(e) => e.stopPropagation()}>
+            <h3>{narrative.title}</h3>
+            <p style={{ fontStyle: "italic", color: "#c9bfa0" }}>{narrative.backstory}</p>
+            {narrative.objective && (
+              <p>
+                <strong>Objective:</strong> {narrative.objective}
+              </p>
+            )}
+            <button onClick={() => setNarrativeOpen(false)}>Close</button>
+          </div>
         </div>
       )}
 
