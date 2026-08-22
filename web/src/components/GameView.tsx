@@ -416,10 +416,6 @@ export function GameView({ gameId }: GameViewProps) {
         <div className="board-pane">
           <BoardView
             gameState={game}
-            // Bigger squares than the old single-column layout could
-            // afford -- tracing a path is the one thing you do with a
-            // mouse here, so the board gets the width the rail saved.
-            cellSize={34}
             onConfirmMove={handleConfirmMove}
             onSelectHero={setHeroId}
             onSelectMonster={setAttackMonsterId}

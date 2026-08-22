@@ -195,12 +195,11 @@ export function BoardView({
         ref={svgRef}
         viewBox={`0 0 ${staticBoard.width * cellSize} ${staticBoard.height * cellSize}`}
         width="100%"
-        style={{
-          maxWidth: staticBoard.width * cellSize,
-          background: "#111",
-          touchAction: "none",
-          userSelect: "none",
-        }}
+        // Size comes from CSS (.board-pane svg), not from cellSize:
+        // the viewBox means one number can't be both "how big it draws"
+        // and "how big it appears". cellSize is now purely the internal
+        // unit that stroke widths and labels are measured in.
+        style={{ background: "#111", touchAction: "none", userSelect: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -224,9 +223,7 @@ export function BoardView({
           selectedHeroId={selectedHeroId ?? undefined}
         />
       </svg>
-      <div
-        style={{ marginTop: 6, display: "flex", gap: 14, flexWrap: "wrap", fontSize: "0.8rem", color: "#9a917c" }}
-      >
+      <div className="board-legend">
         {[
           ["#7fd67f", "open door"],
           ["#d69a4a", "closed door"],
