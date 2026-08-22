@@ -382,12 +382,16 @@ defend 6 / body 4 / mind 6, threat 15 -- that gap is what the
 named-monster `overrides` are for, so the catalog row is the floor,
 not the ceiling.
 
-Both book Warlocks carry FIVE OR SIX spells, not the two or three the
-generator prompt suggests, and the Witch Lord casts Fear TWICE. The
-validator's one-card-per-quest rule reads that as an error; it is
-right about two different monsters sharing a card and wrong about one
-monster holding two copies. Unfixed -- chaosSpellsCast is a set of
-spell ids, so counting repeats needs engine work too.
+The book's own Warlocks break the app's spell rules, and that is fine
+-- not a gap to close. Balur carries six cards and the Witch Lord
+five, against the two or three the generator prompt suggests, and the
+Witch Lord casts Fear TWICE, which the validator's one-card-per-quest
+rule reads as an error. Those are per-quest special rules the quest
+book writes for one villain, the way it also declares Balur immune to
+fire and the Witch Lord immune to everything but the Spirit Blade. A
+generated quest gets the general rule: two or three cards, each once.
+So chaosSpellsCast stays a set of spell ids, and no repeat-counting is
+built.
 
 The physical/digital line runs straight through the middle of the deck:
 - The app applies what it owns: damage to MONSTERS, summons (capped by
