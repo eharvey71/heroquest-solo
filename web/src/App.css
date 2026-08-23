@@ -252,6 +252,20 @@ button.quiet {
   color: #9a917c;
 }
 
+/* One-click shield count for a defence roll: 0-6, the full range six
+ * physical combat dice can ever produce. Square and narrow so seven of
+ * them read as a single die-face picker, not seven ordinary buttons. */
+.shield-count-row {
+  display: flex;
+  gap: 4px;
+}
+
+.shield-count-row button {
+  padding: 4px 0;
+  width: 30px;
+  text-align: center;
+}
+
 /* The action buttons are a menu, not a form: one gets picked and the
  * rest step aside (a hero takes ONE action per turn). */
 .action-grid {

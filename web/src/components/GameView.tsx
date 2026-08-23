@@ -1035,6 +1035,12 @@ export function GameView({ gameId }: GameViewProps) {
   );
 }
 
+// The owner's box has 6 physical combat dice -- no defend roll can ever
+// come up with more shields than that, so the full range of possible
+// answers fits in one row of buttons. One click reports the result;
+// no typing a number and then pressing a separate Report button.
+const SHIELD_COUNTS = [0, 1, 2, 3, 4, 5, 6];
+
 function DefenseForm({
   defense,
   busy,
@@ -1044,20 +1050,21 @@ function DefenseForm({
   busy: boolean;
   onSubmit: (defense: PendingDefense, shieldsReported: number) => void;
 }) {
-  const [shields, setShields] = useState(0);
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
       <span>
         {defense.heroName} faces {defense.skulls} skull(s)
         {defense.monsterName ? ` from the ${defense.monsterName.replace(/_/g, " ")}` : ""}
         {defense.pos ? ` at (${defense.pos[0]}, ${defense.pos[1]})` : ""}:
       </span>
-      <label>
-        Shields rolled: <input type="number" min={0} value={shields} onChange={(e) => setShields(Number(e.target.value))} style={{ width: 48 }} />
-      </label>
-      <button onClick={() => onSubmit(defense, shields)} disabled={busy}>
-        Report
-      </button>
+      <span className="hint">Shields rolled:</span>
+      <div className="shield-count-row">
+        {SHIELD_COUNTS.map((n) => (
+          <button key={n} onClick={() => onSubmit(defense, n)} disabled={busy}>
+            {n}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
