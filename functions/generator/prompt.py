@@ -56,6 +56,36 @@ def _chaos_spell_lines() -> str:
     )
 
 
+def _artifacts_section(catalogs: Catalogs) -> str:
+    """The whole ARTIFACTS block, or "" while the catalog is empty --
+    an instruction naming zero real options would just be noise, and
+    the schema itself doesn't offer artifactId in that case either.
+    """
+    if not catalogs.artifacts:
+        return ""
+    lines = "\n".join(
+        f"- {artifact_id}: {entry['name']} -- {entry['text'].split('.')[0]}."
+        for artifact_id, entry in sorted(catalogs.artifacts.items())
+    )
+    return f"""
+### ARTIFACTS (real physical cards, one of each)
+{lines}
+Never awarded by a random treasure search -- the app never sees what a
+hero draws from that deck, so an artifact can only enter a quest if YOU
+place it deliberately, one of two ways:
+- As the goal: objective.type "find_artifact" with objective.target.artifactId
+  set to one of the ids above.
+- As loot along the way: a chest or tomb's furniture.contains.artifactId,
+  regardless of the objective type -- something the party is meant to
+  find en route, not the point of the quest.
+At most one placement per artifact per quest (there is one physical
+card of each), and a quest need not use any. When you do use one,
+reference its real name and effect in your prose (backstory,
+completionText, or the room's revealText) -- the card text above is
+what to draw from.
+"""
+
+
 def _monster_cost_line(catalogs: Catalogs) -> str:
     return " ".join(
         f"{name}({entry['threatCost']})"
@@ -181,7 +211,7 @@ spell-less quest is also fine. Each spell you hand out costs
 {CHAOS_SPELL_THREAT_COST} points of the monster budget, so count them
 in. If you give a monster `escape`, you must also set the quest's
 `escapeDestination` to the square it teleports to.
-
+{_artifacts_section(catalogs)}
 ### ROOM OBJECT
 Every entry in `rooms` must include all four fields: `revealText`,
 `monsters`, `furniture`, `traps` — use an empty array `[]` for any that

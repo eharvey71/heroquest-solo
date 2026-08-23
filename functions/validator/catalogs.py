@@ -83,12 +83,30 @@ def load_furniture(path: Path | None = None) -> dict:
     }
 
 
+def load_artifacts(path: Path | None = None) -> dict:
+    """id -> {name, summary} for the ten 1989 Artifact Cards.
+
+    Empty until the real card text is transcribed -- see data/README.md.
+    An empty dict is a valid, meaningful catalog (not a loading error):
+    every caller treats "no artifacts known yet" as "the mechanism stays
+    dormant," the same way an empty CHAOS_SPELLS would.
+    """
+    path = path or DATA_DIR / "artifacts.json"
+    return json.loads(path.read_text())
+
+
 @dataclass(frozen=True)
 class Catalogs:
     board: Board
     monsters: dict
     furniture: dict
+    artifacts: dict
 
 
 def load_catalogs() -> Catalogs:
-    return Catalogs(board=load_board(), monsters=load_monsters(), furniture=load_furniture())
+    return Catalogs(
+        board=load_board(),
+        monsters=load_monsters(),
+        furniture=load_furniture(),
+        artifacts=load_artifacts(),
+    )

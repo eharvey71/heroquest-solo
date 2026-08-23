@@ -84,6 +84,18 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                         # effect (see engine/furniture_traps.py).
                         "trapText": {"type": "string"},
                         "treasure": {"type": "string"},
+                        # A named Artifact Card found here -- "loot along
+                        # the way", distinct from the find_artifact
+                        # objective naming one as the whole point of the
+                        # quest (see validator/artifacts.py). Omitted
+                        # from the schema entirely while the catalog is
+                        # empty, same as chaos spell ids would be with
+                        # none defined.
+                        **(
+                            {"artifactId": {"type": "string", "enum": sorted(catalogs.artifacts.keys())}}
+                            if catalogs.artifacts
+                            else {}
+                        ),
                     },
                     "required": ["trap", "treasure"],
                     "additionalProperties": False,
@@ -151,6 +163,15 @@ def build_quest_json_schema(catalogs: Catalogs) -> dict:
                         "properties": {
                             "monsterId": {"type": "string"},
                             "room": {"$ref": "#/$defs/targetRoomId"},
+                            # Which Artifact Card a find_artifact quest is
+                            # actually after -- narration only, see
+                            # validator/artifacts.py; completion still
+                            # fires on reaching `room`, unchanged.
+                            **(
+                                {"artifactId": {"type": "string", "enum": sorted(catalogs.artifacts.keys())}}
+                                if catalogs.artifacts
+                                else {}
+                            ),
                         },
                         "additionalProperties": False,
                     },

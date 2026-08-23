@@ -461,6 +461,35 @@ Not implemented, deliberately:
   equipment the app cannot see. The player moves the commanded hero as
   Zargon directs.
 
+ARTIFACTS (data/artifacts.json, all ten 1989 cards transcribed
+verbatim) are PLACEMENT only so far -- none of their ten effects are
+enforced. Never awarded by a random treasure search: the app never
+sees what a hero draws from that deck (same boundary as gold and Hero
+spell cards), so an artifact can only enter a quest if the generator
+places it deliberately, validator-checked, one of two ways: as the
+`find_artifact` objective's actual goal (objective.target.artifactId),
+or as loot tucked in one room's furniture along the way
+(furniture.contains.artifactId) -- either, both, or neither, and never
+the same artifact placed twice (there is one physical card of each,
+validator/artifacts.py). Naming the artifact doesn't change how the
+objective completes -- still "a hero reached target.room"
+(engine/objective.py, unchanged) -- it just lets the LLM's own prose
+(which already writes backstory/completionText/revealText for every
+quest) reference the real name and effect instead of staying generic.
+The catalog degrades to a no-op if ever emptied: both schema
+properties and the prompt's whole ARTIFACTS section are generated FROM
+it and omitted entirely when it's empty.
+
+Four of the ten touch state the app already tracks and are real
+candidates for future digital enforcement: Ring of Return (teleports
+hero tokens to the stairway -- positions are digital), Spell Ring and
+Wand of Magic (both bend the "one spell, once per quest" rule
+hero_spells.py already enforces via spellsCast), Elixir of Life
+(revives a hero -- alive/dead is digital per engine/heroes.py, Body
+and Mind Points are not). The other six are hero combat-dice bonuses
+and restrictions -- physical-only, same boundary as any other weapon
+or armor card. See data/README.md for the full breakdown.
+
 Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:
 - **Treasure-card wandering** (drawn during a physical treasure

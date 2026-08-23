@@ -6,6 +6,7 @@ output before a quest reaches Firestore.
 
 from __future__ import annotations
 
+from .artifacts import check_artifacts
 from .balance import check_balance
 from .catalogs import Catalogs, load_catalogs
 from .geometry import check_geometry
@@ -35,6 +36,7 @@ def validate_quest(quest: dict, params: dict, catalogs: Catalogs | None = None) 
     errors += check_geometry(quest, catalogs)
     errors += check_reachability(quest, catalogs)
     errors += check_balance(quest, params, catalogs)
+    errors += check_artifacts(quest, catalogs)
 
     expected_stairway_room = params.get("stairwayRoom")
     actual_stairway_room = quest.get("stairway", {}).get("room")

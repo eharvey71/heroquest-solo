@@ -1,0 +1,42 @@
+{
+  "ring_of_return": {
+    "name": "Ring of Return",
+    "text": "When invoked, this magical ring will return all Heroes that the ring wearer can \"see\" to the starting point of the Quest. It can only be used once."
+  },
+  "spell_ring": {
+    "name": "Spell Ring",
+    "text": "This ring enables the Wizard or Elf to cast one spell two times (not simultaneously). At the beginning of a Quest, the wearer of this ring must declare which of his spells he is storing in the ring."
+  },
+  "talisman_of_lore": {
+    "name": "Talisman of Lore",
+    "text": "This magical medallion increases your Mind Points by 1 for as long as it is worn."
+  },
+  "spirit_blade": {
+    "name": "Spirit Blade",
+    "text": "This magical broadsword has an eerie handle of carved bone. When using it, roll three combat dice to attack, or roll four combat dice if attacking an undead monster (Skeleton, Zombie, or Mummy). May not be used by Wizard."
+  },
+  "borins_armor": {
+    "name": "Borin's Armor",
+    "text": "This magical suit of plate mail allows the wearer to roll four combat dice in defense. Unlike normal plate mail, this mysterious, ultralight metal armor does not slow down its wearer. May not be used by Wizard."
+  },
+  "orcs_bane": {
+    "name": "Orc's Bane",
+    "text": "When using this magical shortsword, you roll two combat dice to attack. You may attack twice if attacking an Orc. May not be used by Wizard."
+  },
+  "wizards_staff": {
+    "name": "Wizard's Staff",
+    "text": "This long ancient staff glows with a soft blue light. It can be used only by the Wizard, giving him the attack strength of two combat dice and the ability to strike diagonally."
+  },
+  "wizards_cloak": {
+    "name": "Wizard's Cloak",
+    "text": "This magical cloak made of shimmery fabric is covered with mystical runes. It can be worn only by the Wizard, giving him one extra combat die in defense."
+  },
+  "elixir_of_life": {
+    "name": "Elixir of Life",
+    "text": "This small bottle of pearly liquid will bring a dead Hero back to life, restoring all of his Body and Mind Points. This potion can only be used once."
+  },
+  "wand_of_magic": {
+    "name": "Wand of Magic",
+    "text": "This magical wand allows the Elf or Wizard to cast two separate and different spells on his turn instead of one single spell."
+  }
+}
