@@ -193,3 +193,24 @@ def test_ending_the_hero_phase_clears_stale_placements():
     game_ref = _Ref(to_firestore_coords(game))
     main._apply_end_turn.to_wrap(txn, game_ref)
     assert txn.updates["placementInstructions"] == []
+
+
+def test_ending_the_hero_phase_is_blocked_while_a_defence_is_pending():
+    # This is what let the reported bug happen: a player pressed End
+    # Turn with an unanswered "N skulls" prompt still on screen, which
+    # advanced the game into Zargon's next turn -- whose whole-queue
+    # write would have silently discarded that hit for good.
+    from engine.end_turn import DefencesPendingError
+
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["pendingDefenses"] = [
+        {"id": "7:M1", "heroId": "barbarian", "heroName": "Barbarian", "skulls": 1}
+    ]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    with pytest.raises(DefencesPendingError):
+        main._apply_end_turn.to_wrap(txn, game_ref)
+    # Nothing should have been written -- the transaction never reached
+    # its update() call.
+    assert txn.updates is None

@@ -745,8 +745,15 @@ export function GameView({ gameId }: GameViewProps) {
                     Trace a path on the board to move. Attacking, searching, opening a door or casting is
                     the hero&apos;s one action.
                   </span>
+                  {pendingDefenses.length > 0 && (
+                    <span className="hint">Report the defence roll(s) above before ending the turn.</span>
+                  )}
                   <div>
-                    <button className="primary" onClick={handleEndTurn} disabled={busy}>
+                    <button
+                      className="primary"
+                      onClick={handleEndTurn}
+                      disabled={busy || pendingDefenses.length > 0}
+                    >
                       {game.heroes.length === 1 && (game.heroPhaseSegment ?? 1) === 1
                         ? "End action 1 of 2"
                         : "End turn"}

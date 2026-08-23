@@ -341,7 +341,12 @@ the document, not the browser) and vanished on a refresh, quietly
 costing the monster its hit. Zargon's turn writes the queue WHOLE, so
 unanswered prompts can't leak into the next turn; a treasure-card
 wandering monster APPENDS, since a prompt from Zargon's last turn may
-still be open. Answering one removes it by id.
+still be open. Answering one removes it by id. Ending the hero phase
+is BLOCKED while any prompt is still open (engine/end_turn.py's
+DefencesPendingError) -- a stray click on End Turn used to reach
+Zargon's phase with a shield report still outstanding, and the next
+resolve_zargon_turn's whole-queue write silently discarded that hit
+for good.
 
 UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
 action at a time, all the way to the start of the game if need be.

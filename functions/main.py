@@ -39,7 +39,7 @@ from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
-from engine.end_turn import NotHeroPhaseError, resolve_end_turn
+from engine.end_turn import DefencesPendingError, NotHeroPhaseError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.hero_spells import (
     HeroSpellUnavailableError,
@@ -626,6 +626,8 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
     try:
         result = _apply_end_turn(transaction, game_ref)
     except NotHeroPhaseError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+    except DefencesPendingError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
     return {"phase": result.new_phase, "heroPhaseSegment": result.new_segment}

@@ -25,6 +25,17 @@ class NotHeroPhaseError(ValueError):
     """Can't end a turn that isn't currently the hero phase."""
 
 
+class DefencesPendingError(ValueError):
+    """Can't hand off to Zargon with a shield report still outstanding.
+
+    resolve_zargon_turn REPLACES pendingDefenses wholesale on its next
+    call, so an unanswered prompt left standing here doesn't wait
+    quietly -- it gets silently overwritten the next time Zargon acts,
+    and the hit it represented is gone from the record for good. A
+    confused click on End Turn used to let exactly that happen.
+    """
+
+
 @dataclass
 class EndTurnResult:
     new_phase: str
@@ -35,6 +46,8 @@ class EndTurnResult:
 def resolve_end_turn(game_state: dict) -> EndTurnResult:
     if game_state.get("phase") != "hero":
         raise NotHeroPhaseError("it is not the hero phase")
+    if game_state.get("pendingDefenses"):
+        raise DefencesPendingError("report the outstanding defence roll(s) before ending the turn")
 
     lone_hero = len(game_state.get("heroes", [])) == 1
     # Older game docs predate the field; they behave as segment 1.
