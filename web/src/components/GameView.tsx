@@ -232,6 +232,13 @@ export function GameView({ gameId }: GameViewProps) {
   const pendingDefenses: PendingDefense[] = game.pendingDefenses ?? [];
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
+  // The alert is a to-do: once the player has stood the figures on the
+  // board they press "Done" to hide it. Keyed on the instruction text
+  // so a NEW reveal (different content) shows again on its own, and so
+  // a refresh with the same outstanding instruction keeps reminding.
+  const placementsKey = placements.join("|");
+  const [placementsDone, setPlacementsDone] = useState("");
+  const showPlacements = placements.length > 0 && placementsDone !== placementsKey;
 
   // Fog of war: hidden monsters must never appear in the attack list --
   // the dropdown otherwise leaks every unrevealed room's contents.
@@ -547,7 +554,7 @@ export function GameView({ gameId }: GameViewProps) {
         <div className="rail">
           {/* Anything the app is WAITING on comes first, before the
               things you might choose to do. */}
-          {placements.length > 0 && (
+          {showPlacements && (
             <div className="alert alert-place">
               <p className="alert-title">Place on the board</p>
               <ul className="log-list">
@@ -555,6 +562,9 @@ export function GameView({ gameId }: GameViewProps) {
                   <li key={i}>{line}</li>
                 ))}
               </ul>
+              <button className="quiet" onClick={() => setPlacementsDone(placementsKey)}>
+                Done
+              </button>
             </div>
           )}
 
