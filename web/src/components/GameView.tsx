@@ -621,7 +621,7 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {playable && game.phase === "hero" && adjacentKnownTraps.length > 0 && (
+          {playable && game.phase === "hero" && pendingDefenses.length === 0 && adjacentKnownTraps.length > 0 && (
             <div className="alert">
               <p className="alert-title">A known trap is underfoot</p>
               <div className="panel-stack">

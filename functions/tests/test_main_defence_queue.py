@@ -13,6 +13,7 @@ import copy
 import pytest
 
 import main
+from engine.undo import snapshot_id
 from firestore_coords import to_firestore_coords
 
 QUEST = {
@@ -53,14 +54,15 @@ class _Snap:
 
 
 class _Ref:
-    def __init__(self, data):
+    def __init__(self, data, subcollections=None):
         self._data = data
+        self._subcollections = subcollections or {}
 
     def get(self, transaction=None):
         return _Snap(self._data)
 
     def collection(self, name):
-        return _Coll({})
+        return _Coll(self._subcollections.get(name, {}))
 
 
 class _Coll:
@@ -89,6 +91,9 @@ class _Txn:
 
     def set(self, ref, entry):
         self.snapshots.append(entry)
+
+    def delete(self, ref):
+        pass
 
 
 def _run_zargon_turn(turn_type, game=None, quest=None, lowest_bp="barbarian"):
@@ -214,3 +219,93 @@ def test_ending_the_hero_phase_is_blocked_while_a_defence_is_pending():
     # Nothing should have been written -- the transaction never reached
     # its update() call.
     assert txn.updates is None
+
+
+PENDING_DEFENSE_GATED_CALLS = {
+    "movement": lambda txn, game_ref: main._apply_movement.to_wrap(
+        txn, _DB(QUEST), game_ref, "barbarian", [[7, 2], [7, 3]]
+    ),
+    "open_door": lambda txn, game_ref: main._apply_open_door.to_wrap(txn, _DB(QUEST), game_ref, "barbarian", "D1"),
+    "search_treasure": lambda txn, game_ref: main._apply_search_treasure.to_wrap(
+        txn, _DB(QUEST), game_ref, "barbarian", "R2", False
+    ),
+    "search_traps": lambda txn, game_ref: main._apply_search_traps_and_secret_doors.to_wrap(
+        txn, _DB(QUEST), game_ref, "barbarian", "R2", "traps"
+    ),
+    "trap_action": lambda txn, game_ref: main._apply_trap_action.to_wrap(
+        txn, _DB(QUEST), game_ref, "barbarian", "R2:1,1", "jump", "white_shield", None, False
+    ),
+    "cast_spell": lambda txn, game_ref: main._apply_cast_spell.to_wrap(
+        txn, _DB(QUEST), game_ref, "barbarian", "heal_body", None, None, None, False
+    ),
+    "hero_attack": lambda txn, game_ref: main._apply_hero_attack.to_wrap(txn, _DB(QUEST), game_ref, "M1", 3),
+}
+
+
+@pytest.mark.parametrize("name", sorted(PENDING_DEFENSE_GATED_CALLS))
+def test_hero_actions_are_blocked_while_a_defence_is_pending(name):
+    # Server-side half of the client-side lock: a stale tab or a direct
+    # call must not be able to do what the hidden buttons already
+    # prevent. _require_no_pending_defenses runs before any other
+    # validation, so these dummy args never actually get used.
+    game = copy.deepcopy(GAME)
+    game["pendingDefenses"] = [
+        {"id": "7:M9", "heroId": "barbarian", "heroName": "Barbarian", "skulls": 1}
+    ]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    with pytest.raises(main.https_fn.HttpsError) as exc_info:
+        PENDING_DEFENSE_GATED_CALLS[name](txn, game_ref)
+    assert exc_info.value.code == main.https_fn.FunctionsErrorCode.FAILED_PRECONDITION
+    assert "defence" in exc_info.value.message
+    # Nothing should have been written.
+    assert txn.updates is None
+
+
+def test_record_hero_defense_itself_is_not_blocked_by_the_queue_it_clears():
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["pendingDefenses"] = [
+        {"id": "7:M1", "heroId": "barbarian", "heroName": "Barbarian", "skulls": 1}
+    ]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    # Must not raise -- this is the one action that's supposed to work.
+    main._apply_record_hero_defense.to_wrap(txn, game_ref, "barbarian", 1, 1, "7:M1")
+    assert txn.updates is not None
+
+
+def test_undo_restores_turn_and_phase_after_zargons_turn():
+    # Resolving Zargon's turn advances turn+1 and flips phase back to
+    # "hero" -- undoing that action has to put BOTH back, or the header
+    # ("Turn N -- Hero/Zargon phase") would read one step ahead of what
+    # the board actually shows.
+    txn1 = _Txn()
+    game_ref1 = _Ref(to_firestore_coords(copy.deepcopy(GAME)))
+    main._apply_zargon_turn.to_wrap(txn1, _DB(QUEST), game_ref1, "normal", None)
+
+    assert txn1.updates["turn"] == GAME["turn"] + 1
+    assert txn1.updates["phase"] == "hero"
+    undo_entry = txn1.snapshots[0]
+    assert undo_entry["state"]["turn"] == GAME["turn"]
+    assert undo_entry["state"]["phase"] == "zargon"
+
+    # Build the document as it stands right after that turn resolved
+    # (Firestore-coord shape, same as _apply_undo reads it): the base
+    # game plus every simple top-level field the turn touched.
+    after_zargon = to_firestore_coords(copy.deepcopy(GAME))
+    for key, value in txn1.updates.items():
+        if "." not in key:
+            after_zargon[key] = value
+
+    game_ref2 = _Ref(after_zargon, subcollections={"undo": {snapshot_id(1): undo_entry}})
+    txn2 = _Txn()
+    main._apply_undo.to_wrap(txn2, game_ref2)
+
+    restored = txn2.snapshots[0]
+    assert restored["turn"] == GAME["turn"]
+    assert restored["phase"] == "zargon"
+    assert restored["undoDepth"] == 0
+    # And the defence prompts that Zargon's turn raised are gone with
+    # it -- they belonged to a turn that no longer happened.
+    assert restored.get("pendingDefenses", []) == []

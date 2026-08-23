@@ -348,15 +348,22 @@ Zargon's phase with a shield report still outstanding, and the next
 resolve_zargon_turn's whole-queue write silently discarded that hit
 for good.
 
-The whole action panel, not just End Turn, is CLIENT-SIDE gated on the
-same condition: resolving Zargon's turn flips phase back to "hero" in
-the same response that creates the prompts, so the ordinary hero
-actions (Attack, Search, confirming a traced move) were sitting there
+The whole action panel, not just End Turn, is gated on the same
+condition, both sides: resolving Zargon's turn flips phase back to
+"hero" in the same response that creates the prompts, so the ordinary
+hero actions (Attack, Search, Open door, Cast spell, the known-trap
+Jump/Disarm/Step panel, confirming a traced move) were sitting there
 clickable next to an unresolved "N skulls" prompt -- physically you'd
-defend the hit before doing anything else. This gate is UI-only so
-far; the backend endpoints themselves (resolve_hero_attack,
-resolve_hero_movement, search_treasure, etc.) do not yet reject a call
-made while pendingDefenses is non-empty.
+defend the hit before doing anything else. Client-side, each of those
+panels checks pendingDefenses is empty before rendering its buttons.
+Server-side, main._require_no_pending_defenses (called by every one of
+those endpoints, right after _require_playable) rejects the call
+outright, so a stale tab or a direct API call can't bypass the hidden
+buttons -- deliberately NOT called by record_hero_defense (clears the
+queue), record_hero_death (a hero can die from the very hit that's
+pending), attempt_break_spell (not "the one action"), undo (the escape
+hatch), or resolve_zargon_turn (can only run in Zargon's phase, which
+end_turn already refuses to reach with anything open).
 
 UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
 action at a time, all the way to the start of the game if need be.

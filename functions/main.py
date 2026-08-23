@@ -387,6 +387,28 @@ def _require_playable(game_state: dict) -> None:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=message)
 
 
+def _require_no_pending_defenses(game_state: dict) -> None:
+    """Refuses a hero action while a monster's attack from Zargon's last
+    turn is still waiting on a shield report. Physically you'd resolve
+    that hit before doing anything else -- CLAUDE.md's PENDING DEFENCE
+    PROMPTS section. The client already hides these buttons for the
+    same reason; this is the server-side half, so a stale tab or a
+    direct call can't bypass it.
+
+    Deliberately NOT called by record_hero_defense (that's what clears
+    the queue), record_hero_death (a hero can die from the very hit
+    that's pending), attempt_break_spell (not "the one action"), undo
+    (the escape hatch out of a stuck state), or resolve_zargon_turn
+    (can only run in Zargon's phase, which end_turn already refuses to
+    reach with anything still open).
+    """
+    if game_state.get("pendingDefenses"):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="report the outstanding defence roll(s) before acting",
+        )
+
+
 def _push_undo(transaction, game_ref, before: dict, updates: dict, label: str) -> None:
     """Files the pre-action game state under games/{id}/undo/{n} and
     points the game doc at it, so undo_last_action can put it back.
@@ -472,6 +494,7 @@ def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, lo
 def _apply_movement(transaction, db, game_ref, hero_id, path):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -637,6 +660,7 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
 def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -729,6 +753,7 @@ def _next_wandering_monster_id(existing_ids: set) -> str:
 def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wandering_monster_drawn):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -878,6 +903,7 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
 def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, room_id, search_type):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -1000,6 +1026,7 @@ def _trap_lookup_entry(quest, trap_id):
 def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_face, landing, has_tool_kit):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -1110,6 +1137,7 @@ def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
 def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_id, target_monster_id, target_hero_id, door_id, genie_mode):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
@@ -1493,6 +1521,7 @@ def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
 def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
     game_state, quest = _load_game_and_quest(db, game_ref, transaction)
     _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
     before = copy.deepcopy(game_state)
 
     if game_state.get("phase") != "hero":
