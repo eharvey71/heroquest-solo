@@ -167,13 +167,17 @@ def take_monster_turn(
             )
         end_pos = move_result.reachable_this_turn[-1]
         moved = end_pos != monster_pos
-        if moved:
-            log.append(f"{monster_name} moves toward {target_hero_name}.")
+        # reachable_this_turn includes the start square, so the path
+        # length is one less than its size -- actual squares crossed,
+        # not straight-line distance, since a corridor bends.
+        steps = len(move_result.reachable_this_turn) - 1
         already_adjacent = move_result.reached_target_adjacency
 
     attack: MonsterAttackRoll | None = None
     withdrew = False
     if already_adjacent:
+        if moved:
+            log.append(f"{monster_name} moves {steps} space{'s' if steps != 1 else ''} toward {target_hero_name}.")
         attack = roll_monster_attack(
             monster_name=monster_name, hero_name=target_hero_name, attack_dice=attack_dice, rng=rng
         )
@@ -202,7 +206,10 @@ def take_monster_turn(
                     else f"{monster_name} strikes and falls back to [{end_pos[0]},{end_pos[1]}]."
                 )
     else:
-        log.append(f"{monster_name} moves toward {target_hero_name} but isn't in range yet.")
+        log.append(
+            f"{monster_name} moves {steps} space{'s' if steps != 1 else ''} toward "
+            f"{target_hero_name} but isn't in range yet."
+        )
 
     return MonsterTurnResult(
         monster_id=monster_id,
