@@ -146,13 +146,23 @@ def guard_should_engage(
     return guard_engaged_by(board, monster_room_id, door_edges, heroes) is not None
 
 
-def _nearest_free_square(board: Board, start: Coord, occupied: set[Coord]) -> Coord | None:
+def _nearest_free_square(board: Board, start: Coord, occupied: set[Coord], area: str | None = None) -> Coord | None:
     """BFS ring expansion for "nearest free square if boxed in" -- plain
     grid adjacency, no door/reveal gating, since this is about finding
     physical table space next to a hero already standing in a room, not
     about pathing anywhere.
+
+    With `area` set, the search stays inside that one room. A treasure-
+    card monster "wanders into" the searcher's room (1989 rulebook: "put
+    the monster in the room as close to the searcher as possible") -- it
+    must never land across a wall in the next room, which would put it
+    in unrevealed fog where the token layer can't even draw it. Without
+    `area`, the whole board is fair game (the turn-roll frontier spawn).
     """
-    if board.area_of.get(start) is not None and start not in occupied:
+    def ok(sq: Coord) -> bool:
+        return board.area_of.get(sq) is not None and (area is None or board.area_of.get(sq) == area)
+
+    if ok(start) and start not in occupied:
         return start
     seen = {start}
     queue = deque([start])
@@ -163,7 +173,7 @@ def _nearest_free_square(board: Board, start: Coord, occupied: set[Coord]) -> Co
             if n in seen:
                 continue
             seen.add(n)
-            if board.area_of.get(n) is None:
+            if not ok(n):
                 continue
             if n not in occupied:
                 return n
@@ -190,11 +200,20 @@ def spawn_wandering_monster_from_treasure_card(
     if not monster_type:
         return None
 
+    # The monster wanders into the SEARCHER'S room, not the next one
+    # over: an adjacent square across a wall belongs to a different
+    # (here unrevealed) room, so the figure would be both unreachable
+    # and invisible -- the token layer only draws on revealed squares.
+    searcher_room = board.area_of.get(searcher_pos)
     candidates = sorted(
-        (c for c in squares_adjacent_to(searcher_pos) if board.area_of.get(c) is not None and c not in occupied),
+        (
+            c
+            for c in squares_adjacent_to(searcher_pos)
+            if board.area_of.get(c) == searcher_room and c not in occupied
+        ),
         key=lambda c: (c[1], c[0]),  # deterministic tie-break, not a rules requirement
     )
-    spawn_pos = candidates[0] if candidates else _nearest_free_square(board, searcher_pos, occupied)
+    spawn_pos = candidates[0] if candidates else _nearest_free_square(board, searcher_pos, occupied, area=searcher_room)
     if spawn_pos is None:
         return None
 

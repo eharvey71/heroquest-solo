@@ -189,6 +189,33 @@ def test_treasure_card_spawn_falls_back_when_boxed_in(catalogs):
     assert abs(result["pos"][0] - 2) + abs(result["pos"][1] - 2) <= 2
 
 
+def test_treasure_card_spawn_stays_in_the_searchers_room(catalogs):
+    # Regression: a Wizard searching R15 at (2,14) had the orc spawn at
+    # (2,13) -- one square north, across the wall in R12, an unrevealed
+    # room. It was unreachable and, since the token layer only draws on
+    # revealed squares, invisible. The monster must appear in the room
+    # the hero is standing in (1989 rulebook: "put the monster in the
+    # room as close to the searcher as possible").
+    board = catalogs.board
+    for searcher in [(2, 14), (1, 14), (4, 14), (1, 17)]:
+        room = board.area_of.get(searcher)
+        result = spawn_wandering_monster_from_treasure_card(board, "orc", searcher, occupied={searcher})
+        assert board.area_of.get(tuple(result["pos"])) == room, f"{searcher} spilled into another room"
+
+
+def test_treasure_card_spawn_stays_in_room_even_when_boxed_in(catalogs):
+    # A searcher against the room's edge with every in-room neighbour
+    # occupied still gets an in-room square, never a spill next door.
+    board = catalogs.board
+    searcher = (2, 14)  # R15
+    room = board.area_of.get(searcher)
+    room_squares = {sq for sq, r in board.area_of.items() if r == room}
+    occupied = {sq for sq in room_squares if abs(sq[0] - 2) + abs(sq[1] - 14) <= 1} - {searcher}
+    result = spawn_wandering_monster_from_treasure_card(board, "orc", searcher, occupied | {searcher})
+    assert result is not None
+    assert board.area_of.get(tuple(result["pos"])) == room
+
+
 def test_treasure_card_spawn_none_without_monster_type(catalogs):
     board = catalogs.board
     assert spawn_wandering_monster_from_treasure_card(board, "", (2, 2), set()) is None

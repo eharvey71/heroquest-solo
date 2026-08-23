@@ -443,9 +443,14 @@ Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:
 - **Treasure-card wandering** (drawn during a physical treasure
   search, the "wandering monster?" button): rulebook-mandated, not a
-  design choice. Appears ADJACENT to the searching hero and attacks
-  immediately. Nearest free square if every adjacent square is
-  occupied.
+  design choice. Appears ADJACENT to the searching hero, IN THE
+  SEARCHER'S OWN ROOM, and attacks immediately. In-room matters: an
+  adjacent square across a wall belongs to the next room, which is
+  unrevealed, so the figure lands in fog the token layer can't draw --
+  invisible and unreachable (a Wizard searching R15 spawned an orc one
+  square north in R12). The rulebook already says so: "put the monster
+  in the room as close to the searcher as possible." Nearest free
+  square WITHIN THE ROOM if every adjacent square is occupied.
 - **Turn-roll wandering** (the Zargon Deck's `wandering` turn type,
   no searcher involved): spawns at the nearest unrevealed
   doorway/corridor edge to the party (the "frontier"). Stairway is
