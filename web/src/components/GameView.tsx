@@ -7,6 +7,7 @@ import {
   attemptBreakSpell,
   castSpell,
   endTurn,
+  generateChronicle,
   openDoor,
   recordHeroDeath,
   recordHeroDefense,
@@ -184,6 +185,26 @@ export function GameView({ gameId }: GameViewProps) {
     [questDoors, game?.doors]
   );
   const [narrativeOpen, setNarrativeOpen] = useState(false);
+  const [chronicleOpen, setChronicleOpen] = useState(false);
+  const [chronicleRequested, setChronicleRequested] = useState(false);
+  const [chronicleError, setChronicleError] = useState<string | null>(null);
+
+  // Written once the quest is actually over -- fired automatically
+  // rather than waiting on a button press, since there's no gameplay
+  // reason to make the player ask for it. Guarded by chronicleRequested
+  // so a re-render (or the chronicle simply not having arrived over
+  // Firestore yet) doesn't fire it twice; a genuinely failed request
+  // stays failed until the game is reloaded, same as the rest of this
+  // app has no automatic retry anywhere else.
+  useEffect(() => {
+    if (!game) return;
+    if (game.status !== "complete" && game.status !== "lost") return;
+    if (game.chronicle || chronicleRequested) return;
+    setChronicleRequested(true);
+    generateChronicle({ gameId }).catch((e) => {
+      setChronicleError(e instanceof Error ? e.message : String(e));
+    });
+  }, [game?.status, game?.chronicle, chronicleRequested, gameId]);
 
   // Path tracing lives HERE rather than in BoardView so that "Moving
   // Barbarian -- Confirm" can sit in the rail beside the board. Under
@@ -516,6 +537,19 @@ export function GameView({ gameId }: GameViewProps) {
               Story
             </button>
           )}
+          {!playable && game.chronicle && (
+            <button className="quiet" onClick={() => setChronicleOpen(true)}>
+              Chronicle
+            </button>
+          )}
+          {!playable && !game.chronicle && !chronicleError && (
+            <span className="hint">Writing the chronicle&hellip;</span>
+          )}
+          {!playable && !game.chronicle && chronicleError && (
+            <span className="hint" style={{ color: "#e6a23b" }}>
+              Chronicle failed to generate
+            </span>
+          )}
           <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
             {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
           </button>
@@ -538,6 +572,16 @@ export function GameView({ gameId }: GameViewProps) {
               </p>
             )}
             <button onClick={() => setNarrativeOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {game.chronicle && chronicleOpen && (
+        <div className="story-overlay" onClick={() => setChronicleOpen(false)}>
+          <div className="story-card" onClick={(e) => e.stopPropagation()}>
+            <h3>Chronicle</h3>
+            <p style={{ whiteSpace: "pre-wrap" }}>{game.chronicle}</p>
+            <button onClick={() => setChronicleOpen(false)}>Close</button>
           </div>
         </div>
       )}

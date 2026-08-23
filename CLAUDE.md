@@ -73,9 +73,20 @@ wrong), app enforces via searched.<room>.treasureBy.
   - generateQuest(params) -> questId: prompt build + LLM call + validate +
     auto-repair + retry loop (max 3) + Firestore write. Client never sees
     an unvalidated quest.
+  - generateChronicle(gameId) -> chronicle: one LLM call, no retry loop
+    (prose has no hard constraint to fail the way a quest's reachability
+    or budget can), turning a FINISHED game's mechanical turn log into a
+    page of read-aloud prose -- the campaign record of that playthrough.
+    Callable only once game.status is "complete" or "lost"
+    (generator/chronicle.py). Fired automatically by the client the
+    moment a game ends, not on a button press -- there's no gameplay
+    reason to make the player ask for it. Not transactional and pushes
+    no undo snapshot: it writes one derived text field onto a game
+    nothing else can still be mutating, with nothing gameplay-
+    consequential to roll back.
   - Zargon rules engine: deterministic code (movement, target choice,
     combat resolution). LLM is NEVER in the rules path — only quest
-    generation and (optional later) flavor narration.
+    generation and flavor narration (the chronicle; more later).
 
 ## Design artifacts (in this repo /design)
 - board.json — 26x19 grid, 22 rooms, verified square-by-square against the

@@ -37,6 +37,21 @@ export const generateQuest = call<GenerateQuestRequest, GenerateQuestResponse>("
   timeout: 480_000,
 });
 
+// ---- generateChronicle ----
+
+export interface GenerateChronicleRequest {
+  gameId: string;
+}
+export interface GenerateChronicleResponse {
+  chronicle: string;
+}
+// Backend timeout_sec=120 -- comfortably past the JS SDK's 70s default,
+// same reasoning as generateQuest above (one LLM round trip, no retry
+// loop, so it needs far less headroom than quest generation does).
+export const generateChronicle = call<GenerateChronicleRequest, GenerateChronicleResponse>("generate_chronicle", {
+  timeout: 120_000,
+});
+
 // ---- createGame ----
 
 export interface CreateGameRequest {

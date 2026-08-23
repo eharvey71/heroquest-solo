@@ -70,7 +70,15 @@ from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resol
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
 from owner import check_owner
-from generator import GenerationResult, QuestGenerationFailed, QuestGenerationRefused, generate_quest as run_generation
+from generator import (
+    ChronicleRefused,
+    ChronicleTruncated,
+    GenerationResult,
+    QuestGenerationFailed,
+    QuestGenerationRefused,
+    call_chronicle_llm,
+    generate_quest as run_generation,
+)
 from generator.fence import apply_fence
 from validator.catalogs import load_catalogs
 
@@ -214,6 +222,69 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     )
 
     return {"questId": doc_ref.id}
+
+
+def _apply_generate_chronicle(db, game_ref, client):
+    """Not @firestore.transactional, unlike every _apply_* mutation
+    above: this writes one derived text field onto a game that's
+    already finished (status checked below), which nothing else can
+    still be concurrently mutating -- no undo snapshot needed either,
+    since there's nothing gameplay-consequential to roll back.
+    """
+    game_state, quest = _load_game_and_quest(db, game_ref)
+
+    if game_state.get("status") not in _FINISHED_STATUSES:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the chronicle is written once the quest is over -- this game is still in progress",
+        )
+
+    try:
+        chronicle = call_chronicle_llm(client, quest, game_state)
+    except ChronicleRefused as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the chronicler declined to write this one",
+            details={"stopDetails": str(e.stop_details)},
+        ) from e
+    except ChronicleTruncated as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the chronicle was cut off before it finished",
+        ) from e
+
+    game_ref.update({"chronicle": chronicle})
+    return chronicle
+
+
+@https_fn.on_call(secrets=[ANTHROPIC_API_KEY], timeout_sec=120, memory=options.MemoryOption.MB_512)
+@_surface_errors
+def generate_chronicle(req: https_fn.CallableRequest) -> dict:
+    """Turns a finished game's mechanical log into a page of read-aloud
+    prose -- the campaign record of what happened this playthrough. See
+    generator/chronicle.py. Only callable once the game has actually
+    ended (won or lost) -- the log is the source material, and it isn't
+    finished being written until then. Callable again to regenerate;
+    each call overwrites the last.
+    """
+    _require_owner(req, "sign in to write the chronicle")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+
+    # See generate_quest's identical comment: the anthropic package
+    # costs ~3.5s to import, paid only by the endpoints that need it.
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    chronicle = _apply_generate_chronicle(db, game_ref, client)
+
+    return {"chronicle": chronicle}
 
 
 def _parse_create_game_request(data) -> tuple[str, list, dict]:

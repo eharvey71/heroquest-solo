@@ -93,6 +93,9 @@ export interface GameState {
   /** "Place the X at [x,y]" lines the player still has to act on with
    * physical tiles and minis. Cleared when the hero phase ends. */
   placementInstructions?: string[];
+  /** The campaign record of this playthrough, written once the quest
+   * is over (generate_chronicle). Absent until generated. */
+  chronicle?: string;
 }
 
 /** Heroes still on the board: the ones that can act, block squares and
