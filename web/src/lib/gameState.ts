@@ -81,7 +81,17 @@ export interface GameState {
   /** Monster attacks from Zargon's last turn still awaiting the
    * hero's shield report. Game-owned so undo and a page refresh both
    * do the right thing. */
-  pendingDefenses?: { id: string; heroId: string; heroName: string; skulls: number }[];
+  pendingDefenses?: {
+    id: string;
+    heroId: string;
+    heroName: string;
+    skulls: number;
+    monsterName?: string;
+    pos?: Coord;
+  }[];
+  /** "Place the X at [x,y]" lines the player still has to act on with
+   * physical tiles and minis. Cleared when the hero phase ends. */
+  placementInstructions?: string[];
 }
 
 /** Heroes still on the board: the ones that can act, block squares and

@@ -35,6 +35,8 @@ interface PendingDefense {
   heroId: string;
   heroName: string;
   skulls: number;
+  monsterName?: string;
+  pos?: Coord;
 }
 
 /** A number field that doesn't fight you: an empty box reads as 0, and
@@ -228,6 +230,8 @@ export function GameView({ gameId }: GameViewProps) {
   // in React state they outlived an undo of the very turn that raised
   // them, and a refresh lost them altogether.
   const pendingDefenses: PendingDefense[] = game.pendingDefenses ?? [];
+  // Tiles and minis the player still has to put on the physical board.
+  const placements: string[] = game.placementInstructions ?? [];
 
   // Fog of war: hidden monsters must never appear in the attack list --
   // the dropdown otherwise leaks every unrevealed room's contents.
@@ -543,6 +547,17 @@ export function GameView({ gameId }: GameViewProps) {
         <div className="rail">
           {/* Anything the app is WAITING on comes first, before the
               things you might choose to do. */}
+          {placements.length > 0 && (
+            <div className="alert alert-place">
+              <p className="alert-title">Place on the board</p>
+              <ul className="log-list">
+                {placements.map((line, i) => (
+                  <li key={i}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {pendingDefenses.length > 0 && (
             <div className="alert">
               <p className="alert-title">Report defence rolls</p>
@@ -1020,7 +1035,9 @@ function DefenseForm({
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
       <span>
-        {defense.heroName} faces {defense.skulls} skull(s):
+        {defense.heroName} faces {defense.skulls} skull(s)
+        {defense.monsterName ? ` from the ${defense.monsterName.replace(/_/g, " ")}` : ""}
+        {defense.pos ? ` at (${defense.pos[0]}, ${defense.pos[1]})` : ""}:
       </span>
       <label>
         Shields rolled: <input type="number" min={0} value={shields} onChange={(e) => setShields(Number(e.target.value))} style={{ width: 48 }} />

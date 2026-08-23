@@ -129,6 +129,25 @@
   background: #201426;
 }
 
+/* An instruction for your HANDS, not a decision -- put this tile or
+ * mini on the physical board. Green so it reads as "do this", distinct
+ * from the amber "the app is waiting on you". */
+.alert-place {
+  border-color: #3a6a3a;
+  border-left-color: #7fd67f;
+  background: #142014;
+}
+
+.alert-place .alert-title {
+  color: #7fd67f;
+}
+
+.alert-place .log-list {
+  max-height: none;
+  overflow: visible;
+  color: #d8e8d8;
+}
+
 .alert-title {
   color: #e8c34a;
   font-size: 0.8rem;

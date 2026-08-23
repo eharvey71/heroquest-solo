@@ -36,6 +36,7 @@ interface RawGameDoc {
   undoDepth?: number;
   undoLabel?: string;
   pendingDefenses?: GameState["pendingDefenses"];
+  placementInstructions?: string[];
   log?: LogEntry[];
 }
 
@@ -68,6 +69,7 @@ function toGameState(raw: RawGameDoc): GameState {
     undoDepth: raw.undoDepth ?? 0,
     undoLabel: raw.undoLabel,
     pendingDefenses: raw.pendingDefenses ?? [],
+    placementInstructions: raw.placementInstructions ?? [],
     log: raw.log ?? [],
   };
 }

@@ -104,9 +104,13 @@ def test_every_turn_type_writes_a_defence_queue(turn_type):
     pending = txn.updates["pendingDefenses"]
     assert isinstance(pending, list)
     for entry in pending:
-        assert set(entry) == {"id", "heroId", "heroName", "skulls"}
+        assert set(entry) == {"id", "heroId", "heroName", "skulls", "monsterName", "pos"}
         assert entry["heroId"] == "barbarian"
         assert entry["skulls"] >= 0
+        # The prompt has to say WHAT swung and where it stands, or the
+        # player is told "3 skulls" with no figure to look for.
+        assert entry["monsterName"]
+        assert len(entry["pos"]) == 2
 
 
 def test_an_adjacent_monster_queues_its_attack():
@@ -159,3 +163,30 @@ def test_a_client_that_sends_no_id_falls_back_to_first_match():
     game_ref = _Ref(to_firestore_coords(game))
     main._apply_record_hero_defense.to_wrap(txn, game_ref, "barbarian", 3, 1, None)
     assert [e["id"] for e in txn.updates["pendingDefenses"]] == ["7:M1"]
+
+
+def test_a_wandering_monster_card_names_what_walked_in():
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["heroes"][0]["pos"] = [6, 2]
+    game["monsters"] = {}
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    main._apply_search_treasure.to_wrap(txn, _DB(QUEST), game_ref, "barbarian", "R2", True)
+
+    # The player has never seen this figure: the prompt must say what it
+    # is and where to stand it, and a placement line must accompany it.
+    prompt = txn.updates["pendingDefenses"][-1]
+    assert prompt["monsterName"] == "orc"
+    assert prompt["pos"]
+    assert any("orc" in line for line in txn.updates["placementInstructions"])
+
+
+def test_ending_the_hero_phase_clears_stale_placements():
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["placementInstructions"] = ["Place the orc mini at square [6,1]."]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    main._apply_end_turn.to_wrap(txn, game_ref)
+    assert txn.updates["placementInstructions"] == []

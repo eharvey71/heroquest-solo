@@ -404,6 +404,30 @@ def _push_undo(transaction, game_ref, before: dict, updates: dict, label: str) -
     updates.update(undo_updates)
 
 
+def _queue_placements(updates: dict, game_state: dict, instructions) -> None:
+    """Adds "place the X at [x,y]" lines to the game's own placement
+    queue, so the UI can put them where the player will see them.
+
+    CLAUDE.md requires an instruction whenever the app reveals
+    something with a physical tile -- a sprung trap, a found secret
+    door, a spawned mini, a revealed room. The engines all produced
+    them and every one went only into the log, at the bottom of the
+    rail below everything else: the player got a monster attack out of
+    nowhere with no idea what figure to stand on the board. Game state
+    rather than a response field, for the same reason the defence queue
+    is (see _apply_zargon_turn): a restore has to be able to take them
+    back, and a refresh must not lose them.
+
+    Appends, since one action can reveal several things and an earlier
+    instruction may still be unplaced. Cleared when the hero phase ends.
+    """
+    lines = [i for i in (instructions or []) if i]
+    if not lines:
+        return
+    existing = updates.get("placementInstructions", game_state.get("placementInstructions", []))
+    updates["placementInstructions"] = list(existing) + lines
+
+
 def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, log_entries: list, turn: int) -> bool:
     """Advances the two-stage ending against `game_state` (the caller
     must have already applied this action's changes to the LOCAL
@@ -498,6 +522,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _queue_placements(updates, game_state, [t.placement_instruction for t in result.triggered_traps])
     _push_undo(transaction, game_ref, before, updates, "the hero's move")
     transaction.update(game_ref, updates)
 
@@ -568,6 +593,9 @@ def _apply_end_turn(transaction, game_ref):
         "heroPhaseSegment": result.new_segment,
         "heroStatus": game_state.get("heroStatus", {}),
         "log": existing_log + new_log_entries,
+        # Whatever was still waiting to be placed belonged to a turn
+        # that is now over.
+        "placementInstructions": [],
     }
     _push_undo(transaction, game_ref, before, updates, "ending the hero phase")
     transaction.update(game_ref, updates)
@@ -632,6 +660,7 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _queue_placements(updates, game_state, [result.placement_instruction])
     _push_undo(transaction, game_ref, before, updates, "opening the door")
     transaction.update(game_ref, updates)
     return result
@@ -757,9 +786,20 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
                 "heroId": hero_ids_by_name.get(result.monster_attack.hero_name, ""),
                 "heroName": result.monster_attack.hero_name,
                 "skulls": result.monster_attack.skulls,
+                # The card's monster is a stranger -- the player has
+                # never seen this figure before and needs to be told
+                # what it is and where to stand it.
+                "monsterName": result.spawned_monster["type"],
+                "pos": list(result.spawned_monster["pos"]),
             }
         ]
 
+    _queue_placements(
+        updates,
+        game_state,
+        [*result.placement_instructions,
+         result.spawned_monster["placementInstruction"] if result.spawned_monster else None],
+    )
     _push_undo(transaction, game_ref, before, updates, "the treasure search")
     transaction.update(game_ref, updates)
     return result
@@ -868,6 +908,7 @@ def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, roo
     for d in result.found_secret_doors:
         updates[f"doors.{d.door_id}"] = "closed"
 
+    _queue_placements(updates, game_state, [d.placement_instruction for d in result.found_secret_doors])
     _push_undo(transaction, game_ref, before, updates, "the search")
     transaction.update(game_ref, updates)
     return result
@@ -998,6 +1039,7 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
+    _queue_placements(updates, game_state, [result.placement_instruction])
     _push_undo(transaction, game_ref, before, updates, "the trap action")
     transaction.update(game_ref, updates)
     return result
@@ -1354,11 +1396,24 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
             "heroId": hero_ids_by_name.get(mr.turn_result.attack.hero_name, ""),
             "heroName": mr.turn_result.attack.hero_name,
             "skulls": mr.turn_result.attack.skulls,
+            # Which figure swung, and where it is standing now: "3
+            # skulls" alone tells the player nothing about what to look
+            # for on the board.
+            "monsterName": mr.monster_name,
+            "pos": list(mr.turn_result.end_pos),
         }
         for mr in result.monster_results
         if mr.turn_result and mr.turn_result.attack
     ]
 
+    _queue_placements(
+        updates,
+        game_state,
+        [
+            *(i for cast in result.chaos_casts for i in cast.placement_instructions),
+            result.spawned_monster["placementInstruction"] if result.spawned_monster else None,
+        ],
+    )
     _push_undo(transaction, game_ref, before, updates, "Zargon's turn")
     transaction.update(game_ref, updates)
     return result

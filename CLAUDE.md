@@ -457,6 +457,20 @@ do not conflate them:
 Both wandering cases emit a "place the [type] mini at square [x,y]"
 instruction, same convention as trap/secret-door reveals.
 
+Those placement instructions are GAME state (placementInstructions), a
+queue the app appends to whenever it reveals something with a physical
+tile or mini -- a sprung trap, a found secret door, an opened room, a
+spawned monster, a Chaos summon. Every engine already produced the
+line and every one went ONLY to the log, at the bottom of the rail:
+the player took a wandering monster's attack out of nowhere with no
+idea what figure to stand on the board. Now they surface in their own
+"Place on the board" alert at the top of the rail, and a defence
+prompt names its attacker and the square it stands on, so "3 skulls"
+is never faceless. Game state rather than a response field, for the
+same reasons the defence queue is: undo takes them back, a refresh
+keeps them. Cleared when the hero phase ends -- anything unplaced then
+belonged to a turn that is over.
+
 Ending a quest takes TWO stages (1989 rulebook, Hero Movement: "To
 safely complete a Quest, you must return to the stairway, for it is
 only there that you are truly free from harm"). Stage 1: the objective
