@@ -28,6 +28,8 @@ can land a hero on the stairs.
 """
 
 import copy
+import functools
+import logging
 
 from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
@@ -84,12 +86,41 @@ ANTHROPIC_API_KEY = SecretParam("ANTHROPIC_API_KEY")
 # runtime) rather than re-reading the JSON files on every invocation.
 _catalogs = load_catalogs()
 
+def _surface_errors(fn):
+    """Turns an unhandled exception into an HttpsError that SAYS what
+    broke, instead of the bare "INTERNAL" the client otherwise shows.
+
+    Every endpoint below is reached by exactly one person, signed in as
+    the owner, so there is no one to leak an internal message to -- and
+    a bare INTERNAL is a debugging dead end: it names neither the
+    exception nor the line. The full traceback still goes to the
+    function log; this just puts the headline where the player can read
+    it. HttpsError raised deliberately passes through untouched.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(req):
+        try:
+            return fn(req)
+        except https_fn.HttpsError:
+            raise
+        except Exception as e:
+            logging.exception("%s failed", fn.__name__)
+            raise https_fn.HttpsError(
+                code=https_fn.FunctionsErrorCode.INTERNAL,
+                message=f"{fn.__name__}: {type(e).__name__}: {e}",
+            ) from e
+
+    return wrapper
+
+
 VALID_HERO_COUNTS = {1, 2, 3, 4}
 VALID_DIFFICULTIES = {"standard", "hard"}
 VALID_SIZES = {"short", "full"}
 
 
 @https_fn.on_call()
+@_surface_errors
 def health_check(req: https_fn.CallableRequest) -> dict:
     """Trivial callable to confirm the Functions deploy pipeline works."""
     return {"status": "ok", "service": "heroquest-zargon"}
@@ -135,6 +166,7 @@ def _parse_generation_params(data) -> dict:
 # ~100s each). Default callable timeout (60s) isn't enough for a single
 # high-effort call, let alone the retry loop.
 @https_fn.on_call(secrets=[ANTHROPIC_API_KEY], timeout_sec=480, memory=options.MemoryOption.MB_512)
+@_surface_errors
 def generate_quest(req: https_fn.CallableRequest) -> dict:
     """Generate a new quest, validate it, and write it to Firestore.
 
@@ -228,6 +260,7 @@ def _parse_create_game_request(data) -> tuple[str, list, dict]:
 
 
 @https_fn.on_call()
+@_surface_errors
 def create_game(req: https_fn.CallableRequest) -> dict:
     """Seeds a new games/ doc from a generated quest: heroes placed on
     the stairway, the full monster roster loaded at full body points
@@ -472,6 +505,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
 
 
 @https_fn.on_call()
+@_surface_errors
 def resolve_movement(req: https_fn.CallableRequest) -> dict:
     """Resolves a hero's traced movement path (from BoardView's
     onConfirmMove) against live game state: trap triggers mid-move,
@@ -541,6 +575,7 @@ def _apply_end_turn(transaction, game_ref):
 
 
 @https_fn.on_call()
+@_surface_errors
 def end_turn(req: https_fn.CallableRequest) -> dict:
     """The heroes are done acting -- flips phase from "hero" to
     "zargon" so roll_zargon_turn_type/resolve_zargon_turn become
@@ -603,6 +638,7 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
 
 
 @https_fn.on_call()
+@_surface_errors
 def open_door(req: https_fn.CallableRequest) -> dict:
     """Opens a closed door the hero is standing at -- its own button
     per CLAUDE.md's interface list, separate from movement (which hard
@@ -730,6 +766,7 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
 
 
 @https_fn.on_call()
+@_surface_errors
 def search_treasure(req: https_fn.CallableRequest) -> dict:
     """The owner draws from the real treasure deck (entirely physical
     -- the app never learns what was drawn) and reports only whether
@@ -837,6 +874,7 @@ def _apply_search_traps_and_secret_doors(transaction, db, game_ref, hero_id, roo
 
 
 @https_fn.on_call()
+@_surface_errors
 def search_traps_and_secret_doors(req: https_fn.CallableRequest) -> dict:
     """Searches the hero's current room, for EITHER traps or secret
     doors -- searchType picks one. The 1989 rulebook lists them as two
@@ -966,6 +1004,7 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
 
 
 @https_fn.on_call()
+@_surface_errors
 def resolve_trap_action_endpoint(req: https_fn.CallableRequest) -> dict:
     """Jump, disarm, or deliberately step on a trap the party already
     found. Movement stops in front of a known trap, so this is the
@@ -1109,6 +1148,7 @@ def _room_behind_door(board, door, game_state) -> str | None:
 
 
 @https_fn.on_call()
+@_surface_errors
 def cast_spell(req: https_fn.CallableRequest) -> dict:
     """The Elf or Wizard casts one of the twelve base-game spell cards,
     instead of attacking, at a target they can SEE.
@@ -1161,6 +1201,7 @@ def cast_spell(req: https_fn.CallableRequest) -> dict:
 
 
 @https_fn.on_call()
+@_surface_errors
 def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
     """Rolls Zargon's turn type (the digital Zargon Deck) for a game.
     Read-only -- does not touch game state. Split from resolve_zargon_turn
@@ -1321,6 +1362,7 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
 
 
 @https_fn.on_call()
+@_surface_errors
 def resolve_zargon_turn(req: https_fn.CallableRequest) -> dict:
     """Resolves Zargon's turn given an ALREADY-ROLLED turn type from
     roll_zargon_turn_type. Advances every active monster (movement +
@@ -1442,6 +1484,7 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
 
 
 @https_fn.on_call()
+@_surface_errors
 def resolve_hero_attack(req: https_fn.CallableRequest) -> dict:
     """A hero has rolled their own attack dice physically and reports
     the skull count via the "attack [target]" button. Rolls the
@@ -1524,6 +1567,7 @@ def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shi
 
 
 @https_fn.on_call()
+@_surface_errors
 def record_hero_defense(req: https_fn.CallableRequest) -> dict:
     """A monster's attack (from resolve_zargon_turn) named this hero as
     its target. The hero defends with their own physical dice and
@@ -1591,6 +1635,7 @@ def _apply_record_hero_death(transaction, game_ref, hero_id):
 
 
 @https_fn.on_call()
+@_surface_errors
 def record_hero_death(req: https_fn.CallableRequest) -> dict:
     """A hero has run out of Body Points. BP lives on the physical hero
     sheet (CLAUDE.md's boundary), so the app can never work this out for
@@ -1672,6 +1717,7 @@ def _apply_undo(transaction, game_ref):
 
 
 @https_fn.on_call()
+@_surface_errors
 def undo_last_action(req: https_fn.CallableRequest) -> dict:
     """Puts the board back to just before the last action. Solo play has
     no second pair of hands to catch a mis-dragged path, a mistyped
@@ -1724,6 +1770,7 @@ def _apply_break_spell(transaction, game_ref, hero_id, rolled_six):
 
 
 @https_fn.on_call()
+@_surface_errors
 def attempt_break_spell(req: https_fn.CallableRequest) -> dict:
     """A hero held by a Chaos spell tries to shake it off.
 
