@@ -86,6 +86,7 @@ export interface GameState {
     heroId: string;
     heroName: string;
     skulls: number;
+    monsterId?: string;
     monsterName?: string;
     pos?: Coord;
   }[];

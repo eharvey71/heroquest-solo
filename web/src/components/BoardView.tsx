@@ -23,6 +23,9 @@ interface BoardViewProps {
   activeHeroId?: string;
   /** The monster picked in the Attack or Cast Spell dropdown. */
   activeMonsterId?: string;
+  /** Monsters with an unanswered defence prompt (pendingDefenses) --
+   * whoever just attacked and is still waiting on a shield report. */
+  attackingMonsterIds?: ReadonlySet<string>;
   /** Path-tracing state, owned by GameView so that "Moving X -- Confirm"
    * can sit in the rail beside the board rather than below it, where it
    * was easy to miss entirely. */
@@ -40,6 +43,7 @@ export function BoardView({
   blockedSquares = [],
   activeHeroId,
   activeMonsterId,
+  attackingMonsterIds,
   pathInput,
 }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -193,6 +197,7 @@ export function BoardView({
           revealed={revealed}
           activeHeroId={activeHeroId}
           activeMonsterId={activeMonsterId}
+          attackingMonsterIds={attackingMonsterIds}
         />
       </svg>
       <div className="board-legend">

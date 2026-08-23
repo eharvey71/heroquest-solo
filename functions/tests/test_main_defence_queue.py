@@ -104,11 +104,13 @@ def test_every_turn_type_writes_a_defence_queue(turn_type):
     pending = txn.updates["pendingDefenses"]
     assert isinstance(pending, list)
     for entry in pending:
-        assert set(entry) == {"id", "heroId", "heroName", "skulls", "monsterName", "pos"}
+        assert set(entry) == {"id", "heroId", "heroName", "skulls", "monsterId", "monsterName", "pos"}
         assert entry["heroId"] == "barbarian"
         assert entry["skulls"] >= 0
         # The prompt has to say WHAT swung and where it stands, or the
-        # player is told "3 skulls" with no figure to look for.
+        # player is told "3 skulls" with no figure to look for. monsterId
+        # is what lets the client highlight the attacker's own token.
+        assert entry["monsterId"]
         assert entry["monsterName"]
         assert len(entry["pos"]) == 2
 
@@ -177,6 +179,7 @@ def test_a_wandering_monster_card_names_what_walked_in():
     # The player has never seen this figure: the prompt must say what it
     # is and where to stand it, and a placement line must accompany it.
     prompt = txn.updates["pendingDefenses"][-1]
+    assert prompt["monsterId"] == "W1"
     assert prompt["monsterName"] == "orc"
     assert prompt["pos"]
     assert any("orc" in line for line in txn.updates["placementInstructions"])

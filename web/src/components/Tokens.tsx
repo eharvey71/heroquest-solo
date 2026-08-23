@@ -23,14 +23,30 @@ interface TokensProps {
   activeHeroId?: string;
   /** The monster picked in the Attack or Cast Spell dropdown. */
   activeMonsterId?: string;
+  /** Monsters with an unanswered defence prompt -- whoever just
+   * attacked and is still waiting on a shield report. Drawn as a ring
+   * so it composes with (rather than fights) the targeting highlight
+   * above, on the rare turn a monster is both. */
+  attackingMonsterIds?: ReadonlySet<string>;
 }
 
 const HERO_FILL = "#4a7fd6";
 const HERO_ACTIVE_FILL = "#7fb0ff";
 const MONSTER_FILL = "#c23b3b";
 const MONSTER_ACTIVE_FILL = "#e06a6a";
+// Same amber the "waiting on you" rail alerts use, so the board and the
+// defence prompt read as the same thing.
+const ATTACKING_RING = "#e8b04a";
 
-export function Tokens({ cellSize, heroes, monsters, revealed, activeHeroId, activeMonsterId }: TokensProps) {
+export function Tokens({
+  cellSize,
+  heroes,
+  monsters,
+  revealed,
+  activeHeroId,
+  activeMonsterId,
+  attackingMonsterIds,
+}: TokensProps) {
   const radius = cellSize * 0.36;
 
   return (
@@ -41,8 +57,10 @@ export function Tokens({ cellSize, heroes, monsters, revealed, activeHeroId, act
         const cx = m.pos[0] * cellSize + cellSize / 2;
         const cy = m.pos[1] * cellSize + cellSize / 2;
         const isActive = m.id === activeMonsterId;
+        const isAttacking = attackingMonsterIds?.has(m.id) ?? false;
         return (
           <g key={m.id} className="token-figure" style={{ transform: `translate(${cx}px, ${cy}px)` }}>
+            {isAttacking && <circle r={radius + 4} fill="none" stroke={ATTACKING_RING} strokeWidth={2.5} />}
             <circle
               r={radius}
               fill={isActive ? MONSTER_ACTIVE_FILL : MONSTER_FILL}

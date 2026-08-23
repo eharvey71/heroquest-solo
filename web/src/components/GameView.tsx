@@ -35,6 +35,7 @@ interface PendingDefense {
   heroId: string;
   heroName: string;
   skulls: number;
+  monsterId?: string;
   monsterName?: string;
   pos?: Coord;
 }
@@ -232,6 +233,11 @@ export function GameView({ gameId }: GameViewProps) {
   // in React state they outlived an undo of the very turn that raised
   // them, and a refresh lost them altogether.
   const pendingDefenses: PendingDefense[] = game.pendingDefenses ?? [];
+  // Whichever monsters are still waiting on a shield report -- the
+  // board highlights each one, and the highlight drops the instant its
+  // entry leaves the queue (defence reported, undone, or the turn
+  // that raised it undone).
+  const attackingMonsterIds = new Set(pendingDefenses.map((d) => d.monsterId).filter((id): id is string => !!id));
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
   // Keyed on the instruction text so a NEW reveal (different content)
@@ -551,6 +557,7 @@ export function GameView({ gameId }: GameViewProps) {
             blockedSquares={blockedSquares}
             activeHeroId={heroId}
             activeMonsterId={attackMonsterId}
+            attackingMonsterIds={attackingMonsterIds}
           />
         </div>
 

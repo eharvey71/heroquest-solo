@@ -789,6 +789,7 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
                 # The card's monster is a stranger -- the player has
                 # never seen this figure before and needs to be told
                 # what it is and where to stand it.
+                "monsterId": new_monster_id,
                 "monsterName": result.spawned_monster["type"],
                 "pos": list(result.spawned_monster["pos"]),
             }
@@ -1398,7 +1399,9 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
             "skulls": mr.turn_result.attack.skulls,
             # Which figure swung, and where it is standing now: "3
             # skulls" alone tells the player nothing about what to look
-            # for on the board.
+            # for on the board. monsterId lets the client highlight the
+            # attacker's own token, not just name it.
+            "monsterId": mr.monster_id,
             "monsterName": mr.monster_name,
             "pos": list(mr.turn_result.end_pos),
         }
