@@ -703,8 +703,15 @@ export function GameView({ gameId }: GameViewProps) {
                 {!pathInput.blockedHint && pathInput.endSquareOccupied && (
                   <span style={{ color: "#e6a23b" }}>can&apos;t end the move on an occupied square</span>
                 )}
+                {pendingDefenses.length > 0 && (
+                  <span className="hint">Report the defence roll(s) above before confirming a move.</span>
+                )}
                 <div className="panel-row">
-                  <button className="primary" onClick={handleConfirmTracedMove} disabled={busy || !pathInput.canConfirm}>
+                  <button
+                    className="primary"
+                    onClick={handleConfirmTracedMove}
+                    disabled={busy || !pathInput.canConfirm || pendingDefenses.length > 0}
+                  >
                     Confirm move
                   </button>
                   <button className="quiet" onClick={pathInput.clear} disabled={busy}>
@@ -721,6 +728,16 @@ export function GameView({ gameId }: GameViewProps) {
                 {openAction ? ACTION_LABELS[openAction] : "Action — one per turn"}
               </p>
 
+              {pendingDefenses.length > 0 ? (
+                // A hit against this hero (or a teammate) from Zargon's
+                // last turn is still unresolved. The physical rulebook
+                // treats defending as part of that attack, not a task
+                // deferred to whenever the hero gets around to it --
+                // so no other action (or ending the turn) is available
+                // until every prompt above is answered.
+                <p className="hint">Report the defence roll(s) above before anyone can act.</p>
+              ) : (
+                <>
               {openAction === null && (
                 <div className="panel-stack">
                   <div className="action-grid">
@@ -745,15 +762,8 @@ export function GameView({ gameId }: GameViewProps) {
                     Trace a path on the board to move. Attacking, searching, opening a door or casting is
                     the hero&apos;s one action.
                   </span>
-                  {pendingDefenses.length > 0 && (
-                    <span className="hint">Report the defence roll(s) above before ending the turn.</span>
-                  )}
                   <div>
-                    <button
-                      className="primary"
-                      onClick={handleEndTurn}
-                      disabled={busy || pendingDefenses.length > 0}
-                    >
+                    <button className="primary" onClick={handleEndTurn} disabled={busy}>
                       {game.heroes.length === 1 && (game.heroPhaseSegment ?? 1) === 1
                         ? "End action 1 of 2"
                         : "End turn"}
@@ -982,6 +992,8 @@ export function GameView({ gameId }: GameViewProps) {
                     </>
                   )}
                 </div>
+              )}
+                </>
               )}
             </div>
           )}

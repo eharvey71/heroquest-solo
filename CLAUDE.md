@@ -348,6 +348,16 @@ Zargon's phase with a shield report still outstanding, and the next
 resolve_zargon_turn's whole-queue write silently discarded that hit
 for good.
 
+The whole action panel, not just End Turn, is CLIENT-SIDE gated on the
+same condition: resolving Zargon's turn flips phase back to "hero" in
+the same response that creates the prompts, so the ordinary hero
+actions (Attack, Search, confirming a traced move) were sitting there
+clickable next to an unresolved "N skulls" prompt -- physically you'd
+defend the hit before doing anything else. This gate is UI-only so
+far; the backend endpoints themselves (resolve_hero_attack,
+resolve_hero_movement, search_treasure, etc.) do not yet reject a call
+made while pendingDefenses is non-empty.
+
 UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
 action at a time, all the way to the start of the game if need be.
 Undo also clears the transient client state that belonged to the
