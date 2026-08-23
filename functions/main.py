@@ -1200,6 +1200,9 @@ def cast_spell(req: https_fn.CallableRequest) -> dict:
     }
 
 
+VALID_TURN_TYPES = {"normal", "cunning", "wandering"}
+
+
 @https_fn.on_call()
 @_surface_errors
 def roll_zargon_turn_type(req: https_fn.CallableRequest) -> dict:
