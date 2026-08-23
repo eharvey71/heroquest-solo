@@ -99,6 +99,8 @@ export function GameView({ gameId }: GameViewProps) {
   } | null>(null);
   const [lowestBpHeroId, setLowestBpHeroId] = useState<string>("");
   const [openAction, setOpenAction] = useState<ActionKey | null>(null);
+  // Dismissal of the "Place on the board" alert (see placements below).
+  const [placementsDone, setPlacementsDone] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const logRef = useRef<HTMLUListElement>(null);
@@ -232,12 +234,11 @@ export function GameView({ gameId }: GameViewProps) {
   const pendingDefenses: PendingDefense[] = game.pendingDefenses ?? [];
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
-  // The alert is a to-do: once the player has stood the figures on the
-  // board they press "Done" to hide it. Keyed on the instruction text
-  // so a NEW reveal (different content) shows again on its own, and so
-  // a refresh with the same outstanding instruction keeps reminding.
+  // Keyed on the instruction text so a NEW reveal (different content)
+  // shows again on its own; placementsDone is declared up with the
+  // other hooks -- a useState below the early returns crashed React
+  // (hooks must run unconditionally, every render).
   const placementsKey = placements.join("|");
-  const [placementsDone, setPlacementsDone] = useState("");
   const showPlacements = placements.length > 0 && placementsDone !== placementsKey;
 
   // Fog of war: hidden monsters must never appear in the attack list --
