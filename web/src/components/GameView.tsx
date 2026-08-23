@@ -549,6 +549,8 @@ export function GameView({ gameId }: GameViewProps) {
             stairway={stairway}
             furniture={furniture}
             blockedSquares={blockedSquares}
+            activeHeroId={heroId}
+            activeMonsterId={attackMonsterId}
           />
         </div>
 
@@ -658,7 +660,7 @@ export function GameView({ gameId }: GameViewProps) {
             <div className="panel-stack">
               <div className="panel-row" style={{ justifyContent: "space-between" }}>
                 <span className="panel-row">
-                  <select value={heroId} onChange={(e) => setHeroId(e.target.value)}>
+                  <select className="active-hero-select" value={heroId} onChange={(e) => setHeroId(e.target.value)}>
                     {heroes.map((h) => (
                       <option key={h.id} value={h.id}>
                         {h.name}

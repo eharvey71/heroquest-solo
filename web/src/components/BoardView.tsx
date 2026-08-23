@@ -18,6 +18,11 @@ interface BoardViewProps {
   stairway?: QuestStairway | null;
   furniture?: QuestFurniture[];
   blockedSquares?: Coord[];
+  /** The Active Hero rail selection -- highlighted on the board even
+   * when it was set from the dropdown rather than by tapping a token. */
+  activeHeroId?: string;
+  /** The monster picked in the Attack or Cast Spell dropdown. */
+  activeMonsterId?: string;
   /** Path-tracing state, owned by GameView so that "Moving X -- Confirm"
    * can sit in the rail beside the board rather than below it, where it
    * was easy to miss entirely. */
@@ -33,6 +38,8 @@ export function BoardView({
   stairway,
   furniture = [],
   blockedSquares = [],
+  activeHeroId,
+  activeMonsterId,
   pathInput,
 }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -184,7 +191,8 @@ export function BoardView({
           heroes={heroes}
           monsters={gameState.monsters}
           revealed={revealed}
-          selectedHeroId={selectedHeroId ?? undefined}
+          activeHeroId={activeHeroId}
+          activeMonsterId={activeMonsterId}
         />
       </svg>
       <div className="board-legend">

@@ -65,6 +65,21 @@
   height: auto;
 }
 
+/* A hero or monster's token slides to its new square instead of
+ * jumping there. Keyed by id in Tokens.tsx, so React keeps the same
+ * DOM node across a move and the browser tweens the CSS transform
+ * between the old position and the new one -- no animation library or
+ * per-frame JS needed. Skipped for anyone who's asked for less motion. */
+.token-figure {
+  transition: transform 0.6s ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-figure {
+    transition: none;
+  }
+}
+
 .board-legend {
   margin-top: 6px;
   display: flex;
@@ -245,8 +260,20 @@ button.quiet {
   gap: 8px;
 }
 
+/* The board highlights this hero's token too (Tokens.tsx activeHeroId)
+ * -- the border here matches that highlight color so the dropdown and
+ * the board read as the same selection. */
+.active-hero-select {
+  border: 2px solid #7fb0ff;
+  background: #16233a;
+  color: #eaf2ff;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
 .log-list {
-  max-height: 46vh;
+  max-height: 23vh;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;

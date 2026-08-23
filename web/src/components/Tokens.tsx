@@ -16,15 +16,21 @@ interface TokensProps {
   heroes: HeroToken[];
   monsters: MonsterToken[];
   revealed: ReadonlySet<string>;
-  selectedHeroId?: string;
+  /** The Active Hero rail selection, not the mid-trace path-input
+   * selection -- the two are usually the same hero (tapping a token
+   * sets both), but a dropdown change without touching the board only
+   * moves this one, and the board should still reflect it. */
+  activeHeroId?: string;
+  /** The monster picked in the Attack or Cast Spell dropdown. */
+  activeMonsterId?: string;
 }
 
 const HERO_FILL = "#4a7fd6";
 const HERO_ACTIVE_FILL = "#7fb0ff";
 const MONSTER_FILL = "#c23b3b";
-const MONSTER_DEAD_FILL = "#5a3b3b";
+const MONSTER_ACTIVE_FILL = "#e06a6a";
 
-export function Tokens({ cellSize, heroes, monsters, revealed, selectedHeroId }: TokensProps) {
+export function Tokens({ cellSize, heroes, monsters, revealed, activeHeroId, activeMonsterId }: TokensProps) {
   const radius = cellSize * 0.36;
 
   return (
@@ -34,10 +40,16 @@ export function Tokens({ cellSize, heroes, monsters, revealed, selectedHeroId }:
         if (!revealed.has(squareKey(m.pos[0], m.pos[1]))) return null;
         const cx = m.pos[0] * cellSize + cellSize / 2;
         const cy = m.pos[1] * cellSize + cellSize / 2;
+        const isActive = m.id === activeMonsterId;
         return (
-          <g key={m.id}>
-            <circle cx={cx} cy={cy} r={radius} fill={m.alive ? MONSTER_FILL : MONSTER_DEAD_FILL} stroke="#1a1414" strokeWidth={1.5} />
-            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={cellSize * 0.32} fill="#fff" pointerEvents="none">
+          <g key={m.id} className="token-figure" style={{ transform: `translate(${cx}px, ${cy}px)` }}>
+            <circle
+              r={radius}
+              fill={isActive ? MONSTER_ACTIVE_FILL : MONSTER_FILL}
+              stroke={isActive ? "#fff" : "#1a1414"}
+              strokeWidth={isActive ? 2.5 : 1.5}
+            />
+            <text textAnchor="middle" dominantBaseline="central" fontSize={cellSize * 0.32} fill="#fff" pointerEvents="none">
               {m.type[0]?.toUpperCase()}
             </text>
           </g>
@@ -50,18 +62,16 @@ export function Tokens({ cellSize, heroes, monsters, revealed, selectedHeroId }:
         // members are standing).
         const cx = h.pos[0] * cellSize + cellSize / 2;
         const cy = h.pos[1] * cellSize + cellSize / 2;
-        const isSelected = h.id === selectedHeroId;
+        const isSelected = h.id === activeHeroId;
         return (
-          <g key={h.id} pointerEvents="none">
+          <g key={h.id} className="token-figure" pointerEvents="none" style={{ transform: `translate(${cx}px, ${cy}px)` }}>
             <circle
-              cx={cx}
-              cy={cy}
               r={radius}
               fill={isSelected ? HERO_ACTIVE_FILL : HERO_FILL}
               stroke={isSelected ? "#fff" : "#1a1414"}
               strokeWidth={isSelected ? 2.5 : 1.5}
             />
-            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={cellSize * 0.32} fill="#fff" pointerEvents="none">
+            <text textAnchor="middle" dominantBaseline="central" fontSize={cellSize * 0.32} fill="#fff" pointerEvents="none">
               {h.name[0]?.toUpperCase()}
             </text>
           </g>
