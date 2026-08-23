@@ -53,6 +53,11 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [difficulty, setDifficulty] = useState<"standard" | "hard">("standard");
   const [size, setSize] = useState<"short" | "full">("full");
   const [theme, setTheme] = useState("");
+  // A finished, chronicled game this new quest continues from -- "" means
+  // standalone (the common case). See generator/prompt.py's CAMPAIGN
+  // CONTINUITY section: the chronicle becomes context the LLM may thread
+  // into the new backstory, never a hard requirement.
+  const [continuesFromGameId, setContinuesFromGameId] = useState("");
 
   // Which spell elements each caster took. The Wizard picks three, the
   // Elf one of what's left -- one physical set of three cards per
@@ -70,6 +75,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { narrative } = useQuestMap(questId ?? undefined);
   const library = useLibrary(refreshKey);
+  const continuableGames = library.games.filter((g) => g.hasChronicle);
 
   const heroCount = selectedHeroes.size;
 
@@ -92,6 +98,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         difficulty,
         size,
         ...(theme.trim() ? { theme: theme.trim() } : {}),
+        ...(continuesFromGameId ? { continuesFromGameId } : {}),
       });
       setQuestId(res.questId);
       setQuestHeroCount(heroCount);
@@ -169,9 +176,31 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
             Theme (optional): <input value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g. undead crypt" />
           </label>
         </div>
+        {continuableGames.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <label>
+              Continue from (optional):{" "}
+              <select value={continuesFromGameId} onChange={(e) => setContinuesFromGameId(e.target.value)}>
+                <option value="">Standalone quest</option>
+                {continuableGames.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.questTitle ?? g.questId ?? g.id} ({g.status === "complete" ? "won" : "lost"})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         <p className="hint" style={{ maxWidth: 500 }}>
           Short size aims for a single sitting (fewer rooms, a shorter map to clear); full size is a
           longer, full-map quest matching the scope of the official quest book adventures.
+          {continuableGames.length > 0 && (
+            <>
+              {" "}
+              Picking a previous game hands its chronicle to the generator as history it may reference
+              &mdash; a villain who escaped, an artifact recovered &mdash; never a requirement.
+            </>
+          )}
         </p>
         <div>
           <button onClick={handleGenerateQuest} disabled={busy || heroCount < 1}>

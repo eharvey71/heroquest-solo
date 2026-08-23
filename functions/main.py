@@ -164,10 +164,46 @@ def _parse_generation_params(data) -> dict:
     if theme is not None and not isinstance(theme, str):
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="theme must be a string")
 
+    # Which past game's chronicle (if any) this quest continues from --
+    # resolved to actual campaign context by _resolve_campaign_context,
+    # which needs a Firestore read this pure parser doesn't do.
+    continues_from_game_id = data.get("continuesFromGameId")
+    if continues_from_game_id is not None and not isinstance(continues_from_game_id, str):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="continuesFromGameId must be a string"
+        )
+
     params = {"heroCount": hero_count, "difficulty": difficulty, "size": size}
     if theme:
         params["theme"] = theme
+    if continues_from_game_id:
+        params["continuesFromGameId"] = continues_from_game_id
     return params
+
+
+def _resolve_campaign_context(db, game_id: str) -> dict:
+    """The previous game's title and chronicle, so the new quest's
+    prompt can treat this as a sequel -- see
+    generator/prompt.py's _campaign_section. Requires the referenced
+    game to have actually finished and been chronicled; a quest can't
+    continue from a story that was never written.
+    """
+    game_ref = db.collection("games").document(game_id)
+    game_state, quest = _load_game_and_quest(db, game_ref)
+
+    if game_state.get("status") not in _FINISHED_STATUSES:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="continuesFromGameId must name a finished game (that quest is still in progress)",
+        )
+    chronicle = game_state.get("chronicle")
+    if not chronicle:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="that game has no chronicle yet -- generate_chronicle runs automatically once a "
+            "quest ends, but hasn't finished for this one",
+        )
+    return {"previousTitle": quest.get("title", ""), "chronicle": chronicle}
 
 
 # Generous timeout: up to 3 LLM round trips at high effort (observed
@@ -195,6 +231,10 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     params = _parse_generation_params(req.data)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
 
+    continues_from_game_id = params.pop("continuesFromGameId", None)
+    if continues_from_game_id:
+        params["campaignContext"] = _resolve_campaign_context(firestore.client(), continues_from_game_id)
+
     try:
         result: GenerationResult = run_generation(params, client, _catalogs)
     except QuestGenerationRefused as e:
@@ -210,14 +250,21 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
             details={"errors": e.errors},
         ) from e
 
+    # campaignContext carried the previous game's full chronicle into the
+    # prompt -- worth having in memory for that one call, not worth
+    # duplicating into every quest doc forever. continuesFromGameId is
+    # the lightweight provenance pointer that's actually useful to keep.
+    stored_params = {k: v for k, v in params.items() if k != "campaignContext"}
+
     doc_ref = firestore.client().collection("quests").document()
     doc_ref.set(
         {
             **to_firestore_coords(result.quest),
-            "generationParams": params,
+            "generationParams": stored_params,
             "validationWarnings": result.validation.warnings,
             "attempts": result.attempts,
             "createdAt": firestore.SERVER_TIMESTAMP,
+            **({"continuesFromGameId": continues_from_game_id} if continues_from_game_id else {}),
         }
     )
 

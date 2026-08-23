@@ -35,6 +35,10 @@ export interface GameSummary {
   status: string;
   objectiveComplete: boolean;
   createdAt: Date | null;
+  /** A finished game gets its chronicle written automatically; this is
+   * whether that has happened yet -- only games with one can be named
+   * as a campaign's predecessor (generateQuest's continuesFromGameId). */
+  hasChronicle: boolean;
 }
 
 export interface Library {
@@ -94,6 +98,7 @@ export function useLibrary(refreshKey = 0): Library {
             status?: string;
             objectiveComplete?: boolean;
             createdAt?: unknown;
+            chronicle?: string;
           };
           return {
             id: d.id,
@@ -106,6 +111,7 @@ export function useLibrary(refreshKey = 0): Library {
             status: data.status ?? "in_progress",
             objectiveComplete: Boolean(data.objectiveComplete),
             createdAt: toDate(data.createdAt),
+            hasChronicle: Boolean(data.chronicle),
           };
         });
 

@@ -25,6 +25,9 @@ export interface GenerateQuestRequest {
   difficulty?: "standard" | "hard";
   size?: "short" | "full";
   theme?: string;
+  /** A finished, chronicled game to write this quest as a sequel to --
+   * see generator/prompt.py's CAMPAIGN CONTINUITY section. */
+  continuesFromGameId?: string;
 }
 export interface GenerateQuestResponse {
   questId: string;

@@ -84,9 +84,24 @@ wrong), app enforces via searched.<room>.treasureBy.
     no undo snapshot: it writes one derived text field onto a game
     nothing else can still be mutating, with nothing gameplay-
     consequential to roll back.
+  - generateQuest's optional continuesFromGameId links a new quest to a
+    finished, chronicled one as its sequel -- CAMPAIGN CONTINUITY.
+    main._resolve_campaign_context requires the named game to be
+    complete/lost AND already chronicled (a quest can't continue from a
+    story that hasn't been written yet), then hands the chronicle text
+    into the prompt (generator/prompt.py's _campaign_section). The
+    model MAY thread it into the new backstory -- a villain who
+    escaped, an artifact recovered, a hero remembered -- but every
+    quest must still stand completely on its own; a player who never
+    read the chronicle needs nothing else to play it. The pointer is
+    stored on the new quest doc (continuesFromGameId) as provenance,
+    not re-validated -- continuity is narrative, so nothing here
+    constrains quest STRUCTURE the way artifacts or balance do. Setup
+    screen: a "Continue from" picker lists chronicled games only.
   - Zargon rules engine: deterministic code (movement, target choice,
     combat resolution). LLM is NEVER in the rules path — only quest
-    generation and flavor narration (the chronicle; more later).
+    generation and flavor narration (the chronicle, campaign
+    continuity).
 
 ## Design artifacts (in this repo /design)
 - board.json — 26x19 grid, 22 rooms, verified square-by-square against the

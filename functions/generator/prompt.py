@@ -147,6 +147,35 @@ def pick_stairway_room(catalogs: Catalogs, rng: random.Random | None = None) -> 
     return rng.choice(rooms_with_2x2_fit(catalogs))
 
 
+def _campaign_section(params: dict) -> str:
+    """Empty while this quest stands alone -- the common case. Present
+    only when generate_quest was called with continuesFromGameId,
+    resolved by main._resolve_campaign_context into
+    params["campaignContext"] before the prompt is built.
+    """
+    context = params.get("campaignContext")
+    if not context:
+        return ""
+    return f"""
+### CAMPAIGN CONTINUITY
+This quest is a SEQUEL. Here is the chronicle of what came before, in
+your predecessor's own words:
+
+Previous quest: {context['previousTitle']}
+{context['chronicle']}
+
+Treat everything in that chronicle as history that actually happened --
+never contradict it. You MAY thread it into this quest's backstory: a
+villain who escaped can return, an artifact recovered can be
+referenced by name, a fallen hero can be remembered. You are not
+REQUIRED to reference it at all if nothing there suggests a natural
+hook -- a quest that just happens to come after another is a fine
+outcome too. Either way, this quest must stand completely on its own:
+write the backstory so a player who never heard the previous chronicle
+still has everything they need.
+"""
+
+
 def build_system_prompt(params: dict, catalogs: Catalogs, stairway_room: str) -> str:
     hero_count = params["heroCount"]
     difficulty = params.get("difficulty", "standard")
@@ -164,7 +193,7 @@ You control story, mood, room selection, monster/furniture/trap placement,
 door layout, and objective. You do NOT control rules or stats — monster stats
 are fixed, and your output is validated by code against the board geometry
 and balance budget. Invalid output is rejected, so follow every constraint.
-
+{_campaign_section(params)}
 ### BOARD
 The board is a 26x19 grid. Coordinates are [x,y], origin top-left, x right,
 y down. Rooms (id, and the exact squares each contains):
