@@ -69,13 +69,53 @@ def pre_fix_schema():
     return s
 
 
-def aug19_padded():
-    """Aug 19 schema + ~500B of inert description text. Separates the
-    two candidate metrics: if THIS fails, the server's limit is about
-    schema bytes and the optional-count fix is aimed wrong; if it
-    passes, the limit is structural (optional properties)."""
+def aug19_plus_spells_enum():
     s = aug19_schema()
-    s["$defs"]["monster"]["description"] = "x" * 500
+    from engine.chaos_spells import spell_ids
+    s["$defs"]["monster"]["properties"]["spells"] = {
+        "type": "array",
+        "items": {"type": "string", "enum": spell_ids()},
+    }
+    s["$defs"]["monster"]["required"] = ["id", "type", "spells", "pos"]
+    return s
+
+
+def aug19_plus_spells_plain():
+    s = aug19_schema()
+    s["$defs"]["monster"]["properties"]["spells"] = {"type": "array", "items": {"type": "string"}}
+    s["$defs"]["monster"]["required"] = ["id", "type", "spells", "pos"]
+    return s
+
+
+def aug19_plus_traptext():
+    s = aug19_schema()
+    contains = s["$defs"]["furniture"]["properties"]["contains"]
+    contains["properties"]["trapText"] = {"type": "string"}
+    contains["properties"]["trap"]["enum"] = ["chest_trap", "pit", "falling_block", "none"]
+    contains["required"] = ["trap", "trapText", "treasure"]
+    s["$defs"]["trap"]["properties"]["type"]["enum"] = ["pit", "falling_block", "spear"]
+    return s
+
+
+def aug19_plus_artifacts():
+    s = aug19_schema()
+    s["$defs"]["furniture"]["properties"]["contains"]["properties"]["artifactId"] = {"type": "string"}
+    s["properties"]["objective"]["properties"]["target"]["properties"]["artifactId"] = {"type": "string"}
+    return s
+
+
+def aug19_plus_escape():
+    s = aug19_schema()
+    s["properties"]["escapeDestination"] = {"type": "array", "items": {"type": "integer"}}
+    s["required"] = s["required"] + ["escapeDestination", "corridorTraps"]
+    return s
+
+
+def fixed_minus_spells_enum():
+    """The full current schema, but chaos-spell ids as plain strings --
+    the candidate final fix if the spells enum is the culprit."""
+    s = current_schema()
+    s["$defs"]["monster"]["properties"]["spells"]["items"] = {"type": "string"}
     return s
 
 
@@ -88,11 +128,13 @@ TRIVIAL = {
 
 
 CASES = [
-    ("FIXED schema (required-with-sentinels, 10 optionals)", current_schema, dict(thinking=True)),
-    ("pre-fix schema (15 optionals, FAIL anchor)", pre_fix_schema, dict(thinking=True)),
-    ("aug19 last-proven schema (10 optionals, PASS anchor)", aug19_schema, dict(thinking=True)),
-    ("aug19 + 500B inert padding (byte-size probe)", aug19_padded, dict(thinking=True)),
-    ("trivial one-field schema", lambda: copy.deepcopy(TRIVIAL), dict(thinking=True)),
+    ("aug19 PASS anchor", aug19_schema, dict(thinking=True)),
+    ("aug19 + spells WITH 12-id enum", aug19_plus_spells_enum, dict(thinking=True)),
+    ("aug19 + spells as plain strings", aug19_plus_spells_plain, dict(thinking=True)),
+    ("aug19 + trapText + 2 enum values", aug19_plus_traptext, dict(thinking=True)),
+    ("aug19 + artifactId x2", aug19_plus_artifacts, dict(thinking=True)),
+    ("aug19 + escapeDestination/corridorTraps", aug19_plus_escape, dict(thinking=True)),
+    ("CANDIDATE FIX: current minus spells enum", fixed_minus_spells_enum, dict(thinking=True)),
 ]
 
 
