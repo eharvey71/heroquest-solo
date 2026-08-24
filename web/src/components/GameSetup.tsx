@@ -400,7 +400,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
                     style={{ marginBottom: 10, opacity: quest.archived ? 0.55 : 1 }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                      <div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <button onClick={() => handleReplayQuest(quest)} disabled={busy || questId === quest.id}>
                           {questId === quest.id ? "Selected" : "Play again"}
                         </button>{" "}
@@ -409,7 +409,11 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
                           {questLine(quest)} &mdash; generated {formatWhen(quest.createdAt)}
                         </span>
                       </div>
-                      <button disabled={archiveBusyId === quest.id} onClick={() => handleToggleQuestArchived(quest)}>
+                      <button
+                        style={{ flexShrink: 0 }}
+                        disabled={archiveBusyId === quest.id}
+                        onClick={() => handleToggleQuestArchived(quest)}
+                      >
                         {quest.archived ? "Restore" : "Remove"}
                       </button>
                     </div>
