@@ -119,6 +119,30 @@ def fixed_minus_spells_enum():
     return s
 
 
+def current_minus_room_enums():
+    """Current schema with the two 22-value room-id enums as plain
+    strings (the validator's geometry checks already reject unknown
+    room ids)."""
+    s = current_schema()
+    s["$defs"]["room"]["properties"]["roomId"] = {"type": "string"}
+    s["$defs"]["targetRoomId"] = {"type": "string"}
+    return s
+
+
+def current_minus_all_big_enums():
+    """Current schema with every catalog-sized enum (room ids, monster
+    types, wandering monster, furniture types, chaos spells) as plain
+    strings -- keeps only the small closed-set enums (door state, trap
+    type, orientation, objective type). The validator rejects unknown
+    values for every one of these inside the repair loop."""
+    s = current_minus_room_enums()
+    s["$defs"]["monster"]["properties"]["type"] = {"type": "string"}
+    s["$defs"]["monster"]["properties"]["spells"]["items"] = {"type": "string"}
+    s["$defs"]["furniture"]["properties"]["type"] = {"type": "string"}
+    s["properties"]["wanderingMonster"] = {"type": "string"}
+    return s
+
+
 TRIVIAL = {
     "type": "object",
     "properties": {"ok": {"type": "boolean"}},
@@ -127,14 +151,17 @@ TRIVIAL = {
 }
 
 
+# Round 3: round 2 proved the aug19 schema sits at ~100% of
+# claude-opus-4-8's grammar budget -- EVERY addition fails, even two
+# plain strings -- so the fix is either real headroom (drop the big
+# enums) or a model whose compiler has a bigger budget. `model` of None
+# means generator/client.py's MODEL.
 CASES = [
-    ("aug19 PASS anchor", aug19_schema, dict(thinking=True)),
-    ("aug19 + spells WITH 12-id enum", aug19_plus_spells_enum, dict(thinking=True)),
-    ("aug19 + spells as plain strings", aug19_plus_spells_plain, dict(thinking=True)),
-    ("aug19 + trapText + 2 enum values", aug19_plus_traptext, dict(thinking=True)),
-    ("aug19 + artifactId x2", aug19_plus_artifacts, dict(thinking=True)),
-    ("aug19 + escapeDestination/corridorTraps", aug19_plus_escape, dict(thinking=True)),
-    ("CANDIDATE FIX: current minus spells enum", fixed_minus_spells_enum, dict(thinking=True)),
+    ("current schema on claude-opus-5", current_schema, dict(thinking=True, model="claude-opus-5")),
+    ("current schema on claude-sonnet-5", current_schema, dict(thinking=True, model="claude-sonnet-5")),
+    ("current minus room-id enums (opus-4-8)", current_minus_room_enums, dict(thinking=True)),
+    ("current minus ALL big enums (opus-4-8)", current_minus_all_big_enums, dict(thinking=True)),
+    ("aug19 PASS anchor (opus-4-8)", aug19_schema, dict(thinking=True)),
 ]
 
 
@@ -148,7 +175,7 @@ def main():
     for name, schema_fn, opts in CASES:
         schema = schema_fn()
         kwargs = dict(
-            model=MODEL,
+            model=opts.get("model") or MODEL,
             # Truncation is fine -- we only care whether the request is
             # ACCEPTED (grammar compiled) or 400-rejected.
             max_tokens=64,
