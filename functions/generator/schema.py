@@ -23,8 +23,19 @@ count expressed as array length costs nothing in this metric — only
 object shape does. generator/client.py converts the array back to the
 canonical `{roomId: room}` dict (what the validator, fixtures, and
 quest-schema.md all expect) immediately after parsing, so this
-constraint never leaks past the wire-format boundary. Total optional
-count is ~10.
+constraint never leaks past the wire-format boundary.
+
+THE OPTIONAL BUDGET IS MUCH SMALLER THAN 24 NOW. In Aug 2026 the
+server started rejecting this schema at 14-15 optionals with "The
+compiled grammar is too large" while the older 10-optional version
+still compiled (bisected against the live API -- tools/repro_grammar.py
+is the harness). So: every field that CAN be required-with-a-sentinel
+IS -- `spells: []`, `name: ""`, `trapText: ""`, `corridorTraps: []`,
+`escapeDestination: []` all mean "none", and every engine/validator
+read already treats those falsy values as absent. Adding a new field
+here means either making it required with a falsy sentinel, or
+spending one of the very few optional slots and re-running the
+harness against the live API before deploying.
 """
 
 from __future__ import annotations
@@ -45,6 +56,8 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                 "type": {"type": "string", "enum": sorted(catalogs.monsters.keys())},
                 # Chaos spells are handed to "specific monsters called
                 # for in the Quest notes" (the cards' own instructions).
+                # Required, [] = no spells; "" = unnamed rank-and-file.
+                # See the optional-budget note in the module docstring.
                 "spells": {"type": "array", "items": {"type": "string", "enum": chaos_spell_ids_fn()}},
                 "name": {"type": "string"},
                 "pos": POS,
@@ -61,7 +74,7 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                     "additionalProperties": False,
                 },
             },
-            "required": ["id", "type", "pos"],
+            "required": ["id", "type", "spells", "name", "pos"],
             "additionalProperties": False,
         },
         "furniture": {
@@ -82,6 +95,7 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                         # voice. The app never computes trap damage --
                         # Body Points are physical -- so this text IS the
                         # effect (see engine/furniture_traps.py).
+                        # Required; "" when trap is "none".
                         "trapText": {"type": "string"},
                         "treasure": {"type": "string"},
                         # A named Artifact Card found here -- "loot along
@@ -101,7 +115,7 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                         # generate -> validate -> repair loop.
                         **({"artifactId": {"type": "string"}} if catalogs.artifacts else {}),
                     },
-                    "required": ["trap", "treasure"],
+                    "required": ["trap", "trapText", "treasure"],
                     "additionalProperties": False,
                 },
             },
@@ -202,7 +216,9 @@ def build_quest_json_schema(catalogs: Catalogs) -> dict:
             "blockedSquares": {"type": "array", "items": POS},
             # Where the Escape card teleports its caster: "a secret
             # destination known only to Zargon ... marked on the Quest
-            # Map". Required only if some monster carries that card.
+            # Map". Schema-required with [] meaning "none declared" (the
+            # optional budget, see module docstring); the validator still
+            # demands a real square whenever a monster carries Escape.
             "escapeDestination": POS,
             "startingRoom": {"type": "string", "const": "stairway"},
             "doors": {"type": "array", "items": {"$ref": "#/$defs/door"}},
@@ -212,7 +228,8 @@ def build_quest_json_schema(catalogs: Catalogs) -> dict:
         },
         "required": [
             "id", "title", "backstory", "objective", "wanderingMonster",
-            "stairway", "blockedSquares", "startingRoom", "doors", "rooms",
+            "stairway", "blockedSquares", "escapeDestination",
+            "startingRoom", "doors", "corridorTraps", "rooms",
             "completionText",
         ],
         "additionalProperties": False,

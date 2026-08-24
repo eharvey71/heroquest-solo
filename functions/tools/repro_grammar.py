@@ -45,20 +45,37 @@ def aug19_schema():
     s = current_schema()
     defs = s["$defs"]
     defs["monster"]["properties"].pop("spells", None)
+    defs["monster"]["required"] = ["id", "type", "pos"]
     contains = defs["furniture"]["properties"]["contains"]
     contains["properties"].pop("trapText", None)
     contains["properties"].pop("artifactId", None)
     contains["properties"]["trap"]["enum"] = ["pit", "falling_block", "none"]
+    contains["required"] = ["trap", "treasure"]
     defs["trap"]["properties"]["type"]["enum"] = ["pit", "falling_block"]
     defs["door"]["properties"]["state"]["enum"] = ["open", "closed", "locked", "secret"]
     s["properties"]["objective"]["properties"]["target"]["properties"].pop("artifactId", None)
     s["properties"].pop("escapeDestination", None)
+    s["required"] = [r for r in s["required"] if r not in ("escapeDestination", "corridorTraps")]
     return s
 
 
-def no_spells_enum():
+def pre_fix_schema():
+    """The 15-optional shape that was failing before the
+    required-with-sentinel conversion -- kept as the FAIL anchor."""
     s = current_schema()
-    s["$defs"]["monster"]["properties"]["spells"]["items"] = {"type": "string"}
+    s["$defs"]["monster"]["required"] = ["id", "type", "pos"]
+    s["$defs"]["furniture"]["properties"]["contains"]["required"] = ["trap", "treasure"]
+    s["required"] = [r for r in s["required"] if r not in ("escapeDestination", "corridorTraps")]
+    return s
+
+
+def aug19_padded():
+    """Aug 19 schema + ~500B of inert description text. Separates the
+    two candidate metrics: if THIS fails, the server's limit is about
+    schema bytes and the optional-count fix is aimed wrong; if it
+    passes, the limit is structural (optional properties)."""
+    s = aug19_schema()
+    s["$defs"]["monster"]["description"] = "x" * 500
     return s
 
 
@@ -71,10 +88,10 @@ TRIVIAL = {
 
 
 CASES = [
-    ("current (as deployed)", current_schema, dict(thinking=True)),
-    ("current, no thinking param", current_schema, dict(thinking=False)),
-    ("current minus chaos-spells enum", no_spells_enum, dict(thinking=True)),
-    ("aug19 last-proven schema", aug19_schema, dict(thinking=True)),
+    ("FIXED schema (required-with-sentinels, 10 optionals)", current_schema, dict(thinking=True)),
+    ("pre-fix schema (15 optionals, FAIL anchor)", pre_fix_schema, dict(thinking=True)),
+    ("aug19 last-proven schema (10 optionals, PASS anchor)", aug19_schema, dict(thinking=True)),
+    ("aug19 + 500B inert padding (byte-size probe)", aug19_padded, dict(thinking=True)),
     ("trivial one-field schema", lambda: copy.deepcopy(TRIVIAL), dict(thinking=True)),
 ]
 
