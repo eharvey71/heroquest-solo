@@ -90,12 +90,16 @@ def _defs(catalogs: Catalogs, room_ids: list) -> dict:
                         # quest (see validator/artifacts.py). Omitted
                         # from the schema entirely while the catalog is
                         # empty, same as chaos spell ids would be with
-                        # none defined.
-                        **(
-                            {"artifactId": {"type": "string", "enum": sorted(catalogs.artifacts.keys())}}
-                            if catalogs.artifacts
-                            else {}
-                        ),
+                        # none defined. Deliberately NOT enum-constrained:
+                        # adding the two artifactId enums pushed the whole
+                        # schema over the structured-outputs grammar-size
+                        # limit ("The compiled grammar is too large") and
+                        # generation started 400ing. A plain string costs
+                        # almost nothing, the prompt's ARTIFACTS section
+                        # lists the legal ids, and validator/artifacts.py
+                        # rejects unknown ones inside the existing
+                        # generate -> validate -> repair loop.
+                        **({"artifactId": {"type": "string"}} if catalogs.artifacts else {}),
                     },
                     "required": ["trap", "treasure"],
                     "additionalProperties": False,
@@ -166,12 +170,10 @@ def build_quest_json_schema(catalogs: Catalogs) -> dict:
                             # Which Artifact Card a find_artifact quest is
                             # actually after -- narration only, see
                             # validator/artifacts.py; completion still
-                            # fires on reaching `room`, unchanged.
-                            **(
-                                {"artifactId": {"type": "string", "enum": sorted(catalogs.artifacts.keys())}}
-                                if catalogs.artifacts
-                                else {}
-                            ),
+                            # fires on reaching `room`, unchanged. Plain
+                            # string, not an enum -- see the grammar-size
+                            # note on furniture's artifactId above.
+                            **({"artifactId": {"type": "string"}} if catalogs.artifacts else {}),
                         },
                         "additionalProperties": False,
                     },
