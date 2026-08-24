@@ -1,16 +1,20 @@
-# The Google stack is pinned EXACTLY, not >=. Every `firebase deploy`
-# re-resolves this file from scratch, and with >= bounds an unrelated
-# deploy silently upgrades these libraries -- which is how every
-# endpoint started failing with "InvalidArgument: 400 Invalid database
-# id %28default%29": a routine deploy pulled the day's newest
-# google-cloud-firestore/google-api-core/protobuf, and one of them
-# sends a percent-encoded database id the server rejects. These are the
-# last known-good versions (the ones the working deploys ran). When
-# upgrading deliberately, bump the pins and verify a live Firestore
-# read (any endpoint) before considering it done.
+# EVERYTHING here is pinned EXACTLY, not >=. Every `firebase deploy`
+# re-resolves this file from scratch, so with >= bounds an unrelated
+# deploy silently upgrades libraries -- which broke the app twice in
+# one day:
+# - google-cloud-firestore/google-api-core/protobuf's newest releases
+#   made every endpoint fail its first Firestore call with
+#   "InvalidArgument: 400 Invalid database id %28default%29";
+# - anthropic 1.0.0 (a major version, released after the last working
+#   deploy) made quest generation fail with "The compiled grammar is
+#   too large" on a 4.6KB schema that had generated fine for weeks.
+# These are the last known-good versions (the ones the working deploys
+# ran, mirrored from the repo venv). When upgrading deliberately, bump
+# the pins and verify a live Firestore read AND a live quest generation
+# before considering it done.
 firebase-functions==0.6.0
 firebase-admin==7.5.0
 google-cloud-firestore==2.28.1
 google-api-core==2.34.0
 protobuf==7.35.1
-anthropic>=0.69.0
+anthropic==0.123.0
