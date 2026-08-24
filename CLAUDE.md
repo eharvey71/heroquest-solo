@@ -68,7 +68,25 @@ wrong), app enforces via searched.<room>.treasureBy.
   games (runtime state). A quest never changes after generation, so the
   setup screen lists both: pick a past quest to start a fresh game on
   the same dungeon (fog, traps and monsters all reset), or resume a
-  game in progress. Generating is not the only way in.
+  game in progress. Generating is not the only way in. The setup
+  screen's list is QUEST-GROUPED, not two flat lists side by side --
+  each quest's games nest under it, since a quest is one immutable map
+  and its games are however many times it's been played. Each game
+  shows both "started" (createdAt) and "last played" (lastActionAt,
+  bumped by main._push_undo -- the one choke point nearly every
+  mutating endpoint already passes through right before its write --
+  and by undo itself, stamped fresh rather than rolled back to the
+  snapshot's old value, since undoing is an action happening now).
+  Removing a quest or a game from the list ARCHIVES it (an `archived`
+  flag, lib/archive.ts) rather than deleting -- "remove the entire
+  stack" on a quest cascades to every game played on it, found by a
+  live questId query rather than just whatever page the list already
+  had loaded, so a quest with many replays still archives completely.
+  A "Show removed" toggle brings archived rows back with a Restore
+  button. Direct Firestore writes, not a Cloud Function: firestore.rules
+  already lets the owner write quests/games directly (the same
+  boundary config/owner's claim-by-write already uses), and flipping a
+  visibility flag has no business logic to hide behind the Admin SDK.
 - Backend: Python Cloud Functions.
   - generateQuest(params) -> questId: prompt build + LLM call + validate +
     auto-repair + retry loop (max 3) + Firestore write. Client never sees

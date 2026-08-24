@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { setGameArchived, setQuestStackArchived } from "../lib/archive";
 import { createGame, generateQuest } from "../lib/functionsClient";
 import { SPELL_ELEMENTS } from "../data/heroSpells";
 import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
@@ -75,7 +76,16 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { narrative } = useQuestMap(questId ?? undefined);
   const library = useLibrary(refreshKey);
-  const continuableGames = library.games.filter((g) => g.hasChronicle);
+  // A removed game shouldn't offer itself as a campaign predecessor --
+  // it's meant to be out of the way, not still steering new quests.
+  const continuableGames = library.games.filter((g) => g.hasChronicle && !g.archived);
+
+  // Quests & Games list management: one removed game or "remove the
+  // entire stack" quest+games action never deletes anything, only
+  // hides it -- toggled back with the same button once "Show removed"
+  // is on. See lib/archive.ts.
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveBusyId, setArchiveBusyId] = useState<string | null>(null);
 
   const heroCount = selectedHeroes.size;
 
@@ -137,6 +147,32 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleToggleQuestArchived = async (quest: QuestSummary) => {
+    setArchiveBusyId(quest.id);
+    setError(null);
+    try {
+      await setQuestStackArchived(quest.id, !quest.archived);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
+
+  const handleToggleGameArchived = async (game: GameSummary) => {
+    setArchiveBusyId(game.id);
+    setError(null);
+    try {
+      await setGameArchived(game.id, !game.archived);
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setArchiveBusyId(null);
     }
   };
 
@@ -322,43 +358,116 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
 
       <hr style={{ margin: "24px 0", borderColor: "#333" }} />
 
-      <h2>Games</h2>
+      <h2>Quests &amp; Games</h2>
+      <p className="hint" style={{ maxWidth: 600 }}>
+        A quest is a fixed map and story; each game beneath it is one playthrough of it, fog of war,
+        traps and monsters all its own. Replaying a quest starts a fresh game on the same dungeon.
+      </p>
+      <label className="hint" style={{ display: "block", marginBottom: 8 }}>
+        <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show
+        removed
+      </label>
       {library.loading && <p className="hint">Loading...</p>}
       {library.error && <p style={{ color: "#e66" }}>Couldn't load past games: {library.error}</p>}
-      {!library.loading && library.games.length === 0 && <p className="hint">No games yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-        {library.games.map((game) => (
-          <li key={game.id} style={{ marginBottom: 8 }}>
-            <button onClick={() => onOpenGame(game.id)} disabled={busy}>
-              Resume
-            </button>{" "}
-            <strong>{game.questTitle ?? game.questId ?? "(quest unknown)"}</strong>{" "}
-            <span className="hint">
-              {gameLine(game)} &mdash; started {formatWhen(game.createdAt)}
-            </span>
-          </li>
-        ))}
-      </ul>
 
-      <h2 style={{ marginTop: 24 }}>Quests</h2>
-      <p className="hint" style={{ maxWidth: 600 }}>
-        A quest is a fixed map and story -- replaying one starts a brand new game on the same dungeon,
-        with fog of war, traps and monsters all reset.
-      </p>
-      {!library.loading && library.quests.length === 0 && <p className="hint">No quests generated yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-        {library.quests.map((quest) => (
-          <li key={quest.id} style={{ marginBottom: 8 }}>
-            <button onClick={() => handleReplayQuest(quest)} disabled={busy || questId === quest.id}>
-              {questId === quest.id ? "Selected" : "Play again"}
-            </button>{" "}
-            <strong>{quest.title}</strong>{" "}
-            <span className="hint">
-              {questLine(quest)} &mdash; generated {formatWhen(quest.createdAt)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {(() => {
+        const questById = new Map(library.quests.map((q) => [q.id, q]));
+        const visibleQuests = library.quests.filter((q) => showArchived || !q.archived);
+        const gamesForQuest = (id: string) =>
+          library.games
+            .filter((g) => g.questId === id && (showArchived || !g.archived))
+            .sort((a, b) => (b.lastActionAt?.getTime() ?? 0) - (a.lastActionAt?.getTime() ?? 0));
+        // A game whose quest fell off the most-recent-25 page it's own
+        // record still identifies it by title/id, so it's still usable
+        // -- it just can't be grouped under a quest row we don't have.
+        const orphanGames = library.games.filter(
+          (g) => (showArchived || !g.archived) && (!g.questId || !questById.has(g.questId))
+        );
+
+        if (!library.loading && visibleQuests.length === 0 && orphanGames.length === 0) {
+          return <p className="hint">{showArchived ? "Nothing removed." : "No quests generated yet."}</p>;
+        }
+
+        return (
+          <>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {visibleQuests.map((quest) => {
+                const games = gamesForQuest(quest.id);
+                return (
+                  <li
+                    key={quest.id}
+                    className="panel"
+                    style={{ marginBottom: 10, opacity: quest.archived ? 0.55 : 1 }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                      <div>
+                        <button onClick={() => handleReplayQuest(quest)} disabled={busy || questId === quest.id}>
+                          {questId === quest.id ? "Selected" : "Play again"}
+                        </button>{" "}
+                        <strong>{quest.title}</strong>{" "}
+                        <span className="hint">
+                          {questLine(quest)} &mdash; generated {formatWhen(quest.createdAt)}
+                        </span>
+                      </div>
+                      <button disabled={archiveBusyId === quest.id} onClick={() => handleToggleQuestArchived(quest)}>
+                        {quest.archived ? "Restore" : "Remove"}
+                      </button>
+                    </div>
+                    {games.length === 0 ? (
+                      <p className="hint" style={{ margin: "6px 0 0 20px" }}>
+                        Not played yet.
+                      </p>
+                    ) : (
+                      <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0 20px" }}>
+                        {games.map((game) => (
+                          <li key={game.id} style={{ marginBottom: 4, opacity: game.archived ? 0.55 : 1 }}>
+                            <button onClick={() => onOpenGame(game.id)} disabled={busy}>
+                              Resume
+                            </button>{" "}
+                            <span className="hint">
+                              {gameLine(game)} &mdash; started {formatWhen(game.createdAt)}, last played{" "}
+                              {formatWhen(game.lastActionAt)}
+                            </span>{" "}
+                            <button
+                              disabled={archiveBusyId === game.id}
+                              onClick={() => handleToggleGameArchived(game)}
+                            >
+                              {game.archived ? "Restore" : "Remove"}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            {orphanGames.length > 0 && (
+              <>
+                <h3 style={{ marginTop: 16 }}>Other games</h3>
+                <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                  {orphanGames.map((game) => (
+                    <li key={game.id} style={{ marginBottom: 8, opacity: game.archived ? 0.55 : 1 }}>
+                      <button onClick={() => onOpenGame(game.id)} disabled={busy}>
+                        Resume
+                      </button>{" "}
+                      <strong>{game.questTitle ?? game.questId ?? "(quest unknown)"}</strong>{" "}
+                      <span className="hint">
+                        {gameLine(game)} &mdash; started {formatWhen(game.createdAt)}, last played{" "}
+                        {formatWhen(game.lastActionAt)}
+                      </span>{" "}
+                      <button disabled={archiveBusyId === game.id} onClick={() => handleToggleGameArchived(game)}>
+                        {game.archived ? "Restore" : "Remove"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </>
+        );
+      })()}
     </div>
   );
 }

@@ -24,6 +24,9 @@ export interface QuestSummary {
   size: string | null;
   theme: string | null;
   createdAt: Date | null;
+  /** Hidden from the setup screen's list, but never deleted -- see
+   * lib/archive.ts. Removing a quest archives its games with it. */
+  archived: boolean;
 }
 
 export interface GameSummary {
@@ -35,10 +38,18 @@ export interface GameSummary {
   status: string;
   objectiveComplete: boolean;
   createdAt: Date | null;
+  /** Bumped by every mutating action (main._push_undo) and by undo
+   * itself -- when the game was last actually played, not just
+   * started. Falls back to createdAt for a game with no actions yet,
+   * or one from before this field existed. */
+  lastActionAt: Date | null;
   /** A finished game gets its chronicle written automatically; this is
    * whether that has happened yet -- only games with one can be named
    * as a campaign's predecessor (generateQuest's continuesFromGameId). */
   hasChronicle: boolean;
+  /** Hidden from the setup screen's list, but never deleted -- see
+   * lib/archive.ts. */
+  archived: boolean;
 }
 
 export interface Library {
@@ -75,6 +86,7 @@ export function useLibrary(refreshKey = 0): Library {
             objective?: { description?: string };
             generationParams?: { heroCount?: number; difficulty?: string; size?: string; theme?: string };
             createdAt?: unknown;
+            archived?: boolean;
           };
           const params = data.generationParams ?? {};
           return {
@@ -86,6 +98,7 @@ export function useLibrary(refreshKey = 0): Library {
             size: params.size ?? null,
             theme: params.theme ?? null,
             createdAt: toDate(data.createdAt),
+            archived: Boolean(data.archived),
           };
         });
 
@@ -98,7 +111,9 @@ export function useLibrary(refreshKey = 0): Library {
             status?: string;
             objectiveComplete?: boolean;
             createdAt?: unknown;
+            lastActionAt?: unknown;
             chronicle?: string;
+            archived?: boolean;
           };
           return {
             id: d.id,
@@ -111,7 +126,11 @@ export function useLibrary(refreshKey = 0): Library {
             status: data.status ?? "in_progress",
             objectiveComplete: Boolean(data.objectiveComplete),
             createdAt: toDate(data.createdAt),
+            // Absent on a game with no actions yet, or one from before
+            // this field existed -- created is the only date it has.
+            lastActionAt: toDate(data.lastActionAt) ?? toDate(data.createdAt),
             hasChronicle: Boolean(data.chronicle),
+            archived: Boolean(data.archived),
           };
         });
 

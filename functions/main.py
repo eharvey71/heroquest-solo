@@ -494,7 +494,13 @@ def create_game(req: https_fn.CallableRequest) -> dict:
 
     game_state["questId"] = quest_id
     doc_ref = db.collection("games").document()
-    doc_ref.set({**to_firestore_coords(game_state), "createdAt": firestore.SERVER_TIMESTAMP})
+    doc_ref.set(
+        {
+            **to_firestore_coords(game_state),
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "lastActionAt": firestore.SERVER_TIMESTAMP,
+        }
+    )
 
     return {"gameId": doc_ref.id}
 
@@ -615,11 +621,17 @@ def _push_undo(transaction, game_ref, before: dict, updates: dict, label: str) -
     necessary. Snapshots are full copies -- restoring has to be able to
     DROP fields the action added (a searched room, a spawned monster),
     which a field-by-field diff can't express.
+
+    Also stamps lastActionAt: every real mutating endpoint calls this
+    right before writing, so it's the one place that can bump a game's
+    "last played" time for the setup screen's list without touching
+    each endpoint individually.
     """
     depth, entry, undo_updates = build_snapshot(before, label)
     entry["state"] = to_firestore_coords(entry["state"])
     transaction.set(game_ref.collection("undo").document(snapshot_id(depth)), entry)
     updates.update(undo_updates)
+    updates["lastActionAt"] = firestore.SERVER_TIMESTAMP
 
 
 def _queue_placements(updates: dict, game_state: dict, instructions) -> None:
@@ -1995,6 +2007,13 @@ def _apply_undo(transaction, game_ref):
         restored = restore_snapshot(raw, entry)
     except NothingToUndoError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+
+    # Undoing is itself something happening right now, not a trip back
+    # in time for "last played" purposes -- restore_snapshot doesn't set
+    # this (engine/undo.py is pure and has no Firestore import to stamp
+    # a server timestamp with), so it's set here instead of rolled back
+    # to whatever the snapshot's own value was.
+    restored["lastActionAt"] = firestore.SERVER_TIMESTAMP
 
     # set(), not update(): whatever the undone action ADDED has to
     # disappear -- a searched room, a spawned monster, a sprung trap --
