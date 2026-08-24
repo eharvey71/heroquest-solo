@@ -98,10 +98,33 @@ wrong), app enforces via searched.<room>.treasureBy.
     not re-validated -- continuity is narrative, so nothing here
     constrains quest STRUCTURE the way artifacts or balance do. Setup
     screen: a "Continue from" picker lists chronicled games only.
+  - generateTurnNarration(gameId, turn) -> narration: TURN NARRATION,
+    the live counterpart to the chronicle -- one short flavor paragraph
+    (2-4 sentences) per turn, colouring that turn's own mechanical log
+    lines, not summarising the whole game (generator/narration.py).
+    Idempotent and cheap to call again: writes game.narration[turn]
+    (a map keyed by turn number, since narration for turn 5 can arrive
+    after turn 6's mechanical lines are already logged -- a flat
+    array would have no stable place to insert it) and a call for an
+    already-narrated turn returns the cached text without touching the
+    LLM. Client fires it (GameView.tsx) the moment a turn closes --
+    when game.turn advances past it, or, for the final turn, the
+    moment status becomes complete/lost (that turn never gets a
+    Zargon-turn boundary to close it the normal way). Deliberately NOT
+    backfilled for a game's whole history on load: the trigger seeds
+    its "already seen" turn to whatever the CURRENT turn is on first
+    render and only narrates turns that close after that, so opening
+    an old finished game narrates just its one final turn, not one LLM
+    call per turn ever played. Same non-transactional, no-undo-
+    snapshot reasoning as the chronicle. Rendered inline in the log
+    (GameView.tsx), grouped after the mechanical lines for the turn it
+    belongs to -- the log itself stays flat data (LogEntry[], keyed by
+    turn number per entry, not grouped), narration is spliced in at
+    render time by scanning for turn-number boundaries.
   - Zargon rules engine: deterministic code (movement, target choice,
     combat resolution). LLM is NEVER in the rules path — only quest
     generation and flavor narration (the chronicle, campaign
-    continuity).
+    continuity, turn narration).
 
 ## Design artifacts (in this repo /design)
 - board.json — 26x19 grid, 22 rooms, verified square-by-square against the

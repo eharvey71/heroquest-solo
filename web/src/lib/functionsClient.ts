@@ -55,6 +55,19 @@ export const generateChronicle = call<GenerateChronicleRequest, GenerateChronicl
   timeout: 120_000,
 });
 
+// ---- generateTurnNarration ----
+
+export interface GenerateTurnNarrationRequest {
+  gameId: string;
+  turn: number;
+}
+export interface GenerateTurnNarrationResponse {
+  narration: string;
+}
+export const generateTurnNarration = call<GenerateTurnNarrationRequest, GenerateTurnNarrationResponse>(
+  "generate_turn_narration"
+);
+
 // ---- createGame ----
 
 export interface CreateGameRequest {

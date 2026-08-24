@@ -96,6 +96,11 @@ export interface GameState {
   /** The campaign record of this playthrough, written once the quest
    * is over (generate_chronicle). Absent until generated. */
   chronicle?: string;
+  /** Per-turn flavor paragraphs, keyed by turn number as a string (a
+   * Firestore map key), written by generate_turn_narration as each
+   * turn closes. Absent for turns not yet narrated -- including every
+   * turn of a game played before this feature existed. */
+  narration?: Record<string, string>;
 }
 
 /** Heroes still on the board: the ones that can act, block squares and

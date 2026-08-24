@@ -74,9 +74,12 @@ from generator import (
     ChronicleRefused,
     ChronicleTruncated,
     GenerationResult,
+    NarrationRefused,
+    NarrationTruncated,
     QuestGenerationFailed,
     QuestGenerationRefused,
     call_chronicle_llm,
+    call_turn_narration_llm,
     generate_quest as run_generation,
 )
 from generator.fence import apply_fence
@@ -332,6 +335,81 @@ def generate_chronicle(req: https_fn.CallableRequest) -> dict:
     chronicle = _apply_generate_chronicle(db, game_ref, client)
 
     return {"chronicle": chronicle}
+
+
+def _apply_generate_turn_narration(db, game_ref, client, turn: int):
+    """Not @firestore.transactional, same reasoning as chronicle above:
+    this only ever ADDS one entry to a map keyed by a turn number that's
+    already closed (no other write ever touches that turn's log lines
+    again), so there's nothing to race and nothing to undo.
+
+    Idempotent: a turn already narrated returns the cached text instead
+    of paying for another LLM call -- the client's own dedup (see
+    GameView.tsx) should already prevent a repeat request, but a stale
+    tab or a retried call must not double-charge.
+    """
+    game_state, quest = _load_game_and_quest(db, game_ref)
+
+    existing = game_state.get("narration", {})
+    if str(turn) in existing:
+        return existing[str(turn)]
+
+    lines = [e["text"] for e in game_state.get("log", []) if e.get("turn") == turn]
+    if not lines:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message=f"turn {turn} has no log entries yet -- it hasn't closed",
+        )
+
+    try:
+        narration = call_turn_narration_llm(client, quest, turn, lines)
+    except NarrationRefused as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the narrator declined to color this turn",
+            details={"stopDetails": str(e.stop_details)},
+        ) from e
+    except NarrationTruncated as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the turn narration was cut off before it finished",
+        ) from e
+
+    game_ref.update({f"narration.{turn}": narration})
+    return narration
+
+
+@https_fn.on_call(secrets=[ANTHROPIC_API_KEY], timeout_sec=60, memory=options.MemoryOption.MB_512)
+@_surface_errors
+def generate_turn_narration(req: https_fn.CallableRequest) -> dict:
+    """Colors one closed turn's mechanical log lines with a short flavor
+    paragraph -- see generator/narration.py. The client fires this once
+    per turn as it closes, live, never retroactively for a game's whole
+    history (that's what the chronicle is for). Callable again for the
+    same turn is safe and cheap: it returns the cached text instead of
+    re-generating.
+    """
+    _require_owner(req, "sign in to narrate a turn")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    turn = data.get("turn")
+    if not isinstance(turn, int) or isinstance(turn, bool) or turn < 1:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="turn must be a positive integer")
+
+    # See generate_quest's identical comment: the anthropic package
+    # costs ~3.5s to import, paid only by the endpoints that need it.
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    narration = _apply_generate_turn_narration(db, game_ref, client, turn)
+
+    return {"narration": narration}
 
 
 def _parse_create_game_request(data) -> tuple[str, list, dict]:

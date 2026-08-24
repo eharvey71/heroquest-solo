@@ -38,6 +38,7 @@ interface RawGameDoc {
   pendingDefenses?: GameState["pendingDefenses"];
   placementInstructions?: string[];
   chronicle?: string;
+  narration?: Record<string, string>;
   log?: LogEntry[];
 }
 
@@ -72,6 +73,7 @@ function toGameState(raw: RawGameDoc): GameState {
     pendingDefenses: raw.pendingDefenses ?? [],
     placementInstructions: raw.placementInstructions ?? [],
     chronicle: raw.chronicle,
+    narration: raw.narration ?? {},
     log: raw.log ?? [],
   };
 }

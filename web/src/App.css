@@ -300,6 +300,14 @@ button.quiet {
   color: #e8b04a;
 }
 
+.log-narration {
+  list-style: none;
+  margin: 2px 0 8px -18px;
+  padding-left: 0;
+  font-style: italic;
+  color: #9fb3c8;
+}
+
 /* The quest story is read aloud once and then put away, so it opens
    over the board rather than above it -- pushing the board down to make
    room moved everything the player was looking at. */

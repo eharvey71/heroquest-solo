@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
@@ -8,6 +8,7 @@ import {
   castSpell,
   endTurn,
   generateChronicle,
+  generateTurnNarration,
   openDoor,
   recordHeroDeath,
   recordHeroDefense,
@@ -205,6 +206,46 @@ export function GameView({ gameId }: GameViewProps) {
       setChronicleError(e instanceof Error ? e.message : String(e));
     });
   }, [game?.status, game?.chronicle, chronicleRequested, gameId]);
+
+  // Colors each turn's log with a short flavor paragraph as it closes
+  // (see generator/narration.py) -- the live, turn-by-turn counterpart
+  // to the chronicle's once-per-game summary above. lastSeenTurnRef
+  // seeds itself to the CURRENT turn on first render rather than 1, so
+  // opening an old game never fires one LLM call per turn of its
+  // history at once -- only turns that close from here on get narrated.
+  // requestedRef additionally guards against asking twice for the same
+  // turn while its request is still in flight.
+  const lastSeenTurnRef = useRef<number | null>(null);
+  const narrationRequestedRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!game || game.turn === undefined) return;
+    const finished = game.status === "complete" || game.status === "lost";
+
+    function request(turn: number) {
+      if (game!.narration?.[String(turn)]) return;
+      if (narrationRequestedRef.current.has(turn)) return;
+      narrationRequestedRef.current.add(turn);
+      generateTurnNarration({ gameId, turn }).catch(() => {
+        narrationRequestedRef.current.delete(turn);
+      });
+    }
+
+    if (lastSeenTurnRef.current === null) {
+      lastSeenTurnRef.current = game.turn;
+      // A game that's already over on first load (e.g. resumed to read
+      // its log) has a final turn that will never get a Zargon-turn
+      // boundary to close it the normal way -- narrate it now.
+      if (finished) request(game.turn);
+      return;
+    }
+
+    if (game.turn !== lastSeenTurnRef.current) {
+      request(lastSeenTurnRef.current);
+      lastSeenTurnRef.current = game.turn;
+    } else if (finished) {
+      request(game.turn);
+    }
+  }, [game?.turn, game?.status, game?.narration, gameId]);
 
   // Path tracing lives HERE rather than in BoardView so that "Moving
   // Barbarian -- Confirm" can sit in the rail beside the board. Under
@@ -1085,18 +1126,37 @@ export function GameView({ gameId }: GameViewProps) {
           <div className="panel">
             <p className="panel-title">Log</p>
             <ul className="log-list" ref={logRef}>
-              {(game.log ?? []).map((entry, i) => {
-                // Tile instructions are the lines the player must act on
-                // physically, so they stay visually distinct. Matched on
-                // our own generated wording -- see the engines'
-                // placement_instruction strings.
-                const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
-                return (
-                  <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
-                    [{entry.turn}] {entry.text}
-                  </li>
-                );
-              })}
+              {(() => {
+                const entries = game.log ?? [];
+                const narration = game.narration ?? {};
+                const nodes: ReactNode[] = [];
+                const narrationLine = (turn: number) =>
+                  narration[String(turn)] && (
+                    <li key={`narration-${turn}`} className="log-narration">
+                      {narration[String(turn)]}
+                    </li>
+                  );
+                entries.forEach((entry, i) => {
+                  const prev = entries[i - 1];
+                  // A turn boundary: the previous turn's flavor line
+                  // belongs after its last log entry, not before this
+                  // turn's own first one.
+                  if (prev && prev.turn !== entry.turn) nodes.push(narrationLine(prev.turn));
+                  // Tile instructions are the lines the player must act
+                  // on physically, so they stay visually distinct.
+                  // Matched on our own generated wording -- see the
+                  // engines' placement_instruction strings.
+                  const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
+                  nodes.push(
+                    <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
+                      [{entry.turn}] {entry.text}
+                    </li>
+                  );
+                });
+                const last = entries[entries.length - 1];
+                if (last) nodes.push(narrationLine(last.turn));
+                return nodes;
+              })()}
             </ul>
           </div>
         </div>
