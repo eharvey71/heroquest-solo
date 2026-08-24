@@ -85,14 +85,7 @@ from generator import (
 from generator.fence import apply_fence
 from validator.catalogs import load_catalogs
 
-# projectId pinned explicitly: left to auto-detect, generate_quest (and
-# every other endpoint) started failing every Firestore call with
-# "InvalidArgument: 400 Invalid database id (default)" -- the web
-# client's own reads/writes against this exact project's (default)
-# database work fine, so the database itself is healthy; only the
-# Admin SDK's own project resolution was implicated. Naming the project
-# removes that ambiguity regardless of the actual root cause.
-initialize_app(options={"projectId": "hq-zargon-solo"})
+initialize_app()
 
 # All callable functions default to this region; change once the owner
 # picks a home region for the project.

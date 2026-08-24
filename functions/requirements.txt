@@ -1,3 +1,16 @@
-firebase-functions>=0.4.0
-firebase-admin>=6.5.0
+# The Google stack is pinned EXACTLY, not >=. Every `firebase deploy`
+# re-resolves this file from scratch, and with >= bounds an unrelated
+# deploy silently upgrades these libraries -- which is how every
+# endpoint started failing with "InvalidArgument: 400 Invalid database
+# id %28default%29": a routine deploy pulled the day's newest
+# google-cloud-firestore/google-api-core/protobuf, and one of them
+# sends a percent-encoded database id the server rejects. These are the
+# last known-good versions (the ones the working deploys ran). When
+# upgrading deliberately, bump the pins and verify a live Firestore
+# read (any endpoint) before considering it done.
+firebase-functions==0.6.0
+firebase-admin==7.5.0
+google-cloud-firestore==2.28.1
+google-api-core==2.34.0
+protobuf==7.35.1
 anthropic>=0.69.0
