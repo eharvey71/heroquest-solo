@@ -1,8 +1,14 @@
-"""Builds the JSON Schema passed to the LLM via output_config.format, so the
-API guarantees schema-valid JSON back (see claude-api skill: structured
-outputs). This only enforces *shape* (right fields, right types, known
-enums) — the validator (functions/validator/) still owns every geometry,
-reachability, and balance rule the schema can't express.
+"""Builds the JSON Schema for quest generation. Since Aug 2026 it is
+EMBEDDED IN THE SYSTEM PROMPT as an instruction (generator/client.py),
+not sent via output_config.format -- the API's structured-outputs
+grammar compiler started rejecting it as "too large" at a budget this
+schema had saturated exactly, on every current model (the full
+bisection story lives in client.py's docstring and
+tools/repro_grammar.py). As a prompt it has no size limit, and shape
+errors are just retryable attempts. It describes *shape* (right
+fields, right types, known enums) — the validator
+(functions/validator/) still owns every geometry, reachability, and
+balance rule the schema can't express, and is the only real gate.
 
 Uses $defs/$ref for every reused shape (room, monster, furniture, trap).
 Anthropic's structured-outputs grammar compiler caps total OPTIONAL
