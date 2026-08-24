@@ -180,3 +180,61 @@ def test_pipeline_fences_the_play_area_before_returning(good_quest_4h, good_ques
     assert fence
     assert all(catalogs.board.area_of[sq] == "CORRIDOR" for sq in fence)
     assert result.validation.ok
+
+
+# ---- prompt-embedded schema + tolerant parsing (no structured outputs;
+# see generator/client.py's module docstring for why) ----
+
+from generator.client import QuestGenerationMalformed, extract_json  # noqa: E402
+from generator.core import MALFORMED_RETRY_HINT  # noqa: E402
+
+
+def test_request_embeds_schema_in_system_prompt_not_output_config(good_quest_4h, good_quest_4h_params, catalogs):
+    client = ScriptedClient([good_quest_4h])
+    generate_quest(good_quest_4h_params, client, catalogs)
+    kwargs = client.calls[0]
+    assert "format" not in kwargs.get("output_config", {})
+    assert '"$defs"' in kwargs["system"]
+    assert "OUTPUT FORMAT" in kwargs["system"]
+
+
+def test_extract_json_strips_markdown_fences():
+    assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+
+
+def test_extract_json_tolerates_prose_around_the_object():
+    assert extract_json('Here is the quest:\n{"a": {"b": 2}}\nDone!') == {"a": {"b": 2}}
+
+
+def test_extract_json_raises_malformed_when_no_object():
+    with pytest.raises(QuestGenerationMalformed):
+        extract_json("I could not produce a quest.")
+
+
+class MalformedThenGoodClient:
+    """First call: a complete (not truncated) response that isn't JSON.
+    Second call: a valid quest. The loop must retry with the emit-JSON
+    hint rather than crashing or using the truncation hint."""
+
+    def __init__(self, good_payload):
+        self._good_payload = good_payload
+        self.calls = []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if len(self.calls) == 1:
+            return SimpleNamespace(
+                stop_reason="end_turn",
+                stop_details=None,
+                content=[SimpleNamespace(type="text", text="Sorry, here is a description instead.")],
+            )
+        return _text_response(self._good_payload)
+
+
+def test_malformed_response_retries_with_json_hint(good_quest_4h, good_quest_4h_params, catalogs):
+    client = MalformedThenGoodClient(good_quest_4h)
+    result = generate_quest(good_quest_4h_params, client, catalogs)
+    assert result.attempts == 2
+    retry_text = client.calls[1]["messages"][0]["content"]
+    assert MALFORMED_RETRY_HINT in retry_text

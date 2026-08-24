@@ -18,7 +18,7 @@ from validator.catalogs import Catalogs, load_catalogs
 from validator.core import validate_quest
 from validator.result import ValidationResult
 
-from .client import QuestGenerationTruncated, call_llm
+from .client import QuestGenerationMalformed, QuestGenerationTruncated, call_llm
 from .fence import apply_fence
 from .prompt import build_retry_message, build_system_prompt, build_user_message, pick_stairway_room
 from .repair import apply_auto_repair
@@ -27,6 +27,11 @@ from .schema import build_quest_json_schema
 TRUNCATION_RETRY_HINT = (
     "the previous response was cut off by the token limit before completing valid JSON — "
     "return a shorter quest (fewer populated rooms, or shorter backstory/revealText/completionText)"
+)
+
+MALFORMED_RETRY_HINT = (
+    "the previous response was not valid JSON -- respond with ONLY the JSON object, "
+    "no prose and no markdown fences"
 )
 
 MAX_ATTEMPTS = 3
@@ -91,6 +96,10 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> Ge
             quest = call_llm(client, system_prompt, message, schema)
         except QuestGenerationTruncated:
             last_errors = [TRUNCATION_RETRY_HINT]
+            message = build_retry_message(last_errors)
+            continue
+        except QuestGenerationMalformed:
+            last_errors = [MALFORMED_RETRY_HINT]
             message = build_retry_message(last_errors)
             continue
 

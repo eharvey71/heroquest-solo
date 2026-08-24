@@ -1,10 +1,26 @@
 """Thin wrapper around the Anthropic Messages API for quest generation.
 
-Uses output_config.format (structured outputs) so the API guarantees the
-response is valid JSON matching the schema — no markdown fences, no
-free-form prose to strip. `client` is passed in rather than constructed
-here so tests can inject a fake with a `.messages.create` method instead
-of hitting the network.
+NO structured outputs (output_config.format), deliberately, since Aug
+2026: the server's grammar compiler started rejecting this quest schema
+with "The compiled grammar is too large" at a budget so tight that the
+pre-chaos-spells schema saturated it EXACTLY -- live-API bisection
+(tools/repro_grammar.py) showed every structural addition failing, even
+two plain optional strings, on claude-opus-4-8, claude-opus-5 and
+claude-sonnet-5 alike, while byte-size padding and enum-stripping
+changed nothing. Fighting for grammar headroom would put every future
+schema field back on that knife edge.
+
+Instead the full JSON Schema (all enums intact) is embedded in the
+system prompt as an instruction, and the response is parsed here: the
+first "{" to the last "}", so a stray markdown fence costs nothing. The
+guarantee structured outputs provided was only ever shape -- the
+validator + auto-repair + retry loop (generator/core.py) has always
+been the real gate ("client never sees an unvalidated quest"), and a
+malformed response is simply one more retryable attempt
+(QuestGenerationMalformed), exactly like a validation failure.
+
+`client` is passed in rather than constructed here so tests can inject
+a fake with a `.messages.create` method instead of hitting the network.
 """
 
 from __future__ import annotations
@@ -35,16 +51,47 @@ class QuestGenerationTruncated(Exception):
         super().__init__(f"LLM response truncated (stop_reason={stop_reason}) before valid JSON completed")
 
 
+class QuestGenerationMalformed(Exception):
+    """The response finished but wasn't parseable JSON. Retryable in
+    core.py's loop, same as a validation failure."""
+
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(f"LLM response was not valid JSON: {detail}")
+
+
+SCHEMA_INSTRUCTION = """
+
+## OUTPUT FORMAT
+
+Respond with ONE JSON object and nothing else -- no prose before or
+after it, no markdown fences. It MUST conform exactly to this JSON
+Schema (every "required" field present, no properties beyond those
+listed, enum fields limited to their listed values):
+
+"""
+
+
+def extract_json(text: str) -> dict:
+    """The first "{" to the last "}" -- tolerates a stray fence or a
+    sentence of preamble without needing structured outputs."""
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end <= start:
+        raise QuestGenerationMalformed("no JSON object found in the response")
+    try:
+        return json.loads(text[start : end + 1])
+    except json.JSONDecodeError as e:
+        raise QuestGenerationMalformed(str(e)) from e
+
+
 def call_llm(client, system_prompt: str, user_message: str, schema: dict) -> dict:
     response = client.messages.create(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         thinking={"type": "adaptive"},
-        output_config={
-            "effort": "high",
-            "format": {"type": "json_schema", "schema": schema},
-        },
-        system=system_prompt,
+        output_config={"effort": "high"},
+        system=system_prompt + SCHEMA_INSTRUCTION + json.dumps(schema, indent=2),
         messages=[{"role": "user", "content": user_message}],
     )
 
@@ -56,12 +103,14 @@ def call_llm(client, system_prompt: str, user_message: str, schema: dict) -> dic
         raise QuestGenerationRefused(None)
 
     try:
-        quest = json.loads(text)
-    except json.JSONDecodeError as e:
-        # In practice a decode failure here means truncation, regardless
-        # of the exact stop_reason label — structured outputs otherwise
-        # guarantees schema-valid JSON.
-        raise QuestGenerationTruncated(response.stop_reason) from e
+        quest = extract_json(text)
+    except QuestGenerationMalformed:
+        # A response the token limit cut off is unparseable too, but it
+        # needs the "make it shorter" retry hint, not the "emit valid
+        # JSON" one.
+        if response.stop_reason == "max_tokens":
+            raise QuestGenerationTruncated(response.stop_reason) from None
+        raise
 
     return _to_canonical_shape(quest)
 

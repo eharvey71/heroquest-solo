@@ -165,12 +165,35 @@ CASES = [
 ]
 
 
+def run_full_generation(client):
+    """One real end-to-end generation through the ACTUAL pipeline
+    (prompt-embedded schema, tolerant parse, validate + repair loop) --
+    everything the deployed function does except the Firestore write.
+    Costs one real generation (~a few cents to tens of cents)."""
+    from generator.core import generate_quest
+
+    result = generate_quest(
+        {"heroCount": 2, "difficulty": "standard", "size": "short"},
+        client,
+        load_catalogs(),
+    )
+    q = result.quest
+    print(f"PASS  full generation in {result.attempts} attempt(s)")
+    print(f"      title: {q.get('title')!r}")
+    print(f"      rooms populated: {sorted(q.get('rooms', {}).keys())}")
+    print(f"      warnings: {result.validation.warnings or 'none'}")
+
+
 def main():
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         sys.exit("set ANTHROPIC_API_KEY (see module docstring)")
     client = anthropic.Anthropic(api_key=api_key)
     print(f"anthropic SDK {anthropic.__version__}, model {MODEL}\n")
+
+    if "--full" in sys.argv:
+        run_full_generation(client)
+        return
 
     for name, schema_fn, opts in CASES:
         schema = schema_fn()
