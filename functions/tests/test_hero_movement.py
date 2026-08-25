@@ -296,3 +296,41 @@ def test_a_fallen_heros_square_can_be_walked_over(catalogs):
     )
     assert result.final_pos == (start[0] + 1, start[1])
     assert result.stopped_reason is None
+
+
+def test_movement_stops_at_the_edge_of_an_open_pit(catalogs):
+    # 1989 rulebook p.19-20: crossing a SPRUNG pit is never free -- the
+    # hero jumps it or climbs in (resolve_trap_action), so the walk
+    # stops at the edge exactly like a known armed trap.
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": [{"type": "pit", "pos": [6, 1]}]}})
+    game_state = _game_state(trapsTriggered=["R2-T1"], trapsFound=["R2-T1"])
+    path = [[2, 2], [3, 2], [4, 2], [4, 1], [5, 1], [6, 1], [6, 2]]
+
+    result = resolve_hero_movement(board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id="barbarian", path=path)
+
+    assert result.stopped_reason == "open_pit"
+    assert result.stopped_at_trap_id == "R2-T1"
+    assert result.final_pos == (5, 1)  # the square before the hole
+    assert result.triggered_traps == []  # nothing new sprang
+
+
+def test_a_hero_standing_in_the_pit_climbs_out_freely(catalogs):
+    # "Normally, you can move out of a pit on your next turn" -- only
+    # ENTERING the open hole costs anything; the walk out is ordinary.
+    board = catalogs.board
+    quest = _quest(rooms={"R2": {"traps": [{"type": "pit", "pos": [6, 1]}]}})
+    game_state = _game_state(
+        heroes=[{"id": "barbarian", "pos": [6, 1], "active": True}],
+        revealed={"rooms": ["R1", "R2"], "corridorSquares": []},
+        trapsTriggered=["R2-T1"],
+        trapsFound=["R2-T1"],
+    )
+
+    result = resolve_hero_movement(
+        board=board, catalogs=catalogs, quest=quest, game_state=game_state,
+        hero_id="barbarian", path=[[6, 1], [6, 2], [7, 2]],
+    )
+
+    assert result.stopped_reason is None
+    assert result.final_pos == (7, 2)

@@ -352,6 +352,20 @@ floor). A monster standing in a sprung pit attacks with one die fewer,
 minimum one -- the rulebook's pit penalty explicitly applies to
 monsters too.
 
+An OPEN (sprung) pit is the one trap that stays interactive (rulebook
+p.19-20, verified against design/heroquest-rulebook-1989.pdf): a hero
+crossing it must JUMP (anything but a skull clears it; a skull drops
+them in for 1 Body Point) or climb in deliberately (also 1 Body
+Point), and it can never be disarmed. Movement stops at the pit's
+edge ("open_pit", same two-step shape as known_trap) and the client's
+open-pit panel resolves the choice with one-click die buttons.
+Climbing OUT is ordinary movement -- only entering costs. Monsters
+clear open pits automatically (the book says they always make the
+jump), so monster pathing treats them as passable, and the sim's
+scripted heroes auto-jump so they can't wedge behind their own pit.
+Every other sprung trap is inert: spears are gone forever, falling
+blocks become collapsedSquares.
+
 Monsters may not (1989 rulebook, Zargon's Turn page, verified against
 the owner's photos): search for treasure or secret doors, move or
 attack diagonally, pass over heroes, move through walls, OPEN OR CLOSE

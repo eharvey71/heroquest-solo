@@ -418,6 +418,20 @@ export function GameView({ gameId }: GameViewProps) {
         .map(([id, t]) => ({ id, ...t }))
     : [];
 
+  // A SPRUNG pit next to the hero: crossing the open hole is never
+  // free (rulebook p.19-20) -- jump it or climb in. Movement already
+  // stops at its edge server-side; this panel resolves the choice.
+  const adjacentOpenPits = activeHero
+    ? Object.entries(game.trapsFound ?? {})
+        .filter(([id, t]) => {
+          if (t.type !== "pit" || !(game.trapsTriggered ?? []).includes(id)) return false;
+          const dx = Math.abs(t.pos[0] - activeHero.pos[0]);
+          const dy = Math.abs(t.pos[1] - activeHero.pos[1]);
+          return dx + dy === 1;
+        })
+        .map(([id, t]) => ({ id, ...t }))
+    : [];
+
 
   const handleCastSpell = async () => {
     if (!heroId || !spellId) return;
@@ -816,6 +830,37 @@ export function GameView({ gameId }: GameViewProps) {
                 )}
                 <span className="hint">
                   A cleared jump leaves the trap ARMED &mdash; this panel stays while the hero stands next to it.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {playable && game.phase === "hero" && !waitingOnReport && adjacentOpenPits.length > 0 && (
+            <div className="alert">
+              <p className="alert-title">An open pit is beside this hero</p>
+              <div className="panel-stack">
+                {adjacentOpenPits.map((t) => (
+                  <div key={t.id} className="panel-stack">
+                    <span>
+                      Open pit at [{t.pos[0]},{t.pos[1]}] &mdash; crossing it means jumping (2 squares of movement,
+                      roll 1 combat die: anything but a skull clears it) or climbing in for 1 Body Point.
+                    </span>
+                    <div className="panel-row">
+                      <button className="primary" onClick={() => handleTrapAction(t.id, "jump", t.pos, "white_shield")} disabled={busy}>
+                        Jumped &mdash; no skull
+                      </button>
+                      <button onClick={() => handleTrapAction(t.id, "jump", t.pos, "skull")} disabled={busy}>
+                        Skull &mdash; fell in
+                      </button>
+                      <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
+                        Climb in
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <span className="hint">
+                  In the pit: attack and defend with one die fewer; climbing out is next turn&apos;s movement.
+                  Monsters clear open pits automatically.
                 </span>
               </div>
             </div>

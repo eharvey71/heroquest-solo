@@ -100,8 +100,10 @@ def test_rejects_a_trap_the_party_hasnt_found(catalogs):
 
 
 def test_rejects_an_already_sprung_trap(catalogs):
+    # A sprung SPEAR is gone forever. (A sprung PIT is the deliberate
+    # exception -- see the open-pit tests at the bottom of this file.)
     with pytest.raises(InvalidTrapActionError):
-        _call(catalogs, game_state=_state(sprung=("R2-T1",)), action="step")
+        _call(catalogs, game_state=_state(sprung=("R2-T1",)), trap_type="spear", action="step", die_face="skull")
 
 
 def test_rejects_a_hero_who_isnt_next_to_the_trap(catalogs):
@@ -131,3 +133,49 @@ def test_spear_trap_dodged_is_gone_forever(catalogs):
 def test_spear_trap_needs_the_heros_die(catalogs):
     with pytest.raises(InvalidTrapActionError):
         _call(catalogs, action="step", trap_type="spear")
+
+
+# ---- open (already-sprung) pits: the one trap that stays interactive
+# (1989 rulebook p.19-20 -- crossing the hole means jumping or
+# climbing in; it can never be disarmed) ----
+
+
+def _sprung_pit(**kw):
+    base = dict(game_state=_state(sprung=("R2-T1",)))
+    base.update(kw)
+    return base
+
+
+def test_open_pit_can_be_jumped_clear(catalogs):
+    result = _call(catalogs, **_sprung_pit(die_face="white_shield", landing=(7, 2)))
+    assert result.hero_pos == (7, 2)
+    assert result.placement_instruction is None  # the tile is already down
+
+
+def test_open_pit_jump_on_a_skull_drops_the_hero_in(catalogs):
+    result = _call(catalogs, **_sprung_pit(die_face="skull", landing=(7, 2)))
+    assert result.hero_pos == (6, 2)
+    assert "fall in" in result.log[0]
+
+
+def test_open_pit_jump_needs_the_die(catalogs):
+    with pytest.raises(InvalidTrapActionError):
+        _call(catalogs, **_sprung_pit(landing=(7, 2)))
+
+
+def test_open_pit_can_be_climbed_into(catalogs):
+    result = _call(catalogs, **_sprung_pit(action="step"))
+    assert result.hero_pos == (6, 2)
+    assert "1 Body Point" in result.log[0]
+
+
+def test_open_pit_can_never_be_disarmed(catalogs):
+    with pytest.raises(InvalidTrapActionError):
+        _call(catalogs, **_sprung_pit(action="disarm", die_face="white_shield"))
+
+
+def test_a_sprung_falling_block_stays_inert(catalogs):
+    # Only PITS stay interactive -- "once a falling block trap has been
+    # sprung ... it cannot be disarmed or jumped".
+    with pytest.raises(InvalidTrapActionError):
+        _call(catalogs, **_sprung_pit(trap_type="falling_block", die_face="white_shield", landing=(7, 2)))

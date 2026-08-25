@@ -120,12 +120,64 @@ def resolve_trap_action(
         raise InvalidTrapActionError(str(e)) from e
     hero_pos = tuple(hero["pos"])
 
-    if trap_id in set(game_state.get("trapsTriggered", [])):
+    already_sprung = trap_id in set(game_state.get("trapsTriggered", []))
+    if already_sprung and not (trap_type == "pit" and action in ("jump", "step")):
+        # A sprung pit is the one trap that stays interactive: crossing
+        # the open hole means jumping it or climbing in (1989 rulebook
+        # p.19-20). "Once a pit trap is sprung ... the trap cannot be
+        # disarmed and removed" -- and every other sprung trap is
+        # simply over.
         raise InvalidTrapActionError(f"trap '{trap_id}' has already been sprung")
     if trap_id not in set(game_state.get("trapsFound", [])):
         raise InvalidTrapActionError(f"trap '{trap_id}' hasn't been found yet -- search for traps first")
     if not _orthogonally_adjacent(hero_pos, trap_pos):
         raise InvalidTrapActionError(f"hero '{hero_id}' is not next to the trap at {list(trap_pos)}")
+
+    if already_sprung and action == "step":
+        # Climbing into the open pit deliberately. The rulebook's
+        # occupied-landing case makes the cost explicit: "you must
+        # voluntarily fall into the pit (suffering damage)". Standing
+        # in it is legal (sharing rules) and costs one attack/defend
+        # die; climbing out is next turn's movement.
+        return TrapActionResult(
+            trap_id=trap_id, action=action, sprung=True, disarmed=False, hero_pos=trap_pos,
+            log=[
+                f"{hero_id} climbs down into the open pit at [{trap_pos[0]},{trap_pos[1]}] -- "
+                f"1 Body Point of damage, and the move ends here. Attacks from the pit roll one die fewer; "
+                f"climbing out is next turn's movement."
+            ],
+        )
+
+    if already_sprung and action == "jump":
+        if die_face not in DIE_FACES:
+            raise InvalidTrapActionError(f"jumping the open pit needs the hero's die -- one of {DIE_FACES}")
+        if landing is None:
+            raise InvalidTrapActionError("a jump needs a landing square")
+        landing = tuple(landing)
+        if not _orthogonally_adjacent(landing, trap_pos) or landing == hero_pos:
+            raise InvalidTrapActionError("the landing square must be on the far side of the trap")
+        if board.area_of.get(landing) is None:
+            raise InvalidTrapActionError("the landing square is off the board")
+        occupied = {tuple(h["pos"]) for h in heroes if h["id"] != hero_id} | {
+            tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
+        }
+        if landing in occupied:
+            raise InvalidTrapActionError("the landing square is occupied")
+        if die_face == "skull":
+            return TrapActionResult(
+                trap_id=trap_id, action=action, sprung=True, disarmed=False, hero_pos=trap_pos,
+                log=[
+                    f"{hero_id} tries to jump the open pit and rolls a skull -- they fall in! "
+                    f"1 Body Point of damage, and the turn ends. The figure stands in the pit."
+                ],
+            )
+        return TrapActionResult(
+            trap_id=trap_id, action=action, sprung=True, disarmed=False, hero_pos=landing,
+            log=[
+                f"{hero_id} clears the open pit at {list(trap_pos)} and lands on {list(landing)} "
+                f"(two squares of movement)."
+            ],
+        )
 
     if action == "step" and trap_type == "spear":
         # Not a choice but a reflex: the hero is already on the square.

@@ -22,7 +22,7 @@ from engine.create_game import build_initial_game_state
 from engine.dice import roll_attack, roll_hero_defend
 from engine.doors import InvalidDoorOpenError, resolve_open_door
 from engine.end_turn import resolve_end_turn
-from engine.hero_movement import IllegalMovementError, resolve_hero_movement
+from engine.hero_movement import IllegalMovementError, _build_trap_lookup, resolve_hero_movement
 from engine.hero_status import add_status, attempt_break, blocking_status, expire_turn_statuses
 from engine.heroes import living_heroes, record_hero_death
 from engine.movement import find_path, passable_door_edges, squares_adjacent_to
@@ -273,6 +273,30 @@ def _take_hero_turn(board, catalogs, quest, game_state, card: HeroCard, body: di
     # Walked up to a closed door: opening it is the action.
     if result.stopped_reason == "closed_door" and result.stopped_at_door_id:
         _open_door(board, quest, game_state, card.id, result.stopped_at_door_id)
+        return killed
+
+    # Stopped at the edge of an open pit: the scripted hero always
+    # jumps (a real player nearly always would). 3-in-6 skull = fall
+    # in for 1 Body Point and stay in the pit; otherwise land on the
+    # square beyond if it's free. Without this the sim hero re-paths
+    # into the same pit edge every turn and wedges forever.
+    if result.stopped_reason == "open_pit" and result.stopped_at_trap_id:
+        pit_pos = next(
+            (pos for pos, (tid, _t) in _build_trap_lookup(quest).items() if tid == result.stopped_at_trap_id),
+            None,
+        )
+        if pit_pos is not None:
+            here = tuple(hero["pos"])
+            beyond = (2 * pit_pos[0] - here[0], 2 * pit_pos[1] - here[1])
+            if rng.randint(1, 6) <= 3:
+                hero["pos"] = list(pit_pos)
+                body[card.id] -= 1
+            else:
+                occupied = {tuple(h["pos"]) for h in living_heroes(game_state) if h["id"] != card.id} | {
+                    tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
+                }
+                if board.area_of.get(beyond) is not None and beyond not in occupied:
+                    hero["pos"] = list(beyond)
         return killed
 
     engaged = _adjacent_monster(game_state, tuple(hero["pos"]))

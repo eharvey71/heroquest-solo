@@ -88,8 +88,8 @@ class HeroMovementResult:
     # but not yet resolved -- the hero still owes a die roll.
     newly_found_traps: list[TriggeredTrap] = field(default_factory=list)
     # None means the full requested path was walked without interruption.
-    # "closed_door" | "known_trap" | "trap_sprung" | "monster_blocked"
-    # | "furniture_blocked" | "no_door" | "off_board"
+    # "closed_door" | "known_trap" | "open_pit" | "trap_sprung"
+    # | "monster_blocked" | "furniture_blocked" | "no_door" | "off_board"
     stopped_reason: str | None = None
     stopped_at_door_id: str | None = None
     stopped_at_trap_id: str | None = None
@@ -266,6 +266,22 @@ def resolve_hero_movement(
             newly_revealed_corridor.append(cur)
 
         trap = trap_lookup.get(cur)
+        if trap is not None and trap[0] in traps_sprung and trap[1] == "pit":
+            # An OPEN pit (1989 rulebook p.19-20): crossing it is never
+            # free. The hero must JUMP it -- anything but a skull clears
+            # it, a skull drops them in for 1 Body Point -- or climb in
+            # deliberately (also 1 Body Point; monsters, by contrast,
+            # always clear pits automatically). Same two-step shape as a
+            # known trap: stop at the edge, resolve_trap_action collects
+            # the choice and the die.
+            stopped_reason = "open_pit"
+            stopped_trap_id = trap[0]
+            log.append(
+                f"{hero_id} stops at the edge of the open pit at [{cur[0]},{cur[1]}] -- "
+                f"jump it (roll 1 combat die) or climb in."
+            )
+            break
+
         if trap is not None and trap[0] not in traps_sprung and trap[0] in traps_found:
             # The party already knows this one is here. Walking on would
             # spring it, so stop and let the hero decide.
