@@ -189,6 +189,56 @@ export function BoardView({
           blockedSquares={blockedSquares}
         />
         <Furniture cellSize={cellSize} furniture={furniture} revealed={revealed} />
+        {/* Traps the party knows about. Only trapsFound entries exist
+            client-side (hidden ones stay in quest data server-side):
+            armed ones get a warning marker, and a SPRUNG pit keeps a
+            persistent open-pit ring -- its tile stays on the physical
+            board, and it vanishing from the app read as a bug. Sprung
+            spears are gone forever and falling blocks become collapsed
+            (blocked) squares, so neither draws here. */}
+        <g>
+          {Object.entries(gameState.trapsFound ?? {})
+            .filter(([, t]) => t.pos && revealed.has(squareKey(t.pos[0], t.pos[1])))
+            .map(([id, t]) => {
+              const sprung = (gameState.trapsTriggered ?? []).includes(id);
+              const cx = (t.pos[0] + 0.5) * cellSize;
+              const cy = (t.pos[1] + 0.5) * cellSize;
+              if (sprung) {
+                if (t.type !== "pit") return null;
+                return (
+                  <circle
+                    key={`trap-${id}`}
+                    cx={cx}
+                    cy={cy}
+                    r={cellSize * 0.34}
+                    fill="#0d0b08"
+                    stroke="#6b5b3e"
+                    strokeWidth={2}
+                  />
+                );
+              }
+              return (
+                <g key={`trap-${id}`}>
+                  <path
+                    d={`M ${cx} ${cy - cellSize * 0.32} L ${cx + cellSize * 0.3} ${cy + cellSize * 0.24} L ${cx - cellSize * 0.3} ${cy + cellSize * 0.24} Z`}
+                    fill="#e8b04a"
+                    stroke="#3a2f16"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={cx}
+                    y={cy + cellSize * 0.18}
+                    textAnchor="middle"
+                    fontSize={cellSize * 0.42}
+                    fontWeight={700}
+                    fill="#3a2f16"
+                  >
+                    !
+                  </text>
+                </g>
+              );
+            })}
+        </g>
         <PathOverlay cellSize={cellSize} path={path} />
         <Tokens
           cellSize={cellSize}
@@ -205,9 +255,11 @@ export function BoardView({
           ["#7fd67f", "open door"],
           ["#d69a4a", "closed door"],
           ["#e8c34a", "stairway"],
+          ["#e8b04a", "known trap (still armed)"],
+          ["#0d0b08", "open pit (sprung)"],
         ].map(([colour, label]) => (
           <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-            <span style={{ width: 12, height: 4, background: colour, display: "inline-block" }} />
+            <span style={{ width: 12, height: 4, background: colour, display: "inline-block", border: "1px solid #555" }} />
             {label}
           </span>
         ))}

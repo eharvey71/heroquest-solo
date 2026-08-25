@@ -748,13 +748,19 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         "trapsTriggered": sorted(result.traps_triggered),
         "collapsedSquares": to_firestore_coords(sorted(result.collapsed_squares)),
     }
-    # A spear trap is discovered by stepping on it. Merge it into the
-    # {trapId: {type,pos}} map rather than rewriting the field from a
-    # set of ids, which would throw every stored position away.
-    if result.newly_found_traps:
+    # A spear trap is discovered by stepping on it; a pit or falling
+    # block sprung outright is no longer hidden either -- there's a
+    # physical tile on the square now. Both merge into the
+    # {trapId: {type,pos}} map (rather than rewriting the field from a
+    # set of ids, which would throw every stored position away): armed
+    # entries drive the known-trap panel, and entries also present in
+    # trapsTriggered are what lets the board KEEP drawing an open pit --
+    # without the position here, a sprung pit vanished from the client
+    # entirely even though its tile stays on the physical board.
+    if result.newly_found_traps or result.triggered_traps:
         existing_found = game_state.get("trapsFound", {})
         traps_found = dict(existing_found) if isinstance(existing_found, dict) else {t: {} for t in existing_found}
-        for t in result.newly_found_traps:
+        for t in [*result.newly_found_traps, *result.triggered_traps]:
             traps_found[t.trap_id] = {"type": t.trap_type, "pos": list(t.pos)}
         updates["trapsFound"] = to_firestore_coords(traps_found)
 

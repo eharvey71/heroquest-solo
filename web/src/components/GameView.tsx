@@ -441,7 +441,10 @@ export function GameView({ gameId }: GameViewProps) {
   const handleTrapAction = async (
     trapId: string,
     action: "jump" | "disarm" | "step",
-    trapPos: Coord
+    trapPos: Coord,
+    // Spear rows report the die with the button itself (one click);
+    // everything else reads the dropdown.
+    dieFaceOverride?: CombatDieFace
   ) => {
     if (!heroId || !activeHero) return;
     // Jump lands on the square directly beyond, in the direction of travel.
@@ -449,13 +452,18 @@ export function GameView({ gameId }: GameViewProps) {
       trapPos[0] + (trapPos[0] - activeHero.pos[0]),
       trapPos[1] + (trapPos[1] - activeHero.pos[1]),
     ];
+    // dieFace ALWAYS goes along: a step onto a spear is a reflex roll
+    // the server refuses to resolve without it, and the extra field is
+    // ignored where it isn't needed. Omitting it for "step" made the
+    // Step button error out on every spear no matter what die the
+    // dropdown showed.
     const result = await runAction(() =>
       resolveTrapAction({
         gameId,
         heroId,
         trapId,
         action,
-        ...(action === "step" ? {} : { dieFace: trapDieFace }),
+        dieFace: dieFaceOverride ?? trapDieFace,
         ...(action === "jump" ? { landing } : {}),
         ...(action === "disarm" ? { hasToolKit } : {}),
       })
@@ -649,7 +657,10 @@ export function GameView({ gameId }: GameViewProps) {
             doors={resolvedDoors}
             stairway={stairway}
             furniture={furniture}
-            blockedSquares={blockedSquares}
+            // A square sealed by a sprung falling block is physically a
+            // blocked square from then on -- drawn the same way, so the
+            // player sees WHY the tracer refuses it.
+            blockedSquares={[...blockedSquares, ...(game.collapsedSquares ?? [])]}
             activeHeroId={heroId}
             activeMonsterId={attackMonsterId}
             attackingMonsterIds={attackingMonsterIds}
@@ -743,41 +754,69 @@ export function GameView({ gameId }: GameViewProps) {
 
           {playable && game.phase === "hero" && !waitingOnReport && adjacentKnownTraps.length > 0 && (
             <div className="alert">
-              <p className="alert-title">A known trap is underfoot</p>
+              <p className="alert-title">A known trap is beside this hero</p>
               <div className="panel-stack">
+                {adjacentKnownTraps.map((t) =>
+                  t.type === "spear" ? (
+                    // A spear is a reflex, not a choice: the hero
+                    // stepped onto it and owes exactly one die. One
+                    // click reports it -- no dropdown, no separate
+                    // confirm.
+                    <div key={t.id} className="panel-stack">
+                      <span>
+                        Spear trap at [{t.pos[0]},{t.pos[1]}] &mdash; roll 1 combat die and press the face you rolled.
+                        A skull costs 1 Body Point and ends the turn; either shield dodges it and the spear is gone.
+                      </span>
+                      <div className="panel-row">
+                        <button className="primary" onClick={() => handleTrapAction(t.id, "step", t.pos, "skull")} disabled={busy}>
+                          Skull
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "step", t.pos, "white_shield")} disabled={busy}>
+                          White shield
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "step", t.pos, "black_shield")} disabled={busy}>
+                          Black shield
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={t.id} className="panel-stack">
+                      <span>
+                        {t.type === "falling_block" ? "Falling block" : "Pit"} trap at [{t.pos[0]},{t.pos[1]}] &mdash;
+                        still armed. Jump and Disarm need a die roll (set it below first); stepping on just springs
+                        it, no roll. Or simply walk another way &mdash; it only matters if you cross its square.
+                      </span>
+                      <div className="panel-row">
+                        <label>
+                          Die rolled:{" "}
+                          <select value={trapDieFace} onChange={(e) => setTrapDieFace(e.target.value as CombatDieFace)}>
+                            <option value="skull">skull</option>
+                            <option value="white_shield">white shield</option>
+                            <option value="black_shield">black shield</option>
+                          </select>
+                        </label>
+                        <label>
+                          <input type="checkbox" checked={hasToolKit} onChange={(e) => setHasToolKit(e.target.checked)} />{" "}
+                          tool kit
+                        </label>
+                      </div>
+                      <div className="panel-row">
+                        <button onClick={() => handleTrapAction(t.id, "jump", t.pos)} disabled={busy}>
+                          Jump (skull springs it)
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "disarm", t.pos)} disabled={busy}>
+                          Disarm
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
+                          Step on it (springs it)
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
                 <span className="hint">
-                  Roll 1 combat die and report the face &mdash; the app never rolls it for you.
+                  A cleared jump leaves the trap ARMED &mdash; this panel stays while the hero stands next to it.
                 </span>
-                <div className="panel-row">
-                  <label>
-                    Die:{" "}
-                    <select value={trapDieFace} onChange={(e) => setTrapDieFace(e.target.value as CombatDieFace)}>
-                      <option value="skull">skull</option>
-                      <option value="white_shield">white shield</option>
-                      <option value="black_shield">black shield</option>
-                    </select>
-                  </label>
-                  <label>
-                    <input type="checkbox" checked={hasToolKit} onChange={(e) => setHasToolKit(e.target.checked)} />{" "}
-                    tool kit
-                  </label>
-                </div>
-                {adjacentKnownTraps.map((t) => (
-                  <div key={t.id} className="panel-row">
-                    <span>
-                      {t.type} at [{t.pos[0]},{t.pos[1]}]
-                    </span>
-                    <button onClick={() => handleTrapAction(t.id, "jump", t.pos)} disabled={busy}>
-                      Jump
-                    </button>
-                    <button onClick={() => handleTrapAction(t.id, "disarm", t.pos)} disabled={busy}>
-                      Disarm
-                    </button>
-                    <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
-                      Step on it
-                    </button>
-                  </div>
-                ))}
               </div>
             </div>
           )}
