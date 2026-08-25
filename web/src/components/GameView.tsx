@@ -15,6 +15,7 @@ import {
   resolveHeroAttack,
   resolveMovement,
   resolveTrapAction,
+  resolveTreasureDraw,
   resolveZargonTurn,
   rollZargonTurnType,
   searchTrapsAndSecretDoors,
@@ -86,7 +87,6 @@ export function GameView({ gameId }: GameViewProps) {
   const { game, loading, error } = useLiveGame(gameId);
 
   const [heroId, setHeroId] = useState<string>("");
-  const [wanderingDrawn, setWanderingDrawn] = useState(false);
   const [attackMonsterId, setAttackMonsterId] = useState<string>("");
   const [attackSkulls, setAttackSkulls] = useState(0);
   const [spellId, setSpellId] = useState("");
@@ -300,6 +300,12 @@ export function GameView({ gameId }: GameViewProps) {
   // entry leaves the queue (defence reported, undone, or the turn
   // that raised it undone).
   const attackingMonsterIds = new Set(pendingDefenses.map((d) => d.monsterId).filter((id): id is string => !!id));
+  // A treasure search whose physical card hasn't been reported yet --
+  // the app can't rule on anything else until it hears whether the
+  // wandering monster came up, so this gates actions exactly like an
+  // unanswered defence roll (and the server enforces the same).
+  const pendingTreasureDraw = game.pendingTreasureDraw ?? null;
+  const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw;
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
   // Keyed on the instruction text so a NEW reveal (different content)
@@ -465,13 +471,17 @@ export function GameView({ gameId }: GameViewProps) {
 
   const handleSearchTreasure = async () => {
     if (!activeHeroRoomId || !heroId) return;
-    const result = await runAction(() =>
-      searchTreasure({ gameId, heroId, roomId: activeHeroRoomId, wanderingMonsterDrawn: wanderingDrawn })
-    );
-    if (!result) return;
-    setWanderingDrawn(false);
-    // A drawn wandering monster attacks at once; search_treasure queues
-    // that prompt in the game document, so it arrives with the live
+    // No wanderingMonsterDrawn flag: the player can't know what the
+    // card is until AFTER this call rules the search legal and
+    // un-trapped. The server leaves pendingTreasureDraw on the game and
+    // the "Draw a treasure card" prompt takes it from there.
+    await runAction(() => searchTreasure({ gameId, heroId, roomId: activeHeroRoomId }));
+  };
+
+  const handleResolveTreasureDraw = async (wanderingMonsterDrawn: boolean) => {
+    await runAction(() => resolveTreasureDraw({ gameId, wanderingMonsterDrawn }));
+    // A drawn wandering monster attacks at once; the server queues that
+    // defence prompt in the game document, so it arrives with the live
     // state like any other.
   };
 
@@ -674,6 +684,31 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
+          {pendingTreasureDraw && (
+            <div className="alert">
+              <p className="alert-title">Draw a treasure card</p>
+              <div className="panel-stack">
+                <span>
+                  Draw ONE card from the treasure deck for{" "}
+                  {game.heroes.find((h) => h.id === pendingTreasureDraw.heroId)?.name ?? "the searcher"}. Was it the
+                  wandering monster?
+                </span>
+                <div className="panel-row">
+                  <button className="primary" onClick={() => handleResolveTreasureDraw(true)} disabled={busy}>
+                    Wandering monster!
+                  </button>
+                  <button onClick={() => handleResolveTreasureDraw(false)} disabled={busy}>
+                    No &mdash; an ordinary card
+                  </button>
+                </div>
+                <span className="hint">
+                  Any other card &mdash; gold, a potion, a hazard &mdash; is yours to resolve at the table; the app
+                  never needs to see it.
+                </span>
+              </div>
+            </div>
+          )}
+
           {activeHeroStatuses.length > 0 && (
             <div className="alert alert-spell">
               <p className="alert-title">
@@ -706,7 +741,7 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {playable && game.phase === "hero" && pendingDefenses.length === 0 && adjacentKnownTraps.length > 0 && (
+          {playable && game.phase === "hero" && !waitingOnReport && adjacentKnownTraps.length > 0 && (
             <div className="alert">
               <p className="alert-title">A known trap is underfoot</p>
               <div className="panel-stack">
@@ -788,14 +823,14 @@ export function GameView({ gameId }: GameViewProps) {
                 {!pathInput.blockedHint && pathInput.endSquareOccupied && (
                   <span style={{ color: "#e6a23b" }}>can&apos;t end the move on an occupied square</span>
                 )}
-                {pendingDefenses.length > 0 && (
-                  <span className="hint">Report the defence roll(s) above before confirming a move.</span>
+                {waitingOnReport && (
+                  <span className="hint">Answer the prompt(s) above before confirming a move.</span>
                 )}
                 <div className="panel-row">
                   <button
                     className="primary"
                     onClick={handleConfirmTracedMove}
-                    disabled={busy || !pathInput.canConfirm || pendingDefenses.length > 0}
+                    disabled={busy || !pathInput.canConfirm || waitingOnReport}
                   >
                     Confirm move
                   </button>
@@ -813,14 +848,17 @@ export function GameView({ gameId }: GameViewProps) {
                 {openAction ? ACTION_LABELS[openAction] : "Action — one per turn"}
               </p>
 
-              {pendingDefenses.length > 0 ? (
-                // A hit against this hero (or a teammate) from Zargon's
-                // last turn is still unresolved. The physical rulebook
-                // treats defending as part of that attack, not a task
-                // deferred to whenever the hero gets around to it --
+              {waitingOnReport ? (
+                // A hit from Zargon's last turn is unresolved, or a
+                // treasure card is drawn but unreported. Physically
+                // you'd resolve either before doing anything else --
                 // so no other action (or ending the turn) is available
                 // until every prompt above is answered.
-                <p className="hint">Report the defence roll(s) above before anyone can act.</p>
+                <p className="hint">
+                  {pendingDefenses.length > 0
+                    ? "Report the defence roll(s) above before anyone can act."
+                    : "Report the treasure card above before anyone can act."}
+                </p>
               ) : (
                 <>
               {openAction === null && (
@@ -914,20 +952,15 @@ export function GameView({ gameId }: GameViewProps) {
                       Secret doors
                     </button>
                   </div>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={wanderingDrawn}
-                      onChange={(e) => setWanderingDrawn(e.target.checked)}
-                    />{" "}
-                    wandering monster card drawn
-                  </label>
                   <span className="hint">
                     {heroSearchedTreasureHere
                       ? "This hero already searched here for treasure -- once per hero per room."
                       : roomAlreadySearchedTraps
                         ? "Traps found. Trapped furniture is safe to open now."
                         : "Searching for treasure before traps sets off any trapped chest in the room."}
+                  </span>
+                  <span className="hint">
+                    Treasure: press first, draw after &mdash; the app will ask what the card was.
                   </span>
                   <div>
                     <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>

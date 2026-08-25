@@ -47,10 +47,19 @@ secret" -- it is not a claim the door stands open on turn 1, and
 taking it literally let heroes walk straight into unrevealed rooms.
 Opening a door REPLACES the closed piece with an open one (see the
 component notes below). Treasure searches use the physical
-treasure deck; the app only needs to know if a wandering monster is drawn
-(button for it). One treasure search per HERO per room (owner verified
-against the 1989 rulebook; an earlier "once per room total" reading was
-wrong), app enforces via searched.<room>.treasureBy.
+treasure deck; the app only needs to know if a wandering monster is
+drawn, and it asks AFTER the draw, not before: pressing Search ->
+Treasure rules the search legal and un-trapped, tells the player to
+draw ONE card, and leaves pendingTreasureDraw on the game;
+resolve_treasure_draw answers "was it the wandering monster?" (a
+checkbox asked BEFORE the search was tried and scrapped -- the player
+can't know yet, and a chest trap can mean no card is drawn at all).
+While the answer is owed, every other action and End Turn are blocked,
+client and server both -- same pattern, same guard
+(_require_no_pending_defenses) as the defence queue. One treasure
+search per HERO per room (owner verified against the 1989 rulebook;
+an earlier "once per room total" reading was wrong), app enforces via
+searched.<room>.treasureBy.
 
 ## Architecture
 - Frontend: React + SVG/Canvas grid, Firebase Hosting. Renders board,
@@ -560,7 +569,7 @@ or armor card. See data/README.md for the full breakdown.
 Two distinct wandering-monster mechanics, different placement rules —
 do not conflate them:
 - **Treasure-card wandering** (drawn during a physical treasure
-  search, the "wandering monster?" button): rulebook-mandated, not a
+  search, reported via resolve_treasure_draw): rulebook-mandated, not a
   design choice. Appears ADJACENT to the searching hero, IN THE
   SEARCHER'S OWN ROOM, and attacks immediately. In-room matters: an
   adjacent square across a wall belongs to the next room, which is

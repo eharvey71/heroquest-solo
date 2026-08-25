@@ -93,6 +93,12 @@ export interface GameState {
   /** "Place the X at [x,y]" lines the player still has to act on with
    * physical tiles and minis. Cleared when the hero phase ends. */
   placementInstructions?: string[];
+  /** A treasure search happened and the physical card is in the
+   * player's hand -- the app is waiting to hear whether it was the
+   * wandering monster (resolve_treasure_draw). Blocks every other
+   * action, same as pendingDefenses. Null/absent when nothing is
+   * owed. */
+  pendingTreasureDraw?: { heroId: string; roomId: string } | null;
   /** The campaign record of this playthrough, written once the quest
    * is over (generate_chronicle). Absent until generated. */
   chronicle?: string;

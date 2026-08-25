@@ -80,9 +80,12 @@ place it deliberately, one of two ways:
   find en route, not the point of the quest.
 At most one placement per artifact per quest (there is one physical
 card of each), and a quest need not use any. When you do use one,
-reference its real name and effect in your prose (backstory,
-completionText, or the room's revealText) -- the card text above is
-what to draw from.
+reference its real name in your prose (backstory, completionText, or
+the room's revealText) and describe what legend says it does IN-WORLD
+-- "a blade forged to bite deep into orcish hide", never the card's
+game mechanics. Words like dice, combat dice, attack, defend, Body
+Points, roll, or +N must NEVER appear in prose: the physical card
+carries the rules, and rules-speak breaks the read-aloud voice.
 """
 
 

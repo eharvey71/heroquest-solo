@@ -128,6 +128,9 @@ export interface SearchTreasureRequest {
   gameId: string;
   heroId: string;
   roomId: string;
+  /** LEGACY single-call flow only. The live client omits it: the search
+   * leaves pendingTreasureDraw on the game, and resolveTreasureDraw
+   * reports the card AFTER the player has actually drawn it. */
   wanderingMonsterDrawn?: boolean;
 }
 export interface MonsterAttack {
@@ -155,6 +158,21 @@ export interface SearchTreasureResponse {
   log: string[];
 }
 export const searchTreasure = call<SearchTreasureRequest, SearchTreasureResponse>("search_treasure");
+
+// ---- resolveTreasureDraw ----
+
+export interface ResolveTreasureDrawRequest {
+  gameId: string;
+  /** Whether the physical card just drawn was the wandering monster. */
+  wanderingMonsterDrawn: boolean;
+}
+export interface ResolveTreasureDrawResponse {
+  wanderingMonsterDrawn: boolean;
+  log: string[];
+}
+export const resolveTreasureDraw = call<ResolveTreasureDrawRequest, ResolveTreasureDrawResponse>(
+  "resolve_treasure_draw"
+);
 
 // ---- searchTrapsAndSecretDoors ----
 

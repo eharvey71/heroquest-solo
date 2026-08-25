@@ -37,6 +37,7 @@ interface RawGameDoc {
   undoLabel?: string;
   pendingDefenses?: GameState["pendingDefenses"];
   placementInstructions?: string[];
+  pendingTreasureDraw?: GameState["pendingTreasureDraw"];
   chronicle?: string;
   narration?: Record<string, string>;
   log?: LogEntry[];
@@ -72,6 +73,7 @@ function toGameState(raw: RawGameDoc): GameState {
     undoLabel: raw.undoLabel,
     pendingDefenses: raw.pendingDefenses ?? [],
     placementInstructions: raw.placementInstructions ?? [],
+    pendingTreasureDraw: raw.pendingTreasureDraw ?? null,
     chronicle: raw.chronicle,
     narration: raw.narration ?? {},
     log: raw.log ?? [],

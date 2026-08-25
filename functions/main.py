@@ -39,7 +39,7 @@ from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
-from engine.end_turn import DefencesPendingError, NotHeroPhaseError, resolve_end_turn
+from engine.end_turn import DefencesPendingError, NotHeroPhaseError, TreasureDrawPendingError, resolve_end_turn
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.hero_spells import (
     HeroSpellUnavailableError,
@@ -66,7 +66,12 @@ from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
 from engine.trap_action import InvalidTrapActionError, TRAP_ACTIONS, resolve_trap_action
 from engine.trap_search import SEARCH_TYPES, resolve_trap_search
 from engine.undo import NothingToUndoError, build_snapshot, restore as restore_snapshot, snapshot_id
-from engine.treasure import InvalidTreasureSearchError, RoomNotFoundError, resolve_treasure_search
+from engine.treasure import (
+    InvalidTreasureSearchError,
+    RoomNotFoundError,
+    resolve_treasure_card,
+    resolve_treasure_search,
+)
 from engine.zargon_turn import _monster_defs, resolve_zargon_turn as resolve_zargon_turn_engine
 from firestore_coords import from_firestore_coords, to_firestore_coords
 from owner import check_owner
@@ -603,11 +608,23 @@ def _require_no_pending_defenses(game_state: dict) -> None:
     (the escape hatch out of a stuck state), or resolve_zargon_turn
     (can only run in Zargon's phase, which end_turn already refuses to
     reach with anything still open).
+
+    Also refuses while a treasure-card draw is unanswered
+    (pendingTreasureDraw, cleared only by resolve_treasure_draw --
+    which therefore doesn't call this either): the search happened,
+    the physical card is in the player's hand, and the app can't rule
+    on anything else until it hears whether that card was the
+    wandering monster.
     """
     if game_state.get("pendingDefenses"):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message="report the outstanding defence roll(s) before acting",
+        )
+    if game_state.get("pendingTreasureDraw"):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="answer whether the treasure card was a wandering monster first",
         )
 
 
@@ -858,7 +875,7 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
         result = _apply_end_turn(transaction, game_ref)
     except NotHeroPhaseError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
-    except DefencesPendingError as e:
+    except (DefencesPendingError, TreasureDrawPendingError) as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
     return {"phase": result.new_phase, "heroPhaseSegment": result.new_segment}
@@ -994,11 +1011,35 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
         )
     else:
         updates[f"searched.{room_id}.treasureBy"] = firestore.ArrayUnion([hero_id])
+        if wandering_monster_drawn is None:
+            # The live two-step flow: the app has now ruled the search
+            # legal and un-trapped, so THIS is the moment the player
+            # draws the physical card -- and the app owes them the
+            # question of what it was (resolve_treasure_draw). Game
+            # state, not client state, for the same reasons the defence
+            # queue is: undo takes it back, a refresh keeps it.
+            updates["pendingTreasureDraw"] = {"heroId": hero_id, "roomId": room_id}
+            new_log_entries.append(
+                {"turn": turn, "text": "Draw ONE treasure card from the deck, then report what it was."}
+            )
+            updates["log"] = existing_log + new_log_entries
 
-    if result.spawned_monster:
+    _write_treasure_card_outcome(updates, game_state, turn, hero_id, result.spawned_monster, result.monster_attack)
+    _queue_placements(updates, game_state, result.placement_instructions)
+    _push_undo(transaction, game_ref, before, updates, "the treasure search")
+    transaction.update(game_ref, updates)
+    return result
+
+
+def _write_treasure_card_outcome(updates, game_state, turn, hero_id, spawn, monster_attack):
+    """Monster doc + defence prompt + placement line for a drawn
+    wandering-monster card (engine/treasure.resolve_treasure_card's
+    result). Shared by resolve_treasure_draw (the live flow) and the
+    legacy report-with-the-search path."""
+    new_monster_id = None
+    if spawn:
         existing_ids = set(game_state.get("monsters", {}).keys())
         new_monster_id = _next_wandering_monster_id(existing_ids)
-        spawn = result.spawned_monster
         catalog_entry = _catalogs.monsters.get(spawn["type"], {})
         updates[f"monsters.{new_monster_id}"] = to_firestore_coords(
             {
@@ -1013,47 +1054,42 @@ def _apply_search_treasure(transaction, db, game_ref, hero_id, room_id, wanderin
     # prompt joins the queue (see _apply_zargon_turn for why the queue
     # is game state). APPENDED, not written whole: a prompt from
     # Zargon's last turn may still be unanswered.
-    if result.monster_attack:
+    if monster_attack:
         hero_ids_by_name = {h.get("name"): h.get("id") for h in game_state.get("heroes", [])}
         updates["pendingDefenses"] = list(game_state.get("pendingDefenses", [])) + [
             {
                 "id": f"{turn}:treasure:{hero_id}",
-                "heroId": hero_ids_by_name.get(result.monster_attack.hero_name, ""),
-                "heroName": result.monster_attack.hero_name,
-                "skulls": result.monster_attack.skulls,
+                "heroId": hero_ids_by_name.get(monster_attack.hero_name, ""),
+                "heroName": monster_attack.hero_name,
+                "skulls": monster_attack.skulls,
                 # The card's monster is a stranger -- the player has
                 # never seen this figure before and needs to be told
                 # what it is and where to stand it.
                 "monsterId": new_monster_id,
-                "monsterName": result.spawned_monster["type"],
-                "pos": list(result.spawned_monster["pos"]),
+                "monsterName": spawn["type"],
+                "pos": list(spawn["pos"]),
             }
         ]
 
-    _queue_placements(
-        updates,
-        game_state,
-        [*result.placement_instructions,
-         result.spawned_monster["placementInstruction"] if result.spawned_monster else None],
-    )
-    _push_undo(transaction, game_ref, before, updates, "the treasure search")
-    transaction.update(game_ref, updates)
-    return result
+    if spawn:
+        _queue_placements(updates, game_state, [spawn["placementInstruction"]])
 
 
 @https_fn.on_call()
 @_surface_errors
 def search_treasure(req: https_fn.CallableRequest) -> dict:
     """The owner draws from the real treasure deck (entirely physical
-    -- the app never learns what was drawn) and reports only whether
-    the wandering-monster card came up, via wanderingMonsterDrawn.
-    Enforces one treasure search per hero per room (1989 rulebook,
-    see engine/treasure.py). If the card was
-    drawn, spawns the quest's wandering-monster type adjacent to the
-    searching hero and rolls its attack immediately -- rulebook-
-    mandated, see engine/treasure.py. The hero then defends with their
-    own physical dice and reports shields via record_hero_defense, same
-    as any other monster attack.
+    -- the app never learns what was drawn). Enforces one treasure
+    search per hero per room (1989 rulebook, see engine/treasure.py).
+
+    The card is reported AFTER the draw, not with the search: this
+    call rules the search legal and un-trapped, tells the player to
+    draw, and leaves pendingTreasureDraw on the game; the follow-up
+    resolve_treasure_draw hears whether the card was the wandering
+    monster. (The old wanderingMonsterDrawn boolean asked the player
+    to answer before they had drawn -- backwards at the table -- and
+    is kept only so a stale client keeps working: passing it, true or
+    false, resolves everything in this one call as before.)
     """
     _require_owner(req, "sign in to play")
 
@@ -1061,7 +1097,9 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
     game_id = data.get("gameId")
     hero_id = data.get("heroId")
     room_id = data.get("roomId")
-    wandering_monster_drawn = data.get("wanderingMonsterDrawn", False)
+    # Tri-state: absent = the live two-step flow; an explicit boolean =
+    # the legacy single-call flow.
+    wandering_monster_drawn = data.get("wanderingMonsterDrawn", None)
 
     if not isinstance(game_id, str) or not game_id:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
@@ -1069,7 +1107,7 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="heroId is required")
     if not isinstance(room_id, str) or not room_id:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="roomId is required")
-    if not isinstance(wandering_monster_drawn, bool):
+    if wandering_monster_drawn is not None and not isinstance(wandering_monster_drawn, bool):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="wanderingMonsterDrawn must be a boolean"
         )
@@ -1105,6 +1143,80 @@ def search_treasure(req: https_fn.CallableRequest) -> dict:
         ),
         "log": result.log,
     }
+
+
+@firestore.transactional
+def _apply_resolve_treasure_draw(transaction, db, game_ref, wandering_monster_drawn):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    # NOT _require_no_pending_defenses: this call is what clears
+    # pendingTreasureDraw, the very state that guard also refuses on.
+    before = copy.deepcopy(game_state)
+
+    pending = game_state.get("pendingTreasureDraw")
+    if not pending:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="no treasure card is waiting to be reported",
+        )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    # None, not DELETE_FIELD, matching how the defence queue empties --
+    # every reader (client and server) checks truthiness.
+    updates: dict = {"pendingTreasureDraw": None}
+
+    if wandering_monster_drawn:
+        card = resolve_treasure_card(
+            board=_catalogs.board,
+            catalogs=_catalogs,
+            quest=quest,
+            game_state=game_state,
+            hero_id=pending["heroId"],
+        )
+        new_lines = card.log
+        _write_treasure_card_outcome(updates, game_state, turn, pending["heroId"], card.spawned_monster, card.monster_attack)
+    else:
+        new_lines = ["No wandering monster -- the card is the hero's to resolve from the deck."]
+
+    updates["log"] = existing_log + [{"turn": turn, "text": line} for line in new_lines]
+    _push_undo(transaction, game_ref, before, updates, "the treasure card")
+    transaction.update(game_ref, updates)
+    return {"wanderingMonsterDrawn": bool(wandering_monster_drawn), "log": new_lines}
+
+
+@https_fn.on_call()
+@_surface_errors
+def resolve_treasure_draw(req: https_fn.CallableRequest) -> dict:
+    """The second half of a treasure search: search_treasure ruled the
+    search legal and told the player to draw, and this hears what the
+    physical card was. Only the wandering-monster card matters to the
+    app (everything else on the card is the player's to resolve); if it
+    was drawn, the quest's wandering monster appears adjacent to the
+    searcher, in the searcher's own room, and attacks immediately --
+    the defence prompt joins the queue like any other.
+    """
+    _require_owner(req, "sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    wandering_monster_drawn = data.get("wanderingMonsterDrawn")
+
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(wandering_monster_drawn, bool):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="wanderingMonsterDrawn must be a boolean"
+        )
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+
+    try:
+        return _apply_resolve_treasure_draw(transaction, db, game_ref, wandering_monster_drawn)
+    except InvalidTreasureSearchError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
 
 @firestore.transactional

@@ -124,19 +124,64 @@ def resolve_treasure_search(
     monster_attack = None
 
     if wandering_monster_drawn:
-        occupied = {tuple(h["pos"]) for h in heroes} | {
-            tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
-        }
-        spawn = spawn_wandering_monster_from_treasure_card(board, quest.get("wanderingMonster"), hero_pos, occupied)
-        if spawn is not None:
-            log.append(f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}")
-            catalog_entry = catalogs.monsters.get(spawn["type"], {})
-            monster_attack = roll_monster_attack(
-                monster_name=spawn["type"],
-                hero_name=hero_name,
-                attack_dice=catalog_entry.get("attack", 0),
-                rng=rng,
-            )
-            log.append(monster_attack.log)
+        # Legacy single-call path (flag reported WITH the search). The
+        # live client now reports the card afterwards, via
+        # resolve_treasure_card below.
+        card = resolve_treasure_card(
+            board=board, catalogs=catalogs, quest=quest, game_state=game_state, hero_id=hero_id, rng=rng
+        )
+        spawn = card.spawned_monster
+        monster_attack = card.monster_attack
+        log.extend(card.log)
 
     return TreasureSearchResult(room_id=room_id, spawned_monster=spawn, monster_attack=monster_attack, log=log)
+
+
+@dataclass
+class TreasureCardResult:
+    spawned_monster: dict | None = None
+    monster_attack: MonsterAttackRoll | None = None
+    log: list[str] = field(default_factory=list)
+
+
+def resolve_treasure_card(
+    *,
+    board: Board,
+    catalogs: Catalogs,
+    quest: dict,
+    game_state: dict,
+    hero_id: str,
+    rng=None,
+) -> TreasureCardResult:
+    """The wandering-monster card, reported AFTER the physical draw.
+
+    Deliberately separate from resolve_treasure_search: the player can
+    only know what the card was after the app has ruled the search
+    legal and un-trapped, so asking for the answer up front (the old
+    checkbox) had the flow backwards -- see main.resolve_treasure_draw.
+    Spawns the quest's wandering monster adjacent to the searcher, in
+    the searcher's own room, and rolls its attack immediately.
+    """
+    hero = find_living_hero(game_state, hero_id)
+    if hero is None:
+        raise InvalidTreasureSearchError(f"hero '{hero_id}' is not in this game, or has fallen")
+    hero_pos = tuple(hero["pos"])
+    hero_name = hero.get("name", hero_id)
+
+    occupied = {tuple(h["pos"]) for h in living_heroes(game_state)} | {
+        tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
+    }
+    spawn = spawn_wandering_monster_from_treasure_card(board, quest.get("wanderingMonster"), hero_pos, occupied)
+    if spawn is None:
+        return TreasureCardResult(log=["The wandering monster finds no room to appear -- it slinks away."])
+
+    log = [f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}"]
+    catalog_entry = catalogs.monsters.get(spawn["type"], {})
+    monster_attack = roll_monster_attack(
+        monster_name=spawn["type"],
+        hero_name=hero_name,
+        attack_dice=catalog_entry.get("attack", 0),
+        rng=rng,
+    )
+    log.append(monster_attack.log)
+    return TreasureCardResult(spawned_monster=spawn, monster_attack=monster_attack, log=log)

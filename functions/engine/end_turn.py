@@ -36,6 +36,17 @@ class DefencesPendingError(ValueError):
     """
 
 
+class TreasureDrawPendingError(ValueError):
+    """Can't hand off to Zargon with a treasure-card draw unanswered.
+
+    Searching for treasure leaves pendingTreasureDraw on the game (the
+    app has to hear whether the physical card was the wandering
+    monster -- see main.resolve_treasure_draw); letting the turn end
+    around it would quietly cancel a monster the rulebook says attacks
+    immediately.
+    """
+
+
 @dataclass
 class EndTurnResult:
     new_phase: str
@@ -48,6 +59,8 @@ def resolve_end_turn(game_state: dict) -> EndTurnResult:
         raise NotHeroPhaseError("it is not the hero phase")
     if game_state.get("pendingDefenses"):
         raise DefencesPendingError("report the outstanding defence roll(s) before ending the turn")
+    if game_state.get("pendingTreasureDraw"):
+        raise TreasureDrawPendingError("answer whether the treasure card was a wandering monster first")
 
     lone_hero = len(game_state.get("heroes", [])) == 1
     # Older game docs predate the field; they behave as segment 1.
