@@ -18,6 +18,23 @@ function call<Req, Res>(name: string, options?: HttpsCallableOptions) {
   };
 }
 
+/** A callable's HttpsError carries a `details` payload the plain
+ * `.message` string drops. The three LLM "declined this request" sites
+ * in main.py (generate_quest, generate_chronicle, generate_turn_narration)
+ * all attach `{stopDetails: str(e.stop_details)}` -- the safety
+ * classifier's actual category/explanation, or "None" for an empty
+ * response. Without this, every refusal read as the same generic
+ * sentence with no way to tell what the model actually objected to. */
+export function describeError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  const details = (e as { details?: unknown } | null | undefined)?.details;
+  if (details && typeof details === "object" && "stopDetails" in details) {
+    const stopDetails = (details as { stopDetails?: unknown }).stopDetails;
+    if (stopDetails && stopDetails !== "None") return `${message} -- ${stopDetails}`;
+  }
+  return message;
+}
+
 // ---- generateQuest ----
 
 export interface GenerateQuestRequest {

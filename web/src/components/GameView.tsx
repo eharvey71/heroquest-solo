@@ -7,6 +7,7 @@ import {
   attemptBreakSpell,
   castSpell,
   endTurn,
+  describeError,
   generateChronicle,
   generateTurnNarration,
   openDoor,
@@ -222,7 +223,7 @@ export function GameView({ gameId }: GameViewProps) {
     if (game.chronicle || chronicleRequested) return;
     setChronicleRequested(true);
     generateChronicle({ gameId }).catch((e) => {
-      setChronicleError(e instanceof Error ? e.message : String(e));
+      setChronicleError(describeError(e));
     });
   }, [game?.status, game?.chronicle, chronicleRequested, gameId]);
 

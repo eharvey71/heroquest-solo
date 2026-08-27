@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { setGameArchived, setQuestStackArchived } from "../lib/archive";
-import { createGame, generateQuest } from "../lib/functionsClient";
+import { createGame, describeError, generateQuest } from "../lib/functionsClient";
 import { SPELL_ELEMENTS } from "../data/heroSpells";
 import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
 import { useQuestMap } from "../lib/useQuestMap";
@@ -114,7 +114,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
       setQuestHeroCount(heroCount);
       setRefreshKey((k) => k + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(false);
     }
