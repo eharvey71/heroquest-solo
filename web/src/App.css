@@ -293,8 +293,11 @@ button.quiet {
   padding: 4px 6px;
 }
 
+/* Shorter than it used to be (23vh): the narration moved out into its
+   own "story so far" panel above, so the log is back to being purely
+   the mechanical record -- newest line visible, scroll up for history. */
 .log-list {
-  max-height: 23vh;
+  max-height: 15vh;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;
@@ -307,12 +310,20 @@ button.quiet {
   color: #e8b04a;
 }
 
-.log-narration {
-  list-style: none;
-  margin: 2px 0 8px -18px;
-  padding-left: 0;
+/* The turn narrations, read as one running tale -- prose, not log
+   lines, so no monospace and no bullets. Auto-scrolled to the newest
+   paragraph, same as the log. */
+.story-so-far {
+  max-height: 18vh;
+  overflow-y: auto;
   font-style: italic;
   color: #9fb3c8;
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+
+.story-so-far p {
+  margin: 0 0 10px;
 }
 
 /* The quest story is read aloud once and then put away, so it opens

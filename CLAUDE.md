@@ -143,11 +143,12 @@ searched.<room>.treasureBy.
     render and only narrates turns that close after that, so opening
     an old finished game narrates just its one final turn, not one LLM
     call per turn ever played. Same non-transactional, no-undo-
-    snapshot reasoning as the chronicle. Rendered inline in the log
-    (GameView.tsx), grouped after the mechanical lines for the turn it
-    belongs to -- the log itself stays flat data (LogEntry[], keyed by
-    turn number per entry, not grouped), narration is spliced in at
-    render time by scanning for turn-number boundaries.
+    snapshot reasoning as the chronicle. Rendered as its own "The
+    story so far..." panel directly above the Log (GameView.tsx) --
+    the paragraphs accumulate in turn order and read as one running
+    tale, auto-scrolled to the newest. Splicing them between log lines
+    was tried first and read badly: prose interrupting a monospace
+    record. The log stays purely mechanical (and shorter for it).
   - Zargon rules engine: deterministic code (movement, target choice,
     combat resolution). LLM is NEVER in the rules path — only quest
     generation and flavor narration (the chronicle, campaign

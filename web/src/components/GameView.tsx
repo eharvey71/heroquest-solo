@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
@@ -107,6 +107,7 @@ export function GameView({ gameId }: GameViewProps) {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const logRef = useRef<HTMLUListElement>(null);
+  const storyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // A hero who has fallen can't be the active one -- hand the
@@ -128,6 +129,13 @@ export function GameView({ gameId }: GameViewProps) {
     const list = logRef.current;
     if (list) list.scrollTop = list.scrollHeight;
   }, [game?.log?.length]);
+
+  // Same for the story panel: the newest paragraph is the live one.
+  const narrationCount = Object.keys(game?.narration ?? {}).length;
+  useEffect(() => {
+    const box = storyRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [narrationCount]);
 
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true);
@@ -308,6 +316,11 @@ export function GameView({ gameId }: GameViewProps) {
   const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw;
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
+  // Turn-narration paragraphs in turn order (numeric -- the map's keys
+  // are strings, and "10" sorts before "2" lexicographically).
+  const narrationTurns = Object.keys(game.narration ?? {})
+    .map(Number)
+    .sort((a, b) => a - b);
   // Keyed on the instruction text so a NEW reveal (different content)
   // shows again on its own; placementsDone is declared up with the
   // other hooks -- a useState below the early returns crashed React
@@ -1242,40 +1255,32 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
+          {narrationTurns.length > 0 && (
+            <div className="panel">
+              <p className="panel-title">The story so far&hellip;</p>
+              <div className="story-so-far" ref={storyRef}>
+                {narrationTurns.map((turn) => (
+                  <p key={`n${turn}`}>{game.narration?.[String(turn)]}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="panel">
             <p className="panel-title">Log</p>
             <ul className="log-list" ref={logRef}>
-              {(() => {
-                const entries = game.log ?? [];
-                const narration = game.narration ?? {};
-                const nodes: ReactNode[] = [];
-                const narrationLine = (turn: number) =>
-                  narration[String(turn)] && (
-                    <li key={`narration-${turn}`} className="log-narration">
-                      {narration[String(turn)]}
-                    </li>
-                  );
-                entries.forEach((entry, i) => {
-                  const prev = entries[i - 1];
-                  // A turn boundary: the previous turn's flavor line
-                  // belongs after its last log entry, not before this
-                  // turn's own first one.
-                  if (prev && prev.turn !== entry.turn) nodes.push(narrationLine(prev.turn));
-                  // Tile instructions are the lines the player must act
-                  // on physically, so they stay visually distinct.
-                  // Matched on our own generated wording -- see the
-                  // engines' placement_instruction strings.
-                  const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
-                  nodes.push(
-                    <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
-                      [{entry.turn}] {entry.text}
-                    </li>
-                  );
-                });
-                const last = entries[entries.length - 1];
-                if (last) nodes.push(narrationLine(last.turn));
-                return nodes;
-              })()}
+              {(game.log ?? []).map((entry, i) => {
+                // Tile instructions are the lines the player must act on
+                // physically, so they stay visually distinct. Matched on
+                // our own generated wording -- see the engines'
+                // placement_instruction strings.
+                const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
+                return (
+                  <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
+                    [{entry.turn}] {entry.text}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>
