@@ -159,3 +159,10 @@ def test_endpoint_rejects_a_turn_with_no_log_entries_yet():
     assert "hasn't closed" in exc_info.value.message
     assert client.calls == []
     assert game_ref.updated_with is None
+
+
+def test_system_prompt_forbids_raw_room_and_square_ids():
+    from generator.narration import SYSTEM_PROMPT
+
+    assert "R16" in SYSTEM_PROMPT or "room ids" in SYSTEM_PROMPT
+    assert "NEVER print" in SYSTEM_PROMPT

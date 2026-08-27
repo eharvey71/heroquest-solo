@@ -164,3 +164,10 @@ def test_endpoint_refuses_an_in_progress_game():
     # Never reached the LLM, and never wrote anything.
     assert client.calls == []
     assert game_ref.updated_with is None
+
+
+def test_system_prompt_forbids_raw_room_and_square_ids():
+    from generator.chronicle import SYSTEM_PROMPT
+
+    assert "room ids" in SYSTEM_PROMPT
+    assert "NEVER print" in SYSTEM_PROMPT

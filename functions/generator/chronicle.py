@@ -43,6 +43,13 @@ record. Requirements:
 - Do NOT invent mechanical details the log doesn't support (extra
   monsters, a different outcome, artifacts never mentioned). You may
   invent atmosphere and flavor, never facts.
+- The log carries the app's own bookkeeping labels for your eyes only
+  -- room ids (R16), square coordinates ([14,9]), trap/monster ids
+  (R2-T1, W1), turn markers. NEVER print one of these verbatim. Turn
+  them into narrative language instead: "the room beyond", "a deeper
+  chamber", "the crypt's heart". The player reads this over a physical
+  board with no room numbers on it -- a label from the log means
+  nothing to them and breaks the voice.
 - Plain prose, no headings, no bullet points, no markdown.
 - Output ONLY the chronicle text -- no preamble, no title line, no
   quotation marks around it."""

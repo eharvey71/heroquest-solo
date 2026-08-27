@@ -38,6 +38,13 @@ narrating this turn. Requirements:
 - If the turn was uneventful (a search that found nothing, a move with no
   encounter), a short atmospheric line is fine -- don't manufacture
   drama that didn't happen.
+- The log lines carry the app's own bookkeeping labels for your eyes
+  only -- room ids (R16), square coordinates ([14,9]), trap/monster ids
+  (R2-T1, W1), turn markers. NEVER print one of these verbatim. Turn
+  them into narrative language instead: "the room beyond", "the
+  chamber ahead", "deeper in", "back the way you came". The player
+  reads this prose over a physical board with no room numbers on it --
+  a label from the log means nothing to them and breaks the voice.
 - Plain prose, no headings, no bullet points, no markdown, no turn
   number.
 - Output ONLY the paragraph -- no preamble, no quotation marks around
