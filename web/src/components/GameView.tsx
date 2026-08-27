@@ -33,6 +33,11 @@ interface GameViewProps {
   gameId: string;
 }
 
+/** The hero's own one-move spell boons (engine/hero_movement.py honours
+ * them; the move that uses them spends them). Same registry as Chaos
+ * afflictions, very different meaning. */
+const MOVE_BOONS = new Set(["veiled", "through_rock"]);
+
 interface PendingDefense {
   id: string;
   heroId: string;
@@ -350,9 +355,17 @@ export function GameView({ gameId }: GameViewProps) {
   const targetableMonsters = game.monsters.filter((m) => m.alive && revealedKeys.has(squareKey(m.pos[0], m.pos[1])));
 
   const heroes = livingHeroes(game.heroes);
-  // Chaos spells currently holding heroes. `afraid` doesn't stop a turn,
-  // it only costs attack dice, so it shows but never blocks.
-  const activeHeroStatuses = game.heroStatus?.[heroId] ?? [];
+  // The heroStatus registry holds two very different things: Chaos
+  // afflictions (asleep, paralyzed, commanded, becalmed, afraid) and
+  // the hero's OWN one-move boons -- Veil of Mist's "veiled" and Pass
+  // Through Rock's "through_rock". Only the afflictions get the Chaos
+  // panel and its break rolls; the Elf casting Veil of Mist on himself
+  // was being told he was under a Chaos spell and offered a roll to
+  // cancel his own boon. `afraid` doesn't stop a turn, it only costs
+  // attack dice, so it shows but never blocks.
+  const allHeroStatuses = game.heroStatus?.[heroId] ?? [];
+  const activeHeroStatuses = allHeroStatuses.filter((s) => !MOVE_BOONS.has(s.status));
+  const activeMoveBoons = allHeroStatuses.filter((s) => MOVE_BOONS.has(s.status));
   const breakableStatus = activeHeroStatuses.find((s) => s.status !== "becalmed");
   const fallenHeroes = game.heroes.filter((h) => h.alive === false);
   // A finished quest -- won or lost -- takes no more actions. Undo still
@@ -759,6 +772,22 @@ export function GameView({ gameId }: GameViewProps) {
                   Any other card &mdash; gold, a potion, a hazard &mdash; is yours to resolve at the table; the app
                   never needs to see it.
                 </span>
+              </div>
+            </div>
+          )}
+
+          {activeMoveBoons.length > 0 && (
+            <div className="panel">
+              <p className="panel-title">Spell active</p>
+              <div className="panel-stack">
+                {activeMoveBoons.map((s) => (
+                  <span key={s.status}>
+                    {s.status === "veiled"
+                      ? `${activeHero?.name ?? "This hero"}'s next move may pass through monsters (Veil of Mist).`
+                      : `${activeHero?.name ?? "This hero"}'s next move may pass through walls (Pass Through Rock).`}
+                  </span>
+                ))}
+                <span className="hint">Spent by the move that uses it.</span>
               </div>
             </div>
           )}
