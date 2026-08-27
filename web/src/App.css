@@ -9,7 +9,7 @@
      while the content sits centred underneath. 460px = rail (440) +
      column gap (20); the board's own width is the same viewport-height
      rule .board-pane uses. */
-  width: min(calc((100vh - 170px) * 1.368 + 460px), calc(100vw - 16px));
+  width: min(calc((100vh - 170px) * 1.354 + 460px), calc(100vw - 16px));
   margin: 0 auto;
   padding: 20px 24px 40px;
 }
@@ -47,15 +47,16 @@
   }
 }
 
-/* The board is sized by the VIEWPORT HEIGHT, not by a pixel width: a
-   26x19 grid is 1.368 times as wide as it is tall, so this is as big as
+/* The board is sized by the VIEWPORT HEIGHT, not by a pixel width: the
+   26x19 grid plus the coordinate-label gutter is 1.354 times as wide
+   as it is tall (750.4/554.4 in viewBox units), so this is as big as
    it can be while still fitting on screen without the page scrolling.
    The second term keeps it from crowding the rail on a short, wide
    window. */
 .board-pane {
   position: sticky;
   top: 12px;
-  width: min(calc((100vh - 170px) * 1.368), calc(100vw - 560px));
+  width: min(calc((100vh - 170px) * 1.354), calc(100vw - 560px));
   max-width: 100%;
 }
 

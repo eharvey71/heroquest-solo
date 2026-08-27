@@ -49,6 +49,13 @@ export function BoardView({
   const svgRef = useRef<SVGSVGElement>(null);
   const lastCoordKeyRef = useRef<string | null>(null);
 
+  // Gutter for the coordinate labels along the top and left edges --
+  // every log line and placement instruction names squares as [x,y],
+  // so the axes show exactly those numbers (0-indexed, matching
+  // board.json). The viewBox starts at -gutter so all board content
+  // keeps its 0-based pixel coordinates.
+  const gutter = cellSize * 0.8;
+
   const revealed = useMemo(() => revealedSquareKeys(staticBoard, gameState.revealed), [gameState.revealed]);
   // A fallen hero's figure comes off the board: nothing to draw, nothing
   // to select, and the square is free again (see engine/heroes.py).
@@ -61,16 +68,19 @@ export function BoardView({
       if (!svg) return null;
       const rect = svg.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return null;
-      const scaleX = (staticBoard.width * cellSize) / rect.width;
-      const scaleY = (staticBoard.height * cellSize) / rect.height;
-      const localX = (e.clientX - rect.left) * scaleX;
-      const localY = (e.clientY - rect.top) * scaleY;
+      // The viewBox starts at -gutter (the label margin), so the
+      // client-to-board mapping subtracts it back out; a click in the
+      // gutter itself lands negative and is rejected below.
+      const scaleX = (staticBoard.width * cellSize + gutter) / rect.width;
+      const scaleY = (staticBoard.height * cellSize + gutter) / rect.height;
+      const localX = (e.clientX - rect.left) * scaleX - gutter;
+      const localY = (e.clientY - rect.top) * scaleY - gutter;
       const bx = Math.floor(localX / cellSize);
       const by = Math.floor(localY / cellSize);
       if (bx < 0 || by < 0 || bx >= staticBoard.width || by >= staticBoard.height) return null;
       return [bx, by];
     },
-    [cellSize]
+    [cellSize, gutter]
   );
 
   const handlePointerDown = useCallback(
@@ -168,7 +178,7 @@ export function BoardView({
     <div>
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${staticBoard.width * cellSize} ${staticBoard.height * cellSize}`}
+        viewBox={`${-gutter} ${-gutter} ${staticBoard.width * cellSize + gutter} ${staticBoard.height * cellSize + gutter}`}
         width="100%"
         // Size comes from CSS (.board-pane svg), not from cellSize:
         // the viewBox means one number can't be both "how big it draws"
@@ -180,6 +190,32 @@ export function BoardView({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
+        <g>
+          {Array.from({ length: staticBoard.width }, (_, x) => (
+            <text
+              key={`ax-${x}`}
+              x={(x + 0.5) * cellSize}
+              y={-gutter * 0.32}
+              textAnchor="middle"
+              fontSize={cellSize * 0.42}
+              fill="#8a8272"
+            >
+              {x}
+            </text>
+          ))}
+          {Array.from({ length: staticBoard.height }, (_, y) => (
+            <text
+              key={`ay-${y}`}
+              x={-gutter * 0.5}
+              y={(y + 0.5) * cellSize + cellSize * 0.15}
+              textAnchor="middle"
+              fontSize={cellSize * 0.42}
+              fill="#8a8272"
+            >
+              {y}
+            </text>
+          ))}
+        </g>
         <BoardTerrain
           board={staticBoard}
           cellSize={cellSize}
