@@ -1040,7 +1040,9 @@ export function GameView({ gameId }: GameViewProps) {
                     {heroSearchedTreasureHere
                       ? "This hero already searched here for treasure -- once per hero per room."
                       : roomAlreadySearchedTraps
-                        ? "Traps found. Trapped furniture is safe to open now."
+                        ? // "Searched", not "found" -- the flag only means the
+                          // search happened; the log says what turned up.
+                          "This room has been searched for traps -- treasure is safe to search now."
                         : "Searching for treasure before traps sets off any trapped chest in the room."}
                   </span>
                   <span className="hint">
