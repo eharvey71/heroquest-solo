@@ -131,10 +131,16 @@ export function GameView({ gameId }: GameViewProps) {
   }, [game?.log?.length]);
 
   // Same for the story panel: the newest paragraph is the live one.
+  // Deferred a frame -- scrolling in the same tick as the DOM update
+  // measured the box before the new paragraph had laid out, leaving
+  // the latest text below the fold.
   const narrationCount = Object.keys(game?.narration ?? {}).length;
   useEffect(() => {
-    const box = storyRef.current;
-    if (box) box.scrollTop = box.scrollHeight;
+    const raf = requestAnimationFrame(() => {
+      const box = storyRef.current;
+      if (box) box.scrollTop = box.scrollHeight;
+    });
+    return () => cancelAnimationFrame(raf);
   }, [narrationCount]);
 
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
@@ -247,13 +253,23 @@ export function GameView({ gameId }: GameViewProps) {
       return;
     }
 
+    // A turn isn't really CLOSED while its defence rolls are open:
+    // resolve_zargon_turn advances game.turn in the same write that
+    // queues the prompts, and narrating before they're answered had
+    // the narrator calling every swing a wound. Hold the request (by
+    // not advancing lastSeenTurnRef) until the queue empties -- the
+    // effect re-runs then, via the pendingDefenses dep.
+    const defensesClear = (game.pendingDefenses ?? []).length === 0;
+
     if (game.turn !== lastSeenTurnRef.current) {
-      request(lastSeenTurnRef.current);
-      lastSeenTurnRef.current = game.turn;
+      if (defensesClear) {
+        request(lastSeenTurnRef.current);
+        lastSeenTurnRef.current = game.turn;
+      }
     } else if (finished) {
       request(game.turn);
     }
-  }, [game?.turn, game?.status, game?.narration, gameId]);
+  }, [game?.turn, game?.status, game?.narration, game?.pendingDefenses?.length, gameId]);
 
   // Path tracing lives HERE rather than in BoardView so that "Moving
   // Barbarian -- Confirm" can sit in the rail beside the board. Under

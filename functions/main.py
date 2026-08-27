@@ -1074,6 +1074,7 @@ def _write_treasure_card_outcome(updates, game_state, turn, hero_id, spawn, mons
                 "monsterId": new_monster_id,
                 "monsterName": spawn["type"],
                 "pos": list(spawn["pos"]),
+                "turn": turn,
             }
         ]
 
@@ -1760,6 +1761,12 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
             "monsterId": mr.monster_id,
             "monsterName": mr.monster_name,
             "pos": list(mr.turn_result.end_pos),
+            # The turn the attack HAPPENED. This same write advances
+            # game.turn to N+1, so without this the defence roll's log
+            # line lands under the next turn -- and turn N's narration,
+            # generated from turn N's lines, never hears whether the
+            # blow was blocked.
+            "turn": turn,
         }
         for mr in result.monster_results
         if mr.turn_result and mr.turn_result.attack
@@ -1961,14 +1968,12 @@ def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shi
         hero_name=hero.get("name", hero_id), skulls_faced=skulls_faced, shields_reported=shields_reported
     )
 
-    turn = game_state.get("turn", 0)
-    existing_log = game_state.get("log", [])
-    updates = {"log": existing_log + [{"turn": turn, "text": log_line}]}
-
     # Answering a prompt takes it off the queue. Matched by id; a client
     # that sends none falls back to the first prompt with this hero and
     # skull count, which is what a pre-queue client's call looks like.
     pending = game_state.get("pendingDefenses", [])
+    matched = None
+    updates: dict = {}
     for i, entry in enumerate(pending):
         matches = (
             entry.get("id") == defense_id
@@ -1976,8 +1981,27 @@ def _apply_record_hero_defense(transaction, game_ref, hero_id, skulls_faced, shi
             else entry.get("heroId") == hero_id and entry.get("skulls") == skulls_faced
         )
         if matches:
+            matched = entry
             updates["pendingDefenses"] = pending[:i] + pending[i + 1:]
             break
+
+    # The defence belongs to the turn the ATTACK happened (stamped on
+    # the queue entry), not the turn the player got around to answering
+    # -- resolve_zargon_turn advances game.turn in the same write that
+    # queues the prompt, so logging "now" filed every defence under the
+    # NEXT turn's header. Splice the line in right after the last entry
+    # of the attack's turn, so it reads at the end of Zargon's turn --
+    # and so that turn's narration, which waits for open defences, sees
+    # whether the blow actually landed.
+    attack_turn = (matched or {}).get("turn", game_state.get("turn", 0))
+    existing_log = game_state.get("log", [])
+    insert_at = len(existing_log)
+    while insert_at > 0 and existing_log[insert_at - 1].get("turn", 0) > attack_turn:
+        insert_at -= 1
+    updates["log"] = (
+        existing_log[:insert_at] + [{"turn": attack_turn, "text": log_line}] + existing_log[insert_at:]
+    )
+
     _push_undo(transaction, game_ref, before, updates, "the defence roll")
     transaction.update(game_ref, updates)
 

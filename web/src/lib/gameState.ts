@@ -89,6 +89,10 @@ export interface GameState {
     monsterId?: string;
     monsterName?: string;
     pos?: Coord;
+    /** The turn the attack happened -- the same write that queues the
+     * prompt advances game.turn, so "now" is already the next turn.
+     * The defence log line files under this. */
+    turn?: number;
   }[];
   /** "Place the X at [x,y]" lines the player still has to act on with
    * physical tiles and minis. Cleared when the hero phase ends. */

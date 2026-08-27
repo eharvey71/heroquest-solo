@@ -29,6 +29,12 @@ Write ONE short flavor paragraph (2-4 sentences, roughly 40-80 words)
 narrating this turn. Requirements:
 - Reference only what the log lines actually say -- don't invent a
   monster, a hit, or an outcome the log doesn't support.
+- Skulls rolled are an attack's STRENGTH, not damage dealt. A wound is
+  real only if a "defends ... -> N wound(s)" line (N > 0) or a "has
+  fallen" line says so; "0 wound(s)" means the blow was BLOCKED and
+  must be narrated as turned aside, never as landing. An attack whose
+  defence line hasn't appeared yet is a blow still in the air --
+  describe the swing, not its outcome.
 - If the turn was uneventful (a search that found nothing, a move with no
   encounter), a short atmospheric line is fine -- don't manufacture
   drama that didn't happen.

@@ -109,7 +109,7 @@ def test_every_turn_type_writes_a_defence_queue(turn_type):
     pending = txn.updates["pendingDefenses"]
     assert isinstance(pending, list)
     for entry in pending:
-        assert set(entry) == {"id", "heroId", "heroName", "skulls", "monsterId", "monsterName", "pos"}
+        assert set(entry) == {"id", "heroId", "heroName", "skulls", "monsterId", "monsterName", "pos", "turn"}
         assert entry["heroId"] == "barbarian"
         assert entry["skulls"] >= 0
         # The prompt has to say WHAT swung and where it stands, or the
@@ -118,6 +118,9 @@ def test_every_turn_type_writes_a_defence_queue(turn_type):
         assert entry["monsterId"]
         assert entry["monsterName"]
         assert len(entry["pos"]) == 2
+        # The turn the attack happened -- game.turn advances to 8 in
+        # this same write, and the defence roll's log line files here.
+        assert entry["turn"] == 7
 
 
 def test_an_adjacent_monster_queues_its_attack():
@@ -309,3 +312,49 @@ def test_undo_restores_turn_and_phase_after_zargons_turn():
     # And the defence prompts that Zargon's turn raised are gone with
     # it -- they belonged to a turn that no longer happened.
     assert restored.get("pendingDefenses", []) == []
+
+
+def test_defence_log_line_files_under_the_attack_turn():
+    # The Fimir swung in turn 7; the player answered after "--- Turn 8 ---"
+    # was already logged. The line must splice in at the end of turn 7,
+    # under turn 7's number -- not dangle at the bottom under turn 8 --
+    # so turn 7's narration (which waits for open defences) can see
+    # whether the blow landed.
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["turn"] = 8
+    game["log"] = [
+        {"turn": 7, "text": "Fimir attacks Barbarian: 3 dice, 2 skull(s)."},
+        {"turn": 7, "text": "Zargon ends his turn."},
+        {"turn": 8, "text": "--- Turn 8 ---"},
+    ]
+    game["pendingDefenses"] = [
+        {"id": "7:M1", "heroId": "barbarian", "heroName": "Barbarian", "skulls": 2, "turn": 7},
+    ]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    main._apply_record_hero_defense.to_wrap(txn, game_ref, "barbarian", 2, 2, "7:M1")
+
+    log = txn.updates["log"]
+    texts = [e["text"] for e in log]
+    defence_index = next(i for i, t in enumerate(texts) if "defends" in t)
+    assert log[defence_index]["turn"] == 7
+    assert defence_index == 2  # after "Zargon ends his turn", before "--- Turn 8 ---"
+    assert txn.updates["pendingDefenses"] == []
+
+
+def test_defence_from_a_legacy_prompt_without_a_turn_logs_under_now():
+    # Queue entries written before the turn stamp existed still resolve;
+    # they just file under the current turn as before.
+    game = copy.deepcopy(GAME)
+    game["phase"] = "hero"
+    game["turn"] = 8
+    game["log"] = [{"turn": 8, "text": "--- Turn 8 ---"}]
+    game["pendingDefenses"] = [
+        {"id": "7:M1", "heroId": "barbarian", "heroName": "Barbarian", "skulls": 2},
+    ]
+    txn = _Txn()
+    game_ref = _Ref(to_firestore_coords(game))
+    main._apply_record_hero_defense.to_wrap(txn, game_ref, "barbarian", 2, 0, "7:M1")
+
+    assert txn.updates["log"][-1]["turn"] == 8
