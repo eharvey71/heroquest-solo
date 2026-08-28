@@ -1055,6 +1055,7 @@ export function GameView({ gameId }: GameViewProps) {
                     </select>
                     <DiceInput label="Skulls:" value={attackSkulls} onChange={setAttackSkulls} />
                   </div>
+                  <span className="hint">Roll your own attack dice, then report how many skulls came up.</span>
                   {selectedReach && (
                     <span style={{ color: "#e6a23b" }}>
                       {selectedReach === "diagonal"
@@ -1064,7 +1065,7 @@ export function GameView({ gameId }: GameViewProps) {
                   )}
                   <div className="panel-row">
                     <button className="primary" onClick={handleAttack} disabled={busy || !attackMonsterId}>
-                      Roll it
+                      Report skulls
                     </button>
                     <button className="quiet" onClick={() => setOpenAction(null)} disabled={busy}>
                       Back

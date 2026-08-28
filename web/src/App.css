@@ -253,10 +253,21 @@ button.primary:hover:not(:disabled) {
   border-color: #8ab05a;
 }
 
+/* A "Back"/"Cancel" button, deliberately less prominent than the
+ * panel's primary action -- but it must still read as CLICKABLE, not
+ * as disabled. :disabled's own opacity dip is the only signal for
+ * "can't press this"; a quiet button at rest needs enough contrast
+ * against that to not be mistaken for one. */
 button.quiet {
   background: transparent;
-  border-color: #3a3a3a;
-  color: #9a917c;
+  border-color: #5a5648;
+  color: #c9bfa0;
+}
+
+button.quiet:hover:not(:disabled) {
+  border-color: #7a7460;
+  background: #262620;
+  color: #eee;
 }
 
 /* One-click shield count for a defence roll: 0-6, the full range six
