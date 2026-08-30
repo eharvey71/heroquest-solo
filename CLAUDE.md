@@ -149,6 +149,15 @@ searched.<room>.treasureBy.
     tale, auto-scrolled to the newest. Splicing them between log lines
     was tried first and read badly: prose interrupting a monospace
     record. The log stays purely mechanical (and shorter for it).
+    Narration and the chronicle both build their prompt from the same
+    log lines, and both hit the same bug: those lines carry the app's
+    own bookkeeping labels (room ids like R16, square coordinates,
+    trap/monster ids) meant for a player reading the log directly, and
+    the LLM faithfully echoed them into read-aloud prose ("beyond the
+    opened door in R16") -- meaningless at a physical table with no
+    room numbers printed on it. Both prompts now forbid printing a raw
+    id or coordinate outright and require narrative language instead
+    ("the room beyond", "a deeper chamber").
   - Zargon rules engine: deterministic code (movement, target choice,
     combat resolution). LLM is NEVER in the rules path — only quest
     generation and flavor narration (the chronicle, campaign
@@ -401,6 +410,17 @@ The split, card by card:
   has no equivalent here -- every square on this board is room or
   corridor, so there is nothing to be stranded in.
 
+heroStatus is not one uniform thing, and a real bug came from treating
+it as one: Chaos afflictions (asleep, paralyzed, commanded, becalmed,
+afraid) and a hero's own one-move spell BOONS (veiled, through_rock)
+share the same registry but mean opposite things. The client's Chaos
+alert -- purple, with Mind Point break-roll buttons -- was firing on a
+hero's OWN Veil of Mist, offering to "break" a spell the hero had just
+cast on themselves. The server was never fooled (attempt_break_spell
+only ever touches the affliction list), but the panel now splits
+heroStatus into afflictions vs. boons and shows a boon in its own
+quiet "Spell active" panel instead.
+
 MONSTER STATUSES (engine/monster_status.py) are the mirror of
 hero_status, and deliberately a separate module because the two sides
 aren't symmetrical. A held HERO is stopped by refusing their actions
@@ -455,6 +475,18 @@ queue), record_hero_death (a hero can die from the very hit that's
 pending), attempt_break_spell (not "the one action"), undo (the escape
 hatch), or resolve_zargon_turn (can only run in Zargon's phase, which
 end_turn already refuses to reach with anything open).
+
+Each pendingDefenses entry also stamps the TURN the attack happened
+(a real bug, found in live play): resolve_zargon_turn advances
+game.turn in the same write that queues the prompts, so logging a
+defence roll under "now" filed its log line under the NEXT turn's
+header -- reading as the start of the hero phase instead of the end
+of Zargon's. record_hero_defense now splices the line in at the end
+of the attack's own turn (right after "Zargon ends his turn", before
+the next turn's "--- Turn N ---" marker), and the client holds turn
+narration until pendingDefenses is empty -- narrating before the
+block was reported had the narrator call every swing a wound, since
+it never saw the "0 wound(s)" line saying otherwise.
 
 UNDO (engine/undo.py + main.undo_last_action) rolls the board back one
 action at a time, all the way to the start of the game if need be.
@@ -631,27 +663,25 @@ so the app can never know who survived and "all survivors" is not
 computable. Revisit only if hero death ever becomes digital.
 
 ## Open items
-The original first tasks are all done and deployed: Firebase skeleton,
-validator, baseline budget (120), board renderer with fog + path input,
-and the Zargon engine (movement, targeting, turn-type roller, combat
-prompts).
-
-Hero death and undo are built (see the engine details above).
-
-Auth is locked to one account (see below), and chest/furniture traps
-are built (see the engine details above).
-
-Chaos spells and hero spells are both built and priced (see the engine
-details above). All twelve cards of each deck are transcribed, the
-three caster types are flagged in monsters.json, and the quest schema
-carries monster.spells.
+Everything through the three AI features (post-quest chronicle,
+campaign continuity, live turn narration), the ten Artifact Cards
+(placement-only), and the Quests & Games list redesign (quest-grouped,
+last-played dates, archive-not-delete) is built -- see Architecture
+and the engine details above for each; this section only tracks what
+is genuinely still open, so it doesn't re-list what's already settled
+and risk drifting out of sync with it.
 
 Known gaps:
 1. Command moves a hero on Zargon's turn -- deliberately left to the
    player, see "Not implemented, deliberately" above.
-2. The app has never been played through a full quest on the physical
-   board. Everything below is verified by tests and the simulator,
-   which is not the same thing.
+2. Real play has started (traps sprung in a corridor, treasure drawn,
+   spells cast) and has already surfaced and fixed several bugs tests
+   and the simulator missed -- the treasure-draw ordering, open pits,
+   spear-trap die reporting, Veil of Mist's status mix-up, defence
+   rolls filing under the wrong turn. No quest has yet been played
+   start-to-finish to a confirmed win or loss, so treat anything not
+   yet exercised at the table as simulator-verified only, not
+   table-verified.
 
 ## Single-owner auth (settled)
 Google sign-in, and the app belongs to exactly ONE account. The uid is
