@@ -829,6 +829,10 @@ def resolve_movement(req: https_fn.CallableRequest) -> dict:
         "pathTaken": [list(p) for p in result.path_taken],
         "stoppedReason": result.stopped_reason,
         "stoppedAtDoorId": result.stopped_at_door_id,
+        # Which trap an "open_pit" / "known_trap" stop was at, so the
+        # client can offer that trap's choices -- and remember which
+        # way the traced path was heading past it.
+        "stoppedAtTrapId": result.stopped_at_trap_id,
         "newlyRevealedRooms": result.newly_revealed_rooms,
         "triggeredTraps": [
             {
@@ -1387,6 +1391,7 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
         board=_catalogs.board, quest=quest, game_state=game_state, hero_id=hero_id,
         trap_id=trap_id, trap_type=trap_type, trap_pos=trap_pos,
         action=action, die_face=die_face, landing=landing, has_tool_kit=has_tool_kit,
+        catalogs=_catalogs,
     )
 
     turn = game_state.get("turn", 0)

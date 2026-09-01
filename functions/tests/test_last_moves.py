@@ -108,13 +108,16 @@ def test_a_move_cut_short_records_only_what_was_walked():
 
 
 def test_a_cleared_jump_hops_onto_and_past_the_trap():
+    # The pit at (7,3) sits on R2's south wall, so the hero (north of
+    # it) comes down on its west side -- the rulebook allows any open
+    # side, and straight across would be through the wall.
     game = _game(
         heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [7, 2], "active": True}],
         trapsFound={"R2-T1": {"type": "pit", "pos": [7, 3]}},
     )
     txn = _Txn()
-    main._apply_trap_action.to_wrap(txn, _DB(), game, "barbarian", "R2-T1", "jump", "white_shield", (7, 4), False)
-    assert from_firestore_coords(txn.updates["lastMoves"]) == {"barbarian": [[7, 2], [7, 3], [7, 4]]}
+    main._apply_trap_action.to_wrap(txn, _DB(), game, "barbarian", "R2-T1", "jump", "white_shield", (6, 3), False)
+    assert from_firestore_coords(txn.updates["lastMoves"]) == {"barbarian": [[7, 2], [7, 3], [6, 3]]}
 
 
 def test_a_failed_jump_ends_in_the_pit():
@@ -123,7 +126,7 @@ def test_a_failed_jump_ends_in_the_pit():
         trapsFound={"R2-T1": {"type": "pit", "pos": [7, 3]}},
     )
     txn = _Txn()
-    main._apply_trap_action.to_wrap(txn, _DB(), game, "barbarian", "R2-T1", "jump", "skull", (7, 4), False)
+    main._apply_trap_action.to_wrap(txn, _DB(), game, "barbarian", "R2-T1", "jump", "skull", (6, 3), False)
     assert from_firestore_coords(txn.updates["lastMoves"]) == {"barbarian": [[7, 2], [7, 3]]}
 
 

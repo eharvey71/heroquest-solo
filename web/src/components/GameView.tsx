@@ -105,6 +105,17 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const [genieMode, setGenieMode] = useState<"attack" | "door">("attack");
   const [genieDoorId, setGenieDoorId] = useState("");
   const [trapDieFace, setTrapDieFace] = useState<CombatDieFace>("white_shield");
+  /** A move that stopped at a trap's edge: which hero, which trap, and
+   * the square the traced path was heading to past it (null when the
+   * path ended on the trap). Drives the open-pit panel -- it shows only
+   * while this is set, and clears once the hero has jumped or climbed
+   * in, instead of nagging for as long as the hero stands next to the
+   * hole -- and pre-selects that square as the jump's landing. Client
+   * state: it belongs to the half-finished move, so undo clears it. */
+  const [trapStop, setTrapStop] = useState<{ heroId: string; trapId: string; beyond: Coord | null } | null>(null);
+  /** The landing square the player picked for a jump, when more than
+   * one is legal (rulebook p.20: up to three sides of a pit). */
+  const [jumpLandingKey, setJumpLandingKey] = useState<string | null>(null);
   const [hasToolKit, setHasToolKit] = useState(false);
   const [rolledTurn, setRolledTurn] = useState<{
     turnType: "normal" | "cunning" | "wandering";
@@ -189,6 +200,8 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     setOpenAction(null);
     setRolledTurn(null);
     setLowestBpHeroId("");
+    setTrapStop(null);
+    setJumpLandingKey(null);
   };
 
   // Door/stairway geometry is quest-owned (fetched once); door
@@ -449,7 +462,18 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     // Firestore subscription renders in order. A second client-side
     // stream used to append its lines at the bottom regardless of when
     // they happened, which read as the log being out of order.
-    await runAction(() => resolveMovement({ gameId, heroId: movingHeroId, path }));
+    const result = await runAction(() => resolveMovement({ gameId, heroId: movingHeroId, path }));
+    if (!result) return;
+    if ((result.stoppedReason === "open_pit" || result.stoppedReason === "known_trap") && result.stoppedAtTrapId) {
+      // pathTaken is every square actually walked; the trap is the
+      // next square of the request, and the one after that is where
+      // the player meant to go -- the natural landing for a jump.
+      const beyond = path[result.pathTaken.length + 1] ?? null;
+      setTrapStop({ heroId: movingHeroId, trapId: result.stoppedAtTrapId, beyond });
+      setJumpLandingKey(null);
+    } else {
+      setTrapStop(null);
+    }
   };
 
   // A trap the party has FOUND is still armed, so movement stops in
@@ -479,6 +503,62 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
         })
         .map(([id, t]) => ({ id, ...t }))
     : [];
+  // Shown only for the pit a traced move just stopped at. Adjacency
+  // alone kept the panel up after a successful jump (the hero lands
+  // next to the hole, on its far side) -- the player asked whether it
+  // was ever going to clear.
+  const promptedOpenPit =
+    trapStop && trapStop.heroId === heroId ? adjacentOpenPits.find((t) => t.id === trapStop.trapId) : undefined;
+
+  // Where a jump over `trapPos` may come down: any square next to the
+  // trap other than the hero's own, that the hero could have stepped
+  // to from the trap square (same area, or across an OPEN door), not
+  // blocked, not furniture, not occupied. The server applies the same
+  // rule (engine/trap_action.py); this is so the panel never offers a
+  // square it would refuse.
+  const legalLandings = (trapPos: Coord): Coord[] => {
+    if (!activeHero) return [];
+    const trapArea = staticBoard.areaOf.get(squareKey(trapPos[0], trapPos[1]));
+    const sides: Coord[] = [
+      [trapPos[0], trapPos[1] - 1],
+      [trapPos[0] + 1, trapPos[1]],
+      [trapPos[0], trapPos[1] + 1],
+      [trapPos[0] - 1, trapPos[1]],
+    ];
+    return sides.filter((sq) => {
+      const key = squareKey(sq[0], sq[1]);
+      if (sq[0] === activeHero.pos[0] && sq[1] === activeHero.pos[1]) return false;
+      const area = staticBoard.areaOf.get(key);
+      if (area === undefined) return false;
+      if (area !== trapArea && doorEdges.get(crossingKey(trapPos, sq)) !== "open") return false;
+      if (impassableKeys.has(key) || furnitureKeys.has(key)) return false;
+      if (heroTokens.some((h) => squareKey(h.pos[0], h.pos[1]) === key)) return false;
+      if (game.monsters.some((m) => m.alive && squareKey(m.pos[0], m.pos[1]) === key)) return false;
+      return true;
+    });
+  };
+  // The landing a jump will use: the player's pick if they made one,
+  // else where the traced path was heading, else straight across,
+  // else the first legal side.
+  const chosenLanding = (trapId: string, trapPos: Coord, landings: Coord[]): Coord | null => {
+    const byKey = (key: string | null) =>
+      key ? landings.find((sq) => squareKey(sq[0], sq[1]) === key) ?? null : null;
+    const picked = byKey(jumpLandingKey);
+    if (picked) return picked;
+    if (trapStop && trapStop.trapId === trapId && trapStop.beyond) {
+      const beyond = byKey(squareKey(trapStop.beyond[0], trapStop.beyond[1]));
+      if (beyond) return beyond;
+    }
+    if (activeHero) {
+      const across = byKey(
+        squareKey(trapPos[0] + (trapPos[0] - activeHero.pos[0]), trapPos[1] + (trapPos[1] - activeHero.pos[1]))
+      );
+      if (across) return across;
+    }
+    return landings[0] ?? null;
+  };
+  const sideName = (trapPos: Coord, sq: Coord): string =>
+    sq[1] < trapPos[1] ? "north" : sq[1] > trapPos[1] ? "south" : sq[0] > trapPos[0] ? "east" : "west";
 
 
   const handleCastSpell = async () => {
@@ -503,17 +583,20 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const handleTrapAction = async (
     trapId: string,
     action: "jump" | "disarm" | "step",
-    trapPos: Coord,
     // Spear rows report the die with the button itself (one click);
     // everything else reads the dropdown.
-    dieFaceOverride?: CombatDieFace
+    dieFaceOverride?: CombatDieFace,
+    // A jump's landing square, from legalLandings/chosenLanding. It
+    // used to be computed here as "straight across", which put a hero
+    // through a room wall -- and ignored the two other sides the
+    // rulebook allows.
+    landing?: Coord | null
   ) => {
     if (!heroId || !activeHero) return;
-    // Jump lands on the square directly beyond, in the direction of travel.
-    const landing: Coord = [
-      trapPos[0] + (trapPos[0] - activeHero.pos[0]),
-      trapPos[1] + (trapPos[1] - activeHero.pos[1]),
-    ];
+    if (action === "jump" && !landing) {
+      setErrorMsg("there is no square to land on -- climb in, or go another way");
+      return;
+    }
     // dieFace ALWAYS goes along: a step onto a spear is a reflex roll
     // the server refuses to resolve without it, and the extra field is
     // ignored where it isn't needed. Omitting it for "step" made the
@@ -526,11 +609,14 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
         trapId,
         action,
         dieFace: dieFaceOverride ?? trapDieFace,
-        ...(action === "jump" ? { landing } : {}),
+        ...(action === "jump" && landing ? { landing } : {}),
         ...(action === "disarm" ? { hasToolKit } : {}),
       })
     );
     if (!result) return;
+    // Decided: the half-finished move this prompt belonged to is over.
+    setTrapStop(null);
+    setJumpLandingKey(null);
   };
 
   const handleOpenDoor = async (doorId: string) => {
@@ -573,6 +659,8 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const handleEndTurn = async () => {
     await runAction(() => endTurn({ gameId }));
     setRolledTurn(null);
+    setTrapStop(null);
+    setJumpLandingKey(null);
   };
 
   const handleRollTurnType = async () => {
@@ -849,13 +937,13 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                         A skull costs 1 Body Point and ends the turn; either shield dodges it and the spear is gone.
                       </span>
                       <div className="panel-row">
-                        <button className="primary" onClick={() => handleTrapAction(t.id, "step", t.pos, "skull")} disabled={busy}>
+                        <button className="primary" onClick={() => handleTrapAction(t.id, "step", "skull")} disabled={busy}>
                           Skull
                         </button>
-                        <button onClick={() => handleTrapAction(t.id, "step", t.pos, "white_shield")} disabled={busy}>
+                        <button onClick={() => handleTrapAction(t.id, "step", "white_shield")} disabled={busy}>
                           White shield
                         </button>
-                        <button onClick={() => handleTrapAction(t.id, "step", t.pos, "black_shield")} disabled={busy}>
+                        <button onClick={() => handleTrapAction(t.id, "step", "black_shield")} disabled={busy}>
                           Black shield
                         </button>
                       </div>
@@ -881,14 +969,24 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                           tool kit
                         </label>
                       </div>
+                      <LandingPicker
+                        trapPos={t.pos}
+                        landings={legalLandings(t.pos)}
+                        chosen={chosenLanding(t.id, t.pos, legalLandings(t.pos))}
+                        sideName={sideName}
+                        onPick={(sq) => setJumpLandingKey(squareKey(sq[0], sq[1]))}
+                      />
                       <div className="panel-row">
-                        <button onClick={() => handleTrapAction(t.id, "jump", t.pos)} disabled={busy}>
+                        <button
+                          onClick={() => handleTrapAction(t.id, "jump", undefined, chosenLanding(t.id, t.pos, legalLandings(t.pos)))}
+                          disabled={busy || legalLandings(t.pos).length === 0}
+                        >
                           Jump (skull springs it)
                         </button>
-                        <button onClick={() => handleTrapAction(t.id, "disarm", t.pos)} disabled={busy}>
+                        <button onClick={() => handleTrapAction(t.id, "disarm")} disabled={busy}>
                           Disarm
                         </button>
-                        <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
+                        <button onClick={() => handleTrapAction(t.id, "step")} disabled={busy}>
                           Step on it (springs it)
                         </button>
                       </div>
@@ -902,32 +1000,42 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
             </div>
           )}
 
-          {playable && game.phase === "hero" && !waitingOnReport && adjacentOpenPits.length > 0 && (
+          {playable && game.phase === "hero" && !waitingOnReport && promptedOpenPit && (
             <div className="alert">
-              <p className="alert-title">An open pit is beside this hero</p>
+              <p className="alert-title">The move stops at an open pit</p>
               <div className="panel-stack">
-                {adjacentOpenPits.map((t) => (
-                  <div key={t.id} className="panel-stack">
-                    <span>
-                      Open pit at [{t.pos[0]},{t.pos[1]}] &mdash; crossing it means jumping (2 squares of movement,
-                      roll 1 combat die: anything but a skull clears it) or climbing in for 1 Body Point.
-                    </span>
-                    <div className="panel-row">
-                      <button className="primary" onClick={() => handleTrapAction(t.id, "jump", t.pos, "white_shield")} disabled={busy}>
-                        Jumped &mdash; no skull
-                      </button>
-                      <button onClick={() => handleTrapAction(t.id, "jump", t.pos, "skull")} disabled={busy}>
-                        Skull &mdash; fell in
-                      </button>
-                      <button onClick={() => handleTrapAction(t.id, "step", t.pos)} disabled={busy}>
-                        Climb in
-                      </button>
+                {[promptedOpenPit].map((t) => {
+                  const landings = legalLandings(t.pos);
+                  const landing = chosenLanding(t.id, t.pos, landings);
+                  return (
+                    <div key={t.id} className="panel-stack">
+                      <span>
+                        Open pit at [{t.pos[0]},{t.pos[1]}] &mdash; crossing it means jumping (2 squares of movement,
+                        roll 1 combat die: anything but a skull clears it) or climbing in for 1 Body Point.
+                      </span>
+                      <LandingPicker trapPos={t.pos} landings={landings} chosen={landing} sideName={sideName}
+                        onPick={(sq) => setJumpLandingKey(squareKey(sq[0], sq[1]))} />
+                      <div className="panel-row">
+                        <button
+                          className="primary"
+                          onClick={() => handleTrapAction(t.id, "jump", "white_shield", landing)}
+                          disabled={busy || !landing}
+                        >
+                          Jumped &mdash; no skull
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "jump", "skull", landing)} disabled={busy || !landing}>
+                          Skull &mdash; fell in
+                        </button>
+                        <button onClick={() => handleTrapAction(t.id, "step")} disabled={busy}>
+                          Climb in
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <span className="hint">
                   In the pit: attack and defend with one die fewer; climbing out is next turn&apos;s movement.
-                  Monsters clear open pits automatically.
+                  Monsters clear open pits automatically. To go another way instead, just trace a new path.
                 </span>
               </div>
             </div>
@@ -1374,6 +1482,54 @@ function DefenseForm({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+
+/** Which side of the trap a jump comes down on. Nothing to pick when
+ * only one side is open (a pit in a corridor corner); when none is,
+ * say so -- the jump buttons are disabled and the hero climbs in or
+ * goes round. */
+function LandingPicker({
+  trapPos,
+  landings,
+  chosen,
+  sideName,
+  onPick,
+}: {
+  trapPos: Coord;
+  landings: Coord[];
+  chosen: Coord | null;
+  sideName: (trapPos: Coord, sq: Coord) => string;
+  onPick: (sq: Coord) => void;
+}) {
+  if (landings.length === 0) {
+    return <span className="hint">No square to land on beyond it &mdash; every side is a wall, blocked, or occupied.</span>;
+  }
+  if (landings.length === 1) {
+    return (
+      <span className="hint">
+        A jump lands {sideName(trapPos, landings[0])} of it, on [{landings[0][0]},{landings[0][1]}] &mdash; the only open side.
+      </span>
+    );
+  }
+  return (
+    <div className="panel-row">
+      <span className="hint">Jump lands:</span>
+      {landings.map((sq) => {
+        const isChosen = !!chosen && chosen[0] === sq[0] && chosen[1] === sq[1];
+        return (
+          <button
+            key={squareKey(sq[0], sq[1])}
+            className={isChosen ? "primary" : "quiet"}
+            onClick={() => onPick(sq)}
+            aria-pressed={isChosen}
+          >
+            {sideName(trapPos, sq)} [{sq[0]},{sq[1]}]
+          </button>
+        );
+      })}
     </div>
   );
 }

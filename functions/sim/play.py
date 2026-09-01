@@ -287,16 +287,33 @@ def _take_hero_turn(board, catalogs, quest, game_state, card: HeroCard, body: di
         )
         if pit_pos is not None:
             here = tuple(hero["pos"])
-            beyond = (2 * pit_pos[0] - here[0], 2 * pit_pos[1] - here[1])
             if rng.randint(1, 6) <= 3:
                 hero["pos"] = list(pit_pos)
                 body[card.id] -= 1
             else:
+                # Land where the planned path was going (the rulebook
+                # allows any side of the pit the hero could step to),
+                # else any other legal side. Same wall/door rule as
+                # engine/trap_action.py -- straight across used to put
+                # a sim hero through a room wall.
                 occupied = {tuple(h["pos"]) for h in living_heroes(game_state) if h["id"] != card.id} | {
                     tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
                 }
-                if board.area_of.get(beyond) is not None and beyond not in occupied:
-                    hero["pos"] = list(beyond)
+                open_edges = passable_door_edges(quest.get("doors", []), game_state.get("doors", {}))
+                pit_area = board.area_of.get(pit_pos)
+
+                def _can_land(sq):
+                    area = board.area_of.get(sq)
+                    if area is None or sq in occupied or sq == here:
+                        return False
+                    return area == pit_area or frozenset((pit_pos, sq)) in open_edges
+
+                planned = [tuple(p) for p in path]
+                beyond = planned[planned.index(pit_pos) + 1] if pit_pos in planned[:-1] else None
+                sides = [(pit_pos[0] + dx, pit_pos[1] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+                landing = next((sq for sq in [beyond, *sides] if sq is not None and _can_land(sq)), None)
+                if landing is not None:
+                    hero["pos"] = list(landing)
         return killed
 
     engaged = _adjacent_monster(game_state, tuple(hero["pos"]))

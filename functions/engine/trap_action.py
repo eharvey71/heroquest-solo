@@ -17,7 +17,15 @@ Rulebook outcomes, verified against the owner's photos:
   skull clears it; a skull springs the trap. Movement points are the
   hero's own bookkeeping (2 red dice, never entered into the app), so
   the "two squares remaining" half is the player's to honour -- the app
-  checks only that the landing square is legal.
+  checks only that the landing square is legal. "Beyond" is not
+  "straight across": "there may be as many as 3 possible squares to
+  jump to on the other sides of a single pit. However, a pit in the
+  corner of a corridor has only 1 space open to jump across to." So
+  any square next to the trap other than the one the hero stands on
+  is a landing, as long as the hero could have STEPPED there from the
+  trap square -- a wall, a closed door, a blocked square or furniture
+  removes it. Found in live play: the client always jumped straight
+  across, and the server let a hero land through a room wall.
 - DISARM (page 21): the Dwarf needs no tool kit and fails only on a
   BLACK shield; every other hero needs a tool kit and succeeds on
   either shield, failing on a skull. Tool-kit possession is inventory,
@@ -37,7 +45,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
+from .movement import passable_door_edges
 from validator.catalogs import Board
+from validator.geometry import furniture_squares
 
 Coord = tuple[int, int]
 
@@ -67,6 +77,30 @@ class TrapActionResult:
 
 def _orthogonally_adjacent(a: Coord, b: Coord) -> bool:
     return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
+
+
+def _landing_problem(
+    board: Board, quest: dict, game_state: dict, trap_pos: Coord, landing: Coord, catalogs
+) -> str | None:
+    """Why a jump can't come down on `landing`, or None if it can. The
+    same passability a step from the trap square would need: on the
+    board, no wall between (an OPEN door edge counts as no wall), not a
+    blocked or collapsed square, not furniture."""
+    landing_area = board.area_of.get(landing)
+    if landing_area is None:
+        return "the landing square is off the board"
+    if landing_area != board.area_of.get(trap_pos):
+        open_edges = passable_door_edges(quest.get("doors", []), game_state.get("doors", {}))
+        if frozenset((tuple(trap_pos), tuple(landing))) not in open_edges:
+            return "the landing square is on the other side of a wall -- a jump can't go through it"
+    blocked = {tuple(sq) for sq in quest.get("blockedSquares", [])} | {
+        tuple(sq) for sq in game_state.get("collapsedSquares", [])
+    }
+    if tuple(landing) in blocked:
+        return "the landing square is blocked"
+    if catalogs is not None and tuple(landing) in furniture_squares(quest, catalogs):
+        return "furniture stands on the landing square"
+    return None
 
 
 def _spring(trap_type: str, pos: Coord, hero_id: str) -> tuple[str | None, str]:
@@ -106,7 +140,11 @@ def resolve_trap_action(
     die_face: str | None = None,
     landing: Coord | None = None,
     has_tool_kit: bool = False,
+    catalogs=None,
 ) -> TrapActionResult:
+    """`catalogs` is only needed to keep a jump from landing on
+    furniture (footprints come from the furniture catalog); without it
+    that one check is skipped."""
     if action not in TRAP_ACTIONS:
         raise InvalidTrapActionError(f"action must be one of {TRAP_ACTIONS}, got '{action}'")
 
@@ -155,9 +193,10 @@ def resolve_trap_action(
             raise InvalidTrapActionError("a jump needs a landing square")
         landing = tuple(landing)
         if not _orthogonally_adjacent(landing, trap_pos) or landing == hero_pos:
-            raise InvalidTrapActionError("the landing square must be on the far side of the trap")
-        if board.area_of.get(landing) is None:
-            raise InvalidTrapActionError("the landing square is off the board")
+            raise InvalidTrapActionError("the landing square must be next to the trap, on a side the hero isn't on")
+        problem = _landing_problem(board, quest, game_state, trap_pos, landing, catalogs)
+        if problem is not None:
+            raise InvalidTrapActionError(problem)
         occupied = {tuple(h["pos"]) for h in heroes if h["id"] != hero_id} | {
             tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
         }
@@ -213,9 +252,10 @@ def resolve_trap_action(
             raise InvalidTrapActionError("a jump needs a landing square")
         landing = tuple(landing)
         if not _orthogonally_adjacent(landing, trap_pos) or landing == hero_pos:
-            raise InvalidTrapActionError("the landing square must be on the far side of the trap")
-        if board.area_of.get(landing) is None:
-            raise InvalidTrapActionError("the landing square is off the board")
+            raise InvalidTrapActionError("the landing square must be next to the trap, on a side the hero isn't on")
+        problem = _landing_problem(board, quest, game_state, trap_pos, landing, catalogs)
+        if problem is not None:
+            raise InvalidTrapActionError(problem)
         occupied = {tuple(h["pos"]) for h in heroes if h["id"] != hero_id} | {
             tuple(m["pos"]) for m in game_state.get("monsters", {}).values() if m.get("alive")
         }

@@ -117,6 +117,8 @@ export interface ResolveMovementResponse {
   pathTaken: Coord[];
   stoppedReason: string | null;
   stoppedAtDoorId: string | null;
+  /** The trap an "open_pit" / "known_trap" stop was at. */
+  stoppedAtTrapId: string | null;
   newlyRevealedRooms: string[];
   triggeredTraps: TriggeredTrap[];
   log: string[];

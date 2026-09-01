@@ -395,7 +395,21 @@ crossing it must JUMP (anything but a skull clears it; a skull drops
 them in for 1 Body Point) or climb in deliberately (also 1 Body
 Point), and it can never be disarmed. Movement stops at the pit's
 edge ("open_pit", same two-step shape as known_trap) and the client's
-open-pit panel resolves the choice with one-click die buttons.
+open-pit panel resolves the choice with one-click die buttons. That
+panel is shown only for the pit a traced move JUST stopped at
+(GameView's trapStop, set from resolve_movement's stoppedAtTrapId and
+cleared by the trap action, undo, or end turn) -- adjacency alone kept
+it up after a successful jump, since the hero lands next to the hole.
+WHERE a jump lands (any trap, armed or open) is the rulebook's p.20
+rule, not "straight across": "as many as 3 possible squares to jump
+to on the other sides of a single pit ... a pit in the corner of a
+corridor has only 1". Any side of the trap the hero isn't on counts,
+provided the hero could have STEPPED there from the trap square --
+same area or an OPEN door edge, not blocked/collapsed, not furniture,
+not occupied. engine/trap_action._landing_problem enforces it (found
+in live play: a straight-across jump put a hero through a room wall,
+and the server let it), and the client offers only legal sides, pre-
+selecting the square the traced path was heading to past the trap.
 Climbing OUT is ordinary movement -- only entering costs. Monsters
 clear open pits automatically (the book says they always make the
 jump), so monster pathing treats them as passable, and the sim's

@@ -179,3 +179,59 @@ def test_a_sprung_falling_block_stays_inert(catalogs):
     # sprung ... it cannot be disarmed or jumped".
     with pytest.raises(InvalidTrapActionError):
         _call(catalogs, **_sprung_pit(trap_type="falling_block", die_face="white_shield", landing=(7, 2)))
+
+
+# ---- where a jump may land (rulebook p.20, "More About Jumping Pit Traps") ----
+
+
+def test_jump_may_land_on_any_side_of_the_trap_the_hero_is_not_on(catalogs):
+    # Approached from the west, the hero may come down north or south
+    # of the trap as well as straight across -- "as many as 3 possible
+    # squares to jump to".
+    for landing in ((6, 1), (6, 3), (7, 2)):
+        result = _call(catalogs, die_face="white_shield", landing=landing)
+        assert result.hero_pos == landing
+
+
+def test_jump_cannot_land_through_a_wall(catalogs):
+    # (8,2) is R2's east edge; (9,2) is the next room over, with no
+    # door on that edge. Straight across is exactly what the client
+    # used to send here.
+    with pytest.raises(InvalidTrapActionError, match="wall"):
+        _call(
+            catalogs, game_state=_state(hero_pos=(7, 2)), trap_pos=(8, 2),
+            die_face="white_shield", landing=(9, 2),
+        )
+
+
+def test_jump_may_land_through_an_open_door(catalogs):
+    quest = {"doors": [{"id": "D9", "squares": [[8, 2], [9, 2]], "state": "open"}]}
+    state = _state(hero_pos=(7, 2))
+    state["doors"] = {"D9": "open"}
+    result = _call(
+        catalogs, quest=quest, game_state=state, trap_pos=(8, 2), die_face="white_shield", landing=(9, 2)
+    )
+    assert result.hero_pos == (9, 2)
+
+
+def test_jump_cannot_land_through_a_closed_door(catalogs):
+    quest = {"doors": [{"id": "D9", "squares": [[8, 2], [9, 2]], "state": "open"}]}
+    state = _state(hero_pos=(7, 2))
+    state["doors"] = {"D9": "closed"}
+    with pytest.raises(InvalidTrapActionError, match="wall"):
+        _call(catalogs, quest=quest, game_state=state, trap_pos=(8, 2), die_face="white_shield", landing=(9, 2))
+
+
+def test_jump_cannot_land_on_a_collapsed_square(catalogs):
+    state = _state()
+    state["collapsedSquares"] = [[7, 2]]
+    with pytest.raises(InvalidTrapActionError, match="blocked"):
+        _call(catalogs, game_state=state, die_face="white_shield", landing=(7, 2))
+
+
+def test_open_pit_jump_obeys_the_same_wall_rule(catalogs):
+    state = _state(hero_pos=(7, 2), sprung=("R2-T1",))
+    with pytest.raises(InvalidTrapActionError, match="wall"):
+        _call(catalogs, game_state=state, trap_pos=(8, 2), die_face="white_shield", landing=(9, 2))
+    result = _call(catalogs, game_state=state, trap_pos=(8, 2), die_face="white_shield", landing=(8, 1))
+    assert result.hero_pos == (8, 1)
