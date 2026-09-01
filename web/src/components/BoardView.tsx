@@ -3,11 +3,16 @@ import { board as staticBoard, type Coord, squareKey } from "../lib/board";
 import { isOrthogonallyAdjacent } from "../lib/boardGeometry";
 import { livingHeroes, revealedSquareKeys, type GameState } from "../lib/gameState";
 import type { QuestDoor, QuestFurniture, QuestStairway } from "../lib/useQuestMap";
-import { BoardTerrain } from "./BoardTerrain";
+import { BoardTerrain, DOOR_COLORS, STAIRWAY_STROKE } from "./BoardTerrain";
 import { Furniture } from "./Furniture";
 import { PathOverlay } from "./PathOverlay";
 import { Tokens } from "./Tokens";
 import type { usePathInput } from "../hooks/usePathInput";
+
+// Same amber as the "waiting on you" rail alerts: a known, still-armed
+// trap is something the app is warning about.
+const TRAP_MARKER_FILL = "#e8b04a";
+const OPEN_PIT_FILL = "#0d0b08";
 
 interface BoardViewProps {
   gameState: GameState;
@@ -247,7 +252,7 @@ export function BoardView({
                     cx={cx}
                     cy={cy}
                     r={cellSize * 0.34}
-                    fill="#0d0b08"
+                    fill={OPEN_PIT_FILL}
                     stroke="#6b5b3e"
                     strokeWidth={2}
                   />
@@ -257,7 +262,7 @@ export function BoardView({
                 <g key={`trap-${id}`}>
                   <path
                     d={`M ${cx} ${cy - cellSize * 0.32} L ${cx + cellSize * 0.3} ${cy + cellSize * 0.24} L ${cx - cellSize * 0.3} ${cy + cellSize * 0.24} Z`}
-                    fill="#e8b04a"
+                    fill={TRAP_MARKER_FILL}
                     stroke="#3a2f16"
                     strokeWidth={1}
                   />
@@ -289,11 +294,11 @@ export function BoardView({
       </svg>
       <div className="board-legend">
         {[
-          ["#7fd67f", "open door"],
-          ["#d69a4a", "closed door"],
-          ["#e8c34a", "stairway"],
-          ["#e8b04a", "known trap (still armed)"],
-          ["#0d0b08", "open pit (sprung)"],
+          [DOOR_COLORS.open, "open door"],
+          [DOOR_COLORS.closed, "closed door"],
+          [STAIRWAY_STROKE, "stairway"],
+          [TRAP_MARKER_FILL, "known trap (still armed)"],
+          [OPEN_PIT_FILL, "open pit (sprung)"],
         ].map(([colour, label]) => (
           <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ width: 12, height: 4, background: colour, display: "inline-block", border: "1px solid #555" }} />

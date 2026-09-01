@@ -45,6 +45,8 @@ function App() {
     setGameId(id);
   };
 
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
+
   const handleLeaveGame = () => {
     localStorage.removeItem(GAME_ID_STORAGE_KEY);
     setGameId(null);
@@ -55,7 +57,15 @@ function App() {
       <div className="app-header">
         <h1>HeroQuest Zargon</h1>
         {user && (
-          <span className="hint" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className="hint header-tools">
+            {/* GameView's own controls (Story, Undo, the game id) render
+                into this slot, so everything you press that isn't a
+                game action sits in one row at the top -- they used to
+                share a row with the turn heading, where they crowded
+                the rail. A portal because their state is GameView's;
+                the slot is passed as an element (not looked up by id)
+                so it exists by the time GameView renders. */}
+            {gameId && ownership === "owner" && <span ref={setToolsSlot} className="header-tools" />}
             {gameId && ownership === "owner" && (
               <button onClick={handleLeaveGame}>Back to quests &amp; games</button>
             )}
@@ -95,7 +105,7 @@ function App() {
 
       {user && ownership === "owner" && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
 
-      {user && ownership === "owner" && gameId && <GameView gameId={gameId} />}
+      {user && ownership === "owner" && gameId && <GameView gameId={gameId} toolsSlot={toolsSlot} />}
     </div>
   );
 }

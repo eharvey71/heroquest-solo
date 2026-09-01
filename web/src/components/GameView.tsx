@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
@@ -32,6 +33,10 @@ import { BoardView } from "./BoardView";
 
 interface GameViewProps {
   gameId: string;
+  /** Where the Story / Undo / game-id controls render: a slot in
+   * App's header row, so they sit with the other top-level buttons
+   * instead of beside the turn heading. Null until the slot mounts. */
+  toolsSlot?: HTMLElement | null;
 }
 
 /** The hero's own one-move spell boons (engine/hero_movement.py honours
@@ -89,7 +94,7 @@ const ACTION_LABELS: Record<ActionKey, string> = {
   spell: "Cast a spell",
 };
 
-export function GameView({ gameId }: GameViewProps) {
+export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const { game, loading, error } = useLiveGame(gameId);
 
   const [heroId, setHeroId] = useState<string>("");
@@ -638,42 +643,45 @@ export function GameView({ gameId }: GameViewProps) {
         </div>
       )}
 
-      <div className="app-header">
-        <h2 style={{ margin: 0 }}>
-          Turn {game.turn} &mdash;{" "}
-          {game.phase === "hero"
-            ? game.heroes.length === 1
-              ? `Hero phase (action ${game.heroPhaseSegment ?? 1} of 2)`
-              : "Hero phase"
-            : "Zargon's turn"}
-        </h2>
-        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          {narrative && (
-            <button className="quiet" onClick={() => setNarrativeOpen(true)}>
-              Story
+      <h2 style={{ margin: "0 0 10px" }}>
+        Turn {game.turn} &mdash;{" "}
+        {game.phase === "hero"
+          ? game.heroes.length === 1
+            ? `Hero phase (action ${game.heroPhaseSegment ?? 1} of 2)`
+            : "Hero phase"
+          : "Zargon's turn"}
+      </h2>
+
+      {toolsSlot &&
+        createPortal(
+          <>
+            {narrative && (
+              <button className="quiet" onClick={() => setNarrativeOpen(true)}>
+                Story
+              </button>
+            )}
+            {!playable && game.chronicle && (
+              <button className="quiet" onClick={() => setChronicleOpen(true)}>
+                Chronicle
+              </button>
+            )}
+            {!playable && !game.chronicle && !chronicleError && (
+              <span className="hint">Writing the chronicle&hellip;</span>
+            )}
+            {!playable && !game.chronicle && chronicleError && (
+              <span className="hint" style={{ color: "#e6a23b" }}>
+                Chronicle failed to generate
+              </span>
+            )}
+            <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
+              {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
             </button>
-          )}
-          {!playable && game.chronicle && (
-            <button className="quiet" onClick={() => setChronicleOpen(true)}>
-              Chronicle
-            </button>
-          )}
-          {!playable && !game.chronicle && !chronicleError && (
-            <span className="hint">Writing the chronicle&hellip;</span>
-          )}
-          {!playable && !game.chronicle && chronicleError && (
-            <span className="hint" style={{ color: "#e6a23b" }}>
-              Chronicle failed to generate
+            <span className="hint">
+              <code>{gameId}</code>
             </span>
-          )}
-          <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
-            {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
-          </button>
-          <span className="hint">
-            <code>{gameId}</code>
-          </span>
-        </span>
-      </div>
+          </>,
+          toolsSlot
+        )}
 
       {narrative && narrativeOpen && (
         // Click anywhere outside to put it away -- it is read-aloud text,

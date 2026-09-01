@@ -45,11 +45,16 @@ const CORRIDOR_FILL_UNREVEALED = "#1c1916";
 const WALL_STROKE = "#e8dfc8";
 const LABEL_FILL_REVEALED = "#c9bfa0";
 const LABEL_FILL_UNREVEALED = "#5a5347";
-const STAIRWAY_STROKE = "#e8c34a";
+// Exported so BoardView's legend swatches are the same values as the
+// board -- they used to be copied, and drifted. Closed door, stairway
+// and the armed-trap marker were three ambers a player couldn't tell
+// apart in the legend (owner's call): closed doors are now a dark red,
+// the stairway a dark purple, and only the trap marker keeps amber.
+export const STAIRWAY_STROKE = "#7b4fb3";
 const BLOCKED_FILL = "#5b5b5b";
-const DOOR_COLORS: Record<string, string> = {
+export const DOOR_COLORS: Record<string, string> = {
   open: "#7fd67f",
-  closed: "#d69a4a",
+  closed: "#a8282c",
 };
 
 export function BoardTerrain({

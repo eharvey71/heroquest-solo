@@ -22,6 +22,17 @@
   flex-wrap: wrap;
 }
 
+/* The header's right-hand cluster: the open game's own controls
+   (portalled in from GameView), then navigation and the account. One
+   flex row, nested so the game's slot can be empty without leaving a
+   stray gap. */
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .game-layout {
   display: grid;
   /* The board column takes exactly the board's width (set on
