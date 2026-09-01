@@ -280,6 +280,7 @@ export function BoardView({
           cellSize={cellSize}
           heroes={heroes}
           monsters={gameState.monsters}
+          paths={gameState.lastMoves}
           revealed={revealed}
           activeHeroId={activeHeroId}
           activeMonsterId={activeMonsterId}

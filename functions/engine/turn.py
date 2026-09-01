@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board
 
 from .combat import MonsterAttackRoll, roll_monster_attack
-from .movement import Coord, move_toward, reachable_within, squares_adjacent_to
+from .movement import Coord, find_path, move_toward, reachable_within, squares_adjacent_to
 from .targeting import guard_should_engage
 
 WITHDRAW_POLICIES = ("none", "reposition", "fall_back")
@@ -58,6 +58,13 @@ class MonsterTurnResult:
     attacked: bool
     attack: MonsterAttackRoll | None
     withdrew: bool = False
+    # Every square the figure crossed this turn, start included, in
+    # order -- what the client walks the token along, so it turns the
+    # corridor's corners instead of sliding straight through a wall.
+    # A monster that stayed put has just its own square here. Never
+    # both an approach and a withdrawal: a monster that walked in
+    # doesn't also fall back (see the rule above).
+    path: list[Coord] = field(default_factory=list)
     log: list[str] = field(default_factory=list)
 
 
@@ -145,12 +152,14 @@ def take_monster_turn(
                 moved=False,
                 attacked=False,
                 attack=None,
+                path=[monster_pos],
                 log=[f"{monster_name} guards its position."],
             )
 
     already_adjacent = monster_pos in squares_adjacent_to(target_hero_pos)
     end_pos = monster_pos
     moved = False
+    path: list[Coord] = [monster_pos]
     log: list[str] = []
 
     if not already_adjacent:
@@ -163,10 +172,12 @@ def take_monster_turn(
                 moved=False,
                 attacked=False,
                 attack=None,
+                path=[monster_pos],
                 log=[f"{monster_name} has no path to {target_hero_name}."],
             )
         end_pos = move_result.reachable_this_turn[-1]
         moved = end_pos != monster_pos
+        path = list(move_result.reachable_this_turn)
         # reachable_this_turn includes the start square, so the path
         # length is one less than its size -- actual squares crossed,
         # not straight-line distance, since a corridor bends.
@@ -199,6 +210,13 @@ def take_monster_turn(
             if destination != monster_pos:
                 end_pos = destination
                 withdrew = True
+                # reachable_within only knows the distance; the client
+                # needs the squares. Same passability rules, so the
+                # shortest path exists and fits the move allowance.
+                path = find_path(board, revealed, door_edges, occupied, monster_pos, {destination}) or [
+                    monster_pos,
+                    destination,
+                ]
                 still_in_contact = bool(squares_adjacent_to(end_pos) & set(hero_squares or ()))
                 log.append(
                     f"{monster_name} shifts to [{end_pos[0]},{end_pos[1]}], still in reach."
@@ -219,5 +237,6 @@ def take_monster_turn(
         attacked=attack is not None,
         attack=attack,
         withdrew=withdrew,
+        path=path,
         log=log,
     )

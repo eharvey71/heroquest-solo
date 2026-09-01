@@ -40,6 +40,7 @@ interface RawGameDoc {
   pendingTreasureDraw?: GameState["pendingTreasureDraw"];
   chronicle?: string;
   narration?: Record<string, string>;
+  lastMoves?: Record<string, Coord[]>;
   log?: LogEntry[];
 }
 
@@ -76,6 +77,7 @@ function toGameState(raw: RawGameDoc): GameState {
     pendingTreasureDraw: raw.pendingTreasureDraw ?? null,
     chronicle: raw.chronicle,
     narration: raw.narration ?? {},
+    lastMoves: raw.lastMoves ?? {},
     log: raw.log ?? [],
   };
 }

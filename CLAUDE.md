@@ -73,6 +73,33 @@ searched.<room>.treasureBy.
   and buried the log below all of them. Path tracing state lives in
   GameView, not BoardView, so "Confirm move" sits in the rail next to
   the board instead of under it.
+  TOKENS WALK THEIR ROUTE (Tokens.tsx): a hero or monster that moved
+  steps square by square along the squares it actually crossed, four
+  directions only, turning the corridor's corners the way the mini
+  does on the table. The route is GAME state, game.lastMoves
+  ({figureId: [squares, start first]}), written whole by every
+  endpoint that moves a figure -- resolve_movement (the path walked,
+  cut short where the move stopped), resolve_trap_action (onto the
+  trap, and past it on a cleared jump), resolve_zargon_turn (each
+  monster's approach or fall-back, from engine/turn.py's
+  MonsterTurnResult.path). Game state rather than a response field so
+  the route and the new position arrive in ONE Firestore snapshot --
+  the callable's response and the listener's snapshot race, and a
+  path that arrives after the token has already started sliding is
+  useless. The client walks a route only if it starts on the square
+  the token is drawn on and ends on the figure's new square, so a
+  stale entry (the field is left alone by endpoints that move
+  nothing) can never send a token the wrong way; it keeps the
+  previous document's routes for one comparison so an UNDO retraces
+  the last move backwards. No matching route (undo further back,
+  Escape's teleport, a game opened mid-play) means a straight slide,
+  or -- for a figure just revealed, spawned, or loaded -- no motion at
+  all. Driven per frame in JS (requestAnimationFrame), not a CSS
+  transition, which can only tween a straight line; the reduced-
+  motion preference skips it. Verified in headless Chromium with a
+  Playwright harness (corner turned, undo retraced, stale route
+  ignored) -- the rAF timestamp can precede the walk's own start
+  stamp, which indexed the path at -1 until clamped.
 - State: Firestore. Collections: quests (validated definitions),
   games (runtime state). A quest never changes after generation, so the
   setup screen lists both: pick a past quest to start a fresh game on

@@ -111,6 +111,11 @@ export interface GameState {
    * turn closes. Absent for turns not yet narrated -- including every
    * turn of a game played before this feature existed. */
   narration?: Record<string, string>;
+  /** The squares each figure walked in the action just written, start
+   * square first, keyed by hero or monster id -- what Tokens.tsx steps
+   * the token along. Written whole by every endpoint that moves a
+   * figure (main._last_moves); a figure that didn't move is absent. */
+  lastMoves?: Record<string, Coord[]>;
 }
 
 /** Heroes still on the board: the ones that can act, block squares and

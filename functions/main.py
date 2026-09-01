@@ -651,6 +651,22 @@ def _push_undo(transaction, game_ref, before: dict, updates: dict, label: str) -
     updates["lastActionAt"] = firestore.SERVER_TIMESTAMP
 
 
+def _last_moves(paths: dict) -> dict:
+    """The squares each figure walked in THIS action, start square first,
+    for the client to animate the token along -- the board's corridors
+    bend, and a straight slide between old and new square cut through
+    walls. Written WHOLE by every endpoint that moves a figure (hero
+    movement, trap actions, Zargon's turn), so a stale path from the
+    action before can't be mistaken for this one; the client also
+    checks a path's ends against the token's old and new squares before
+    walking it, so even a stale entry degrades to the straight slide.
+    Figures that didn't move (a path of one square) are left out.
+    """
+    return to_firestore_coords(
+        {fid: [list(sq) for sq in path] for fid, path in paths.items() if path and len(path) > 1}
+    )
+
+
 def _queue_placements(updates: dict, game_state: dict, instructions) -> None:
     """Adds "place the X at [x,y]" lines to the game's own placement
     queue, so the UI can put them where the player will see them.
@@ -747,6 +763,7 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
         "revealed.corridorSquares": to_firestore_coords(sorted(result.revealed_corridor_squares)),
         "trapsTriggered": sorted(result.traps_triggered),
         "collapsedSquares": to_firestore_coords(sorted(result.collapsed_squares)),
+        "lastMoves": _last_moves({hero_id: result.path_taken}),
     }
     # A spear trap is discovered by stepping on it; a pit or falling
     # block sprung outright is no longer hidden either -- there's a
@@ -1375,12 +1392,22 @@ def _apply_trap_action(transaction, db, game_ref, hero_id, trap_id, action, die_
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
     heroes = game_state.get("heroes", [])
+    start_pos = None
     for h in heroes:
         if h["id"] == hero_id:
+            start_pos = tuple(h["pos"])
             h["pos"] = list(result.hero_pos)
 
     new_log_entries = [{"turn": turn, "text": line} for line in result.log]
-    updates: dict = {"heroes": to_firestore_coords(heroes)}
+    # The squares the figure crosses: onto the trap, and past it on a
+    # cleared jump. A hero who stays put (disarmed, or a falling block
+    # came down in front of them) crosses nothing.
+    hops = [start_pos]
+    if start_pos is not None and tuple(result.hero_pos) != start_pos:
+        hops.append(tuple(trap_pos))
+        if tuple(result.hero_pos) != tuple(trap_pos):
+            hops.append(tuple(result.hero_pos))
+    updates: dict = {"heroes": to_firestore_coords(heroes), "lastMoves": _last_moves({hero_id: hops})}
 
     if result.sprung:
         updates["trapsTriggered"] = sorted(set(game_state.get("trapsTriggered", [])) | {trap_id})
@@ -1676,6 +1703,11 @@ def _apply_zargon_turn(transaction, db, game_ref, turn_type, lowest_bp_hero_id):
 
     for monster_id, new_pos in result.updated_monster_positions.items():
         updates[f"monsters.{monster_id}.pos"] = to_firestore_coords(list(new_pos))
+    # Escape's teleport has no path (it isn't walked), so it is absent
+    # here and the client slides that figure straight.
+    updates["lastMoves"] = _last_moves(
+        {mr.monster_id: mr.turn_result.path for mr in result.monster_results if mr.turn_result}
+    )
 
     # resolve_zargon_turn rolls Sleep/Tempest saves in place.
     updates["monsterStatus"] = game_state.get("monsterStatus", {})

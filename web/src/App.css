@@ -66,20 +66,13 @@
   height: auto;
 }
 
-/* A hero or monster's token slides to its new square instead of
- * jumping there. Keyed by id in Tokens.tsx, so React keeps the same
- * DOM node across a move and the browser tweens the CSS transform
- * between the old position and the new one -- no animation library or
- * per-frame JS needed. Skipped for anyone who's asked for less motion. */
-.token-figure {
-  transition: transform 0.6s ease-in-out;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .token-figure {
-    transition: none;
-  }
-}
+/* A hero or monster's token WALKS to its new square, one square at a
+ * time along the route it actually took (game.lastMoves), so it turns
+ * the corridor's corners instead of sliding straight through a wall.
+ * Tokens.tsx drives the position per frame in JS -- a CSS transition
+ * on transform can only tween a straight line -- so there is no
+ * transition here; the reduced-motion preference is honoured there
+ * too (the token simply appears on its new square). */
 
 .board-legend {
   margin-top: 6px;

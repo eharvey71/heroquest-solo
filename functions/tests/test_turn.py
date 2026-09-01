@@ -316,3 +316,71 @@ def test_unknown_policy_rejected(catalogs):
     board, revealed, _, hero_squares = _contact_setup(catalogs)
     with pytest.raises(ValueError):
         _take(board, revealed, hero_squares, "flee-always")
+
+
+# ---- the walked path (what the client animates the token along) ----
+
+
+def _orthogonal_chain(path):
+    return all(abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1 for a, b in zip(path, path[1:]))
+
+
+def test_an_approach_reports_every_square_walked(catalogs):
+    board, edges, revealed = _setup(catalogs)
+    result = take_monster_turn(
+        board=board,
+        revealed=revealed,
+        door_edges=edges,
+        occupied=set(),
+        monster_id="M1",
+        monster_name="Orc",
+        monster_pos=(6, 2),
+        move_points=10,
+        attack_dice=3,
+        target_hero_id="barbarian",
+        target_hero_name="Barbarian",
+        target_hero_pos=(2, 2),
+        rng=random.Random(5),
+    )
+    assert result.path[0] == (6, 2)
+    assert result.path[-1] == result.end_pos
+    # One square at a time, four directions only -- the client walks
+    # this literally, so a diagonal here would slide through a wall.
+    assert _orthogonal_chain(result.path)
+
+
+def test_a_partial_approach_path_stops_where_the_monster_did(catalogs):
+    board, edges, revealed = _setup(catalogs)
+    result = take_monster_turn(
+        board=board,
+        revealed=revealed,
+        door_edges=edges,
+        occupied=set(),
+        monster_id="M1",
+        monster_name="Orc",
+        monster_pos=(6, 2),
+        move_points=2,
+        attack_dice=3,
+        target_hero_id="barbarian",
+        target_hero_name="Barbarian",
+        target_hero_pos=(2, 2),
+        rng=random.Random(5),
+    )
+    assert len(result.path) == 3  # start + 2 steps
+    assert result.path[-1] == result.end_pos
+    assert _orthogonal_chain(result.path)
+
+
+def test_a_withdrawal_reports_the_squares_it_fell_back_through(catalogs):
+    board, revealed, _, hero_squares = _contact_setup(catalogs)
+    result = _take(board, revealed, hero_squares, "fall_back")
+    assert result.withdrew is True
+    assert result.path[0] == (6, 2)
+    assert result.path[-1] == result.end_pos
+    assert _orthogonal_chain(result.path)
+
+
+def test_a_monster_that_stays_put_has_a_one_square_path(catalogs):
+    board, revealed, _, hero_squares = _contact_setup(catalogs)
+    result = _take(board, revealed, hero_squares, "none")
+    assert result.path == [(6, 2)]
