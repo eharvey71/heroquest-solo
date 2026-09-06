@@ -100,6 +100,18 @@ searched.<room>.treasureBy.
   Playwright harness (corner turned, undo retraced, stale route
   ignored) -- the rAF timestamp can precede the walk's own start
   stamp, which indexed the path at -1 until clamped.
+  HEADER ROW: Story, Chronicle, Undo and the game id live in App's
+  header beside "Back to quests & games" and Sign out -- one row for
+  everything that isn't a game action. They used to share a row with
+  the turn heading above the rail, where they crowded and sometimes
+  collided with rail panels. GameView renders them through a React
+  portal into a slot element App passes down (toolsSlot) -- their
+  state is GameView's, and the slot is passed as an element rather
+  than looked up by id so it exists by the time GameView renders.
+  LEGEND COLOURS come from the constants BoardTerrain draws with
+  (exported DOOR_COLORS / STAIRWAY_STROKE), not copies -- they had
+  drifted. Closed door is dark red, stairway dark purple, armed-trap
+  marker amber: the owner couldn't tell three ambers apart.
 - State: Firestore. Collections: quests (validated definitions),
   games (runtime state). A quest never changes after generation, so the
   setup screen lists both: pick a past quest to start a fresh game on
@@ -744,6 +756,22 @@ Three enforcement points, because each covers a hole the others don't:
 - The client proves ownership by CAPABILITY, not by comparing uids:
   config/owner is readable only by the owner, so a successful read is
   the proof. There is no string the client can lie about.
+
+## Firestore is only ever touched from the deployed functions (settled)
+Nothing in this repo opens a Firestore client on the owner's machine:
+main.py's initialize_app()/firestore.client() run only inside Cloud
+Functions (where the runtime supplies the project), the web client
+hard-codes projectId hq-zargon-solo, tests use fake transactions, and
+the simulator and tools/repro_grammar.py never import firestore. Keep
+it that way. The owner's machine has gcloud's machine-global default
+project set to a DIFFERENT project, and Admin-SDK credentials bypass
+security rules -- so any local script that called initialize_app() or
+firestore.Client() without an explicit project would write this app's
+games/quests into that other project's database, silently. If a local
+Admin-SDK script is ever genuinely needed, it must take its project id
+from .firebaserc (the repo's own `firebase use` alias) and pass it
+explicitly; never rely on the ambient default, and never tell the
+owner to run an ad-hoc firebase_admin / `gcloud firestore` one-liner.
 
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.
