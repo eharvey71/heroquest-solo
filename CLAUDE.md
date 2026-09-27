@@ -211,21 +211,88 @@ searched.<room>.treasureBy.
   doors); stairway: {room, pos} placed per quest.
 - quest-generator-design.md — generator + validator + budget design.
 - generator-prompt.md — LLM prompt template v0.1.
-- side-quests-design.md — Side Quests v0.1 (DESIGNED, NOT BUILT): short
-  narrative scenes generated with the quest, played on their own page
-  in 10-15 minutes. 1-2 optional per quest plus a server-rolled
-  required one (1 in 3) that gates the OBJECTIVE (a warded boss, a
-  sealed vault -- never a door). LLM writes prose and choice graph;
-  every choice resolves to an effect from a closed, priced list the
-  engine applies. Hero dice physical and reported, Zargon's digital,
-  same as everywhere. Failure fails FORWARD: a failed required scene
-  cracks the gate into hard mode, never an unwinnable quest. Town
-  scenes carry the Armory reminder; every other setting rewards a
-  FOUND item. The whole thing is a VARIANT the players choose at quest
-  generation ("Traditional" / "Expanded"), default Traditional, stored
-  on the quest and again on the game -- a traditional game must be
-  exactly today's game. Read the doc before touching any of this; it
-  records the owner's brief and answers.
+- side-quests-design.md — Side Quests v0.1, PHASE 1 BUILT (Sept 2026):
+  short narrative scenes generated with the quest, played on their own
+  page in 10-15 minutes. Read the doc before touching any of this; it
+  records the owner's brief and answers. What shipped, and where:
+  - The VARIANT toggle. Setup screen: "Traditional" / "Expanded: side
+    quests" at generation (default Traditional), stored as quest.mode;
+    a replay of an expanded quest offers the same choice again and the
+    game stores its own `mode`. A traditional game is EXACTLY today's
+    game -- no Journal, no gate, every new field inert.
+  - Generation (generator/side_quests.py): the server rolls the
+    required coin (1 in 3) BEFORE the main prompt so the backstory can
+    plant the ward/seal (prompt.py _side_quest_section); after the
+    quest validates, a SECOND model call with its own prompt-embedded
+    schema (side_quest_schema.py, everything required-with-sentinel,
+    passages/terminals as arrays converted to dicts) writes 1-2
+    optional scenes plus the required one, retried up to 3 times on
+    validator errors. Its failure DROPS the side quests and the gate
+    and saves the quest as traditional -- never blocks generation.
+  - Validator (validator/side_quests.py): 5-10 nodes, depth <= 7, 2-3
+    choices per passage with at least one untagged, acyclic apart from
+    ONE declared retry edge, every terminal reachable, no dead ends, a
+    success ending reachable through untagged choices, boon-point caps
+    (optional best <= 4, worst >= -2, required extra <= 2), town scenes
+    carry armory_visit on every terminal and nothing else may, required
+    success carries break_gate, hook room populated / not the objective
+    room / fewer doors from the stairway than it, one physical card per
+    artifact across quest AND scenes, and NO room id / coordinate /
+    monster-or-trap id in any read-aloud text.
+  - Engine (engine/side_quests.py): begin (prologue any time in the hero
+    phase; room hook needs a living hero IN that room, and stays
+    offered on a return), advance one passage per call. Tests on the
+    app's terms: combat_dice = hero reports skulls, mind/body = hero
+    reports pass/fail (the app never learns the value), zargon = the app
+    rolls. Choices tagged requiresHero / requiresElement (a caster holds
+    an UNSPENT card of it -- spellbooks and spellsCast are digital, so
+    exact) / requiresFlag; the retry edge is offered once and logs its
+    cost. Terminals apply effects from the closed list: break_gate,
+    crack_gate, grant_artifact (artifactsHeld, placement-only like chest
+    loot), weaken_monster (currentBody -1 never below 1, or bonusDefend
+    -1), remove_monster, reveal_traps / reveal_secret_doors, spawn_wandering
+    (frontier spawn, W{n} ids), miss_turn (a "dazed" hero status: blocks
+    like becalmed, expires like it, no break roll), announce_reward /
+    announce_cost (log only, "apply it to the hero sheet"), armory_visit.
+    FAIL FORWARD is engine-guaranteed: a required scene that ends with
+    the gate still closed gets break_gate added on success and
+    crack_gate otherwise, whatever the model wrote.
+  - The gate is GAME state (game.gate {kind, sideQuestId, target...,
+    state closed|open|cracked}), copied from quest.gate at create_game
+    only for expanded games. WARD: _apply_hero_attack and the spell
+    damage path deal 0 to the target while closed and log why (with
+    the Journal title); cracked = +1 Body Point and +1 defend die
+    (bonusDefend, read wherever hero attacks resolve defend dice).
+    SEAL: _mark_objective_if_complete refuses to complete while closed
+    and logs the notice once (gate.noticed); cracked = every hero loses
+    1 announced Body Point and a wanderer spawns, then the goal counts.
+    A scene's own terminal write re-runs _mark_objective_if_complete,
+    so lifting a seal on a goal already reached completes it at once.
+  - The lock: pendingSideQuest on the game doc, refused by
+    _require_no_pending_defenses (so every hero action) and by
+    end_turn's engine (SideQuestPendingError). advance_side_quest is
+    the one endpoint that runs while it is set. Every scene step is a
+    transaction with an undo snapshot ("beginning the side quest" /
+    "the side quest step"); undo works mid-scene from the header.
+  - Client: Journal panel in the rail (expanded games only) lists
+    scenes with status and a Begin/Resume button, hides room-hooked
+    ones until their room is revealed, disables Begin until a hero
+    stands in the room, and states the gate. The scene plays in
+    SideQuestView, a fixed full-page overlay (board covered, not
+    dimmed: the party has left); it keeps the EPILOGUE on screen after
+    the server has already cleared pendingSideQuest (the terminal's
+    own write clears it, so the page would otherwise vanish before the
+    ending was read) until "Back to the dungeon". The warded boss wears
+    a dashed purple ring; the Attack panel says why a swing won't land.
+    The between-quests Armory reminder sits on the Quest Complete
+    banner for every game; the mid-quest one is the town scene's beat.
+  NOT built (phases 2-3 in the doc): scene foes through the defence
+  queue, spells cast inside a scene, ward_hero, the horde objective,
+  sequel threads from scene outcomes, backfilling scenes onto old
+  quests. Not yet table-verified: no expanded quest has been generated
+  against the live model yet (the sandbox has no API key) -- the first
+  real generation may need prompt tuning, and the validator's error
+  strings are what the retry loop feeds back.
 
 ## Physical component caps (validator MUST enforce)
 Monster minis RECYCLE (dead minis return to the pool — official quests
@@ -742,8 +809,9 @@ and risk drifting out of sync with it.
 Known gaps:
 1. Command moves a hero on Zargon's turn -- deliberately left to the
    player, see "Not implemented, deliberately" above.
-3. SIDE QUESTS are designed (design/side-quests-design.md) and not
-   started. Phase 1 there is the next feature of any size.
+3. SIDE QUESTS phase 1 is built and untested at the table -- see the
+   design-artifacts entry. First thing to do: generate one expanded
+   quest against the live model and read the scenes it wrote.
 2. Real play has started (traps sprung in a corridor, treasure drawn,
    spells cast) and has already surfaced and fixed several bugs tests
    and the simulator missed -- the treasure-draw ordering, open pits,

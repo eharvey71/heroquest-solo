@@ -27,6 +27,8 @@ export interface QuestSummary {
   /** Hidden from the setup screen's list, but never deleted -- see
    * lib/archive.ts. Removing a quest archives its games with it. */
   archived: boolean;
+  /** "expanded" when the quest was generated with side quests. */
+  mode: "traditional" | "expanded";
 }
 
 export interface GameSummary {
@@ -87,6 +89,7 @@ export function useLibrary(refreshKey = 0): Library {
             generationParams?: { heroCount?: number; difficulty?: string; size?: string; theme?: string };
             createdAt?: unknown;
             archived?: boolean;
+            mode?: string;
           };
           const params = data.generationParams ?? {};
           return {
@@ -99,6 +102,7 @@ export function useLibrary(refreshKey = 0): Library {
             theme: params.theme ?? null,
             createdAt: toDate(data.createdAt),
             archived: Boolean(data.archived),
+            mode: data.mode === "expanded" ? "expanded" : "traditional",
           };
         });
 

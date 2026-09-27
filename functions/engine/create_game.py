@@ -57,7 +57,12 @@ def _initial_door_states(quest: dict) -> dict:
 
 
 def build_initial_game_state(
-    *, quest: dict, catalogs: Catalogs, heroes: list[dict], spellbooks: dict | None = None
+    *,
+    quest: dict,
+    catalogs: Catalogs,
+    heroes: list[dict],
+    spellbooks: dict | None = None,
+    mode: str = "traditional",
 ) -> dict:
     """heroes: [{"id": "barbarian", "name": "Barbarian"}, ...], 1-4
     entries, order picks which stairway square each hero starts on.
@@ -66,6 +71,12 @@ def build_initial_game_state(
     which elements each caster took at the table. The Wizard picks
     three, the Elf one of what's left (engine/hero_spells.py), and a
     hero can only cast from their own elements.
+
+    mode: "traditional" (exactly the game as it always was) or
+    "expanded" (the quest's side quests are in play and its required
+    gate, if any, starts closed) -- design/side-quests-design.md
+    section 0. An expanded game on a quest with no side quests is just
+    a traditional one.
     """
     if not 1 <= len(heroes) <= 4:
         raise InvalidRosterError(f"heroCount must be 1-4, got {len(heroes)}")
@@ -88,8 +99,18 @@ def build_initial_game_state(
             body = overrides.get("body", catalog_entry.get("body", 1))
             monsters[m["id"]] = {"type": m["type"], "pos": list(m["pos"]), "currentBody": body, "alive": True}
 
+    expanded = mode == "expanded" and bool(quest.get("sideQuests"))
+    gate = None
+    if expanded and quest.get("gate"):
+        gate = {**quest["gate"], "state": "closed"}
+
     return {
         "questId": None,  # filled in by the caller once the quest doc id is known
+        "mode": "expanded" if expanded else "traditional",
+        "sideQuests": {},  # id -> progress, absent until a scene is begun (engine/side_quests.py)
+        "pendingSideQuest": None,  # the scene in progress, locking the main game
+        "gate": gate,  # the required scene's hold on the objective; None when traditional
+        "artifactsHeld": {},  # artifactId -> heroId, from side-quest rewards (placement-only)
         "turn": 1,
         "phase": "hero",
         "heroPhaseSegment": 1,  # lone-hero parties get 2 hero phases per turn; see engine/end_turn.py

@@ -36,6 +36,10 @@ class DefencesPendingError(ValueError):
     """
 
 
+class SideQuestPendingError(ValueError):
+    """A side quest scene is in progress (game.pendingSideQuest)."""
+
+
 class TreasureDrawPendingError(ValueError):
     """Can't hand off to Zargon with a treasure-card draw unanswered.
 
@@ -61,6 +65,8 @@ def resolve_end_turn(game_state: dict) -> EndTurnResult:
         raise DefencesPendingError("report the outstanding defence roll(s) before ending the turn")
     if game_state.get("pendingTreasureDraw"):
         raise TreasureDrawPendingError("answer whether the treasure card was a wandering monster first")
+    if game_state.get("pendingSideQuest"):
+        raise SideQuestPendingError("finish the side quest in progress before ending the turn")
 
     lone_hero = len(game_state.get("heroes", [])) == 1
     # Older game docs predate the field; they behave as segment 1.

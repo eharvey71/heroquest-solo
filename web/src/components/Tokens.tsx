@@ -42,7 +42,13 @@ interface TokensProps {
    * so it composes with (rather than fights) the targeting highlight
    * above, on the rare turn a monster is both. */
   attackingMonsterIds?: ReadonlySet<string>;
+  /** The expanded variant's warded boss (game.gate): no hero blow or
+   * spell lands until the required side quest is done. A dashed
+   * purple ring, the Chaos-spell colour, so it reads as magic. */
+  wardedMonsterIds?: ReadonlySet<string>;
 }
+
+const WARD_RING = "#c79ad6";
 
 const HERO_FILL = "#4a7fd6";
 const HERO_ACTIVE_FILL = "#7fb0ff";
@@ -217,6 +223,7 @@ export function Tokens({
   activeHeroId,
   activeMonsterId,
   attackingMonsterIds,
+  wardedMonsterIds,
 }: TokensProps) {
   const radius = cellSize * 0.36;
 
@@ -248,9 +255,11 @@ export function Tokens({
         const [cx, cy] = centre(m.id, m.pos);
         const isActive = m.id === activeMonsterId;
         const isAttacking = attackingMonsterIds?.has(m.id) ?? false;
+        const isWarded = wardedMonsterIds?.has(m.id) ?? false;
         return (
           <g key={m.id} className="token-figure" style={{ transform: `translate(${cx}px, ${cy}px)` }}>
             {isAttacking && <circle r={radius + 4} fill="none" stroke={ATTACKING_RING} strokeWidth={2.5} />}
+            {isWarded && <circle r={radius + 7} fill="none" stroke={WARD_RING} strokeWidth={2} strokeDasharray="4 3" />}
             <circle
               r={radius}
               fill={isActive ? MONSTER_ACTIVE_FILL : MONSTER_FILL}

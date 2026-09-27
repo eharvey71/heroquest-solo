@@ -86,9 +86,16 @@ def extract_json(text: str) -> dict:
 
 
 def call_llm(client, system_prompt: str, user_message: str, schema: dict) -> dict:
+    return _to_canonical_shape(call_llm_raw(client, system_prompt, user_message, schema))
+
+
+def call_llm_raw(client, system_prompt: str, user_message: str, schema: dict, *, max_tokens: int = MAX_TOKENS) -> dict:
+    """One prompt-embedded-schema call, parsed to a dict and nothing
+    more. call_llm adds the quest's own wire-shape conversion on top;
+    generator/side_quests.py uses this directly with its own schema."""
     response = client.messages.create(
         model=MODEL,
-        max_tokens=MAX_TOKENS,
+        max_tokens=max_tokens,
         thinking={"type": "adaptive"},
         output_config={"effort": "high"},
         system=system_prompt + SCHEMA_INSTRUCTION + json.dumps(schema, indent=2),
@@ -103,7 +110,7 @@ def call_llm(client, system_prompt: str, user_message: str, schema: dict) -> dic
         raise QuestGenerationRefused(None)
 
     try:
-        quest = extract_json(text)
+        return extract_json(text)
     except QuestGenerationMalformed:
         # A response the token limit cut off is unparseable too, but it
         # needs the "make it shorter" retry hint, not the "emit valid
@@ -111,8 +118,6 @@ def call_llm(client, system_prompt: str, user_message: str, schema: dict) -> dic
         if response.stop_reason == "max_tokens":
             raise QuestGenerationTruncated(response.stop_reason) from None
         raise
-
-    return _to_canonical_shape(quest)
 
 
 def _to_canonical_shape(quest: dict) -> dict:

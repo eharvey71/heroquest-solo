@@ -35,11 +35,18 @@ from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+from engine.combat import MonsterDefenseResult
 from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
 from engine.create_game import InvalidRosterError, build_initial_game_state
 from engine.doors import DoorNotFoundError, InvalidDoorOpenError, resolve_open_door
-from engine.end_turn import DefencesPendingError, NotHeroPhaseError, TreasureDrawPendingError, resolve_end_turn
+from engine.end_turn import (
+    DefencesPendingError,
+    NotHeroPhaseError,
+    SideQuestPendingError,
+    TreasureDrawPendingError,
+    resolve_end_turn,
+)
 from engine.hero_movement import IllegalMovementError, resolve_hero_movement
 from engine.hero_spells import (
     HeroSpellUnavailableError,
@@ -60,6 +67,14 @@ from engine.hero_status import (
 from engine.heroes import HeroAlreadyDeadError, HeroNotFoundError, living_heroes
 from engine.heroes import record_hero_death as record_hero_death_engine
 from engine.objective import check_objective_complete, hero_on_stairway
+from engine.side_quests import (
+    SideQuestError,
+    advance_side_quest as advance_side_quest_engine,
+    begin_side_quest as begin_side_quest_engine,
+    gate_notice,
+    seal_blocks,
+    ward_blocks,
+)
 from engine.targeting import needs_cunning_target_prompt, roll_turn_type
 from engine.trap_search import InvalidTrapSearchError
 from engine.trap_search import RoomNotFoundError as TrapSearchRoomNotFoundError
@@ -88,6 +103,13 @@ from generator import (
     generate_quest as run_generation,
 )
 from generator.fence import apply_fence
+from generator.side_quests import (
+    SideQuestGenerationFailed,
+    build_gate_spec,
+    generate_side_quests,
+    required_side_quest,
+    roll_required,
+)
 from validator.catalogs import load_catalogs
 
 initialize_app()
@@ -133,6 +155,7 @@ def _surface_errors(fn):
 VALID_HERO_COUNTS = {1, 2, 3, 4}
 VALID_DIFFICULTIES = {"standard", "hard"}
 VALID_SIZES = {"short", "full"}
+VALID_MODES = {"traditional", "expanded"}
 
 
 @https_fn.on_call()
@@ -181,7 +204,15 @@ def _parse_generation_params(data) -> dict:
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="continuesFromGameId must be a string"
         )
 
-    params = {"heroCount": hero_count, "difficulty": difficulty, "size": size}
+    # Traditional (today's game, the default) or expanded (side quests,
+    # design/side-quests-design.md section 0). Stored on the quest.
+    mode = data.get("mode", "traditional")
+    if mode not in VALID_MODES:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"mode must be one of {sorted(VALID_MODES)}"
+        )
+
+    params = {"heroCount": hero_count, "difficulty": difficulty, "size": size, "mode": mode}
     if theme:
         params["theme"] = theme
     if continues_from_game_id:
@@ -243,6 +274,15 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     if continues_from_game_id:
         params["campaignContext"] = _resolve_campaign_context(firestore.client(), continues_from_game_id)
 
+    # The expanded variant rolls its required-side-quest coin BEFORE the
+    # quest is written, so the backstory can plant the ward or seal
+    # (generator/prompt.py's _side_quest_section). The server's coin,
+    # never the model's.
+    mode = params.get("mode", "traditional")
+    required_wanted = mode == "expanded" and roll_required()
+    if required_wanted:
+        params["requiredSideQuest"] = True
+
     try:
         result: GenerationResult = run_generation(params, client, _catalogs)
     except QuestGenerationRefused as e:
@@ -258,20 +298,43 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
             details={"errors": e.errors},
         ) from e
 
+    # Expanded only: a SECOND model call writes the side quests from the
+    # validated quest (generator/side_quests.py). Its failure never
+    # costs the quest -- the quest saves without side quests and
+    # without the gate, which is exactly a traditional quest.
+    side_quests: list = []
+    gate = None
+    side_quest_warnings: list = []
+    if mode == "expanded":
+        gate_spec = build_gate_spec(result.quest) if required_wanted else None
+        try:
+            sq_result = generate_side_quests(result.quest, params, client, _catalogs, gate_spec)
+            side_quests = sq_result.side_quests
+            required = required_side_quest(side_quests)
+            if gate_spec and required:
+                gate = {**gate_spec, "sideQuestId": required["id"], "text": required.get("gateText", "")}
+        except (SideQuestGenerationFailed, QuestGenerationRefused) as e:
+            logging.warning("side quests dropped: %s", e)
+            side_quest_warnings = [f"side quests could not be generated: {e}"]
+            side_quests = []
+
     # campaignContext carried the previous game's full chronicle into the
     # prompt -- worth having in memory for that one call, not worth
     # duplicating into every quest doc forever. continuesFromGameId is
     # the lightweight provenance pointer that's actually useful to keep.
-    stored_params = {k: v for k, v in params.items() if k != "campaignContext"}
+    stored_params = {k: v for k, v in params.items() if k not in ("campaignContext", "requiredSideQuest")}
 
     doc_ref = firestore.client().collection("quests").document()
     doc_ref.set(
         {
             **to_firestore_coords(result.quest),
             "generationParams": stored_params,
-            "validationWarnings": result.validation.warnings,
+            "validationWarnings": result.validation.warnings + side_quest_warnings,
             "attempts": result.attempts,
             "createdAt": firestore.SERVER_TIMESTAMP,
+            "mode": mode if side_quests else "traditional",
+            **({"sideQuests": to_firestore_coords(side_quests)} if side_quests else {}),
+            **({"gate": gate} if gate else {}),
             **({"continuesFromGameId": continues_from_game_id} if continues_from_game_id else {}),
         }
     )
@@ -417,7 +480,7 @@ def generate_turn_narration(req: https_fn.CallableRequest) -> dict:
     return {"narration": narration}
 
 
-def _parse_create_game_request(data) -> tuple[str, list, dict]:
+def _parse_create_game_request(data) -> tuple[str, list, dict, str]:
     if not isinstance(data, dict):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="request data must be an object"
@@ -457,7 +520,13 @@ def _parse_create_game_request(data) -> tuple[str, list, dict]:
         except HeroSpellUnavailableError as e:
             raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
 
-    return quest_id, heroes, spellbooks
+    mode = data.get("mode", "traditional")
+    if mode not in VALID_MODES:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"mode must be one of {sorted(VALID_MODES)}"
+        )
+
+    return quest_id, heroes, spellbooks, mode
 
 
 @https_fn.on_call()
@@ -471,7 +540,7 @@ def create_game(req: https_fn.CallableRequest) -> dict:
     """
     _require_owner(req, "sign in to start a game")
 
-    quest_id, heroes, spellbooks = _parse_create_game_request(req.data)
+    quest_id, heroes, spellbooks, mode = _parse_create_game_request(req.data)
 
     db = firestore.client()
     quest_snap = db.collection("quests").document(quest_id).get()
@@ -492,7 +561,7 @@ def create_game(req: https_fn.CallableRequest) -> dict:
 
     try:
         game_state = build_initial_game_state(
-            quest=quest, catalogs=_catalogs, heroes=heroes, spellbooks=spellbooks
+            quest=quest, catalogs=_catalogs, heroes=heroes, spellbooks=spellbooks, mode=mode
         )
     except InvalidRosterError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e)) from e
@@ -616,6 +685,11 @@ def _require_no_pending_defenses(game_state: dict) -> None:
     on anything else until it hears whether that card was the
     wandering monster.
     """
+    if game_state.get("pendingSideQuest"):
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="finish the side quest in progress before acting",
+        )
     if game_state.get("pendingDefenses"):
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
@@ -708,6 +782,17 @@ def _mark_objective_if_complete(quest: dict, game_state: dict, updates: dict, lo
 
     objective_done = game_state.get("objectiveComplete") or check_objective_complete(quest, game_state)
     if not objective_done:
+        return False
+
+    # The expanded variant's SEAL: the goal is reached but the required
+    # side quest hasn't lifted it (engine/side_quests.py). Say why once,
+    # point at the Journal, and don't complete.
+    if not game_state.get("objectiveComplete") and seal_blocks(game_state):
+        gate = game_state.get("gate") or {}
+        if not gate.get("noticed"):
+            gate["noticed"] = True
+            updates["gate.noticed"] = True
+            log_entries.append({"turn": turn, "text": gate_notice(quest, game_state)})
         return False
 
     if not game_state.get("objectiveComplete"):
@@ -902,7 +987,7 @@ def end_turn(req: https_fn.CallableRequest) -> dict:
         result = _apply_end_turn(transaction, game_ref)
     except NotHeroPhaseError as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
-    except (DefencesPendingError, TreasureDrawPendingError) as e:
+    except (DefencesPendingError, TreasureDrawPendingError, SideQuestPendingError) as e:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
 
     return {"phase": result.new_phase, "heroPhaseSegment": result.new_segment}
@@ -1211,6 +1296,121 @@ def _apply_resolve_treasure_draw(transaction, db, game_ref, wandering_monster_dr
     _push_undo(transaction, game_ref, before, updates, "the treasure card")
     transaction.update(game_ref, updates)
     return {"wanderingMonsterDrawn": bool(wandering_monster_drawn), "log": new_lines}
+
+
+@firestore.transactional
+def _apply_begin_side_quest(transaction, db, game_ref, sq_id):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    _require_no_pending_defenses(game_state)
+    before = copy.deepcopy(game_state)
+
+    if game_state.get("phase") != "hero":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
+        )
+
+    step = begin_side_quest_engine(board=_catalogs.board, quest=quest, game_state=game_state, sq_id=sq_id)
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    updates = to_firestore_coords(dict(step.updates))
+    updates["log"] = existing_log + [{"turn": turn, "text": line} for line in step.log]
+    _push_undo(transaction, game_ref, before, updates, "beginning the side quest")
+    transaction.update(game_ref, updates)
+    return step
+
+
+@firestore.transactional
+def _apply_advance_side_quest(transaction, db, game_ref, choice_id, report):
+    game_state, quest = _load_game_and_quest(db, game_ref, transaction)
+    _require_playable(game_state)
+    # Deliberately NOT _require_no_pending_defenses: pendingSideQuest is
+    # exactly what this call is resolving.
+    before = copy.deepcopy(game_state)
+
+    step = advance_side_quest_engine(
+        board=_catalogs.board, catalogs=_catalogs, quest=quest, game_state=game_state,
+        choice_id=choice_id, report=report,
+    )
+
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+    new_log_entries = [{"turn": turn, "text": line} for line in step.log]
+    updates = to_firestore_coords(dict(step.updates))
+    if step.finished:
+        # break_gate may have just lifted a seal on a goal the party is
+        # already standing in.
+        _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
+    updates["log"] = existing_log + new_log_entries
+    _queue_placements(updates, game_state, step.placements)
+    _push_undo(transaction, game_ref, before, updates, "the side quest step")
+    transaction.update(game_ref, updates)
+    return step
+
+
+def _side_quest_step_response(step) -> dict:
+    return {"passageId": step.passage_id, "finished": step.finished, "outcome": step.outcome, "log": step.log}
+
+
+@https_fn.on_call()
+@_surface_errors
+def begin_side_quest(req: https_fn.CallableRequest) -> dict:
+    """Opens a side-quest scene (design/side-quests-design.md). A
+    prologue can begin any time in the hero phase; a room-hooked scene
+    needs a living hero standing in its room. Locks the main game
+    (pendingSideQuest) until advance_side_quest reaches a terminal.
+    """
+    _require_owner(req, "sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    sq_id = data.get("sideQuestId")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(sq_id, str) or not sq_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="sideQuestId is required")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+    try:
+        step = _apply_begin_side_quest(transaction, db, game_ref, sq_id)
+    except SideQuestError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+    return _side_quest_step_response(step)
+
+
+@https_fn.on_call()
+@_surface_errors
+def advance_side_quest(req: https_fn.CallableRequest) -> dict:
+    """One passage of the scene in progress: the choice taken and, for a
+    choice with a test, the die result -- {"skulls": n} for combat
+    dice, {"passed": bool} for a Mind or Body test; Zargon's own tests
+    are rolled here. A terminal passage applies its effects and hands
+    the main game back.
+    """
+    _require_owner(req, "sign in to play")
+
+    data = req.data if isinstance(req.data, dict) else {}
+    game_id = data.get("gameId")
+    choice_id = data.get("choiceId")
+    report = data.get("report")
+    if not isinstance(game_id, str) or not game_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="gameId is required")
+    if not isinstance(choice_id, str) or not choice_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="choiceId is required")
+    if report is not None and not isinstance(report, dict):
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="report must be an object")
+
+    db = firestore.client()
+    game_ref = db.collection("games").document(game_id)
+    transaction = db.transaction()
+    try:
+        step = _apply_advance_side_quest(transaction, db, game_ref, choice_id, report)
+    except SideQuestError as e:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=str(e)) from e
+    return _side_quest_step_response(step)
 
 
 @https_fn.on_call()
@@ -1523,6 +1723,10 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_id, target_monst
     updates: dict = {"spellsCast": sorted(set(game_state.get("spellsCast", [])) | {result.spell_id})}
 
     for monster_id, damage in result.monster_damage.items():
+        if ward_blocks(game_state, monster_id):
+            # The expanded variant's WARD turns spells aside as it does blades.
+            new_log_entries.append({"turn": turn, "text": gate_notice(quest, game_state)})
+            continue
         monster = game_state["monsters"][monster_id]
         body = max(0, int(monster.get("currentBody", 0)) - int(damage))
         monster["currentBody"] = body
@@ -1915,10 +2119,30 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=f"unknown monster type '{monster_def['type']}'"
         )
     overrides = monster_def.get("overrides", {})
-    # "cannot move, attack, or defend itself" -- a sleeping monster
-    # rolls nothing (engine/monster_status.py).
-    defend_dice = monster_defend_dice(game_state, monster_id, overrides.get("defend", catalog_entry["defend"]))
     monster_name = monster_def.get("name") or monster_def["type"]
+    turn = game_state.get("turn", 0)
+    existing_log = game_state.get("log", [])
+
+    # The expanded variant's WARD: until the required side quest is
+    # done, the boss takes no damage from hero attacks. The swing still
+    # happened (it was the hero's action); the log says why it failed.
+    if ward_blocks(game_state, monster_id):
+        line = gate_notice(quest, game_state)
+        updates = {"log": existing_log + [{"turn": turn, "text": line}]}
+        _push_undo(transaction, game_ref, before, updates, "the attack")
+        transaction.update(game_ref, updates)
+        body = monster_state["currentBody"]
+        return MonsterDefenseResult(
+            monster_name=monster_name, dice_rolled=0, blocks=0, skulls_faced=skulls, damage=0,
+            body_points_before=body, body_points_after=body, defeated=False, log=line,
+        )
+
+    # "cannot move, attack, or defend itself" -- a sleeping monster
+    # rolls nothing (engine/monster_status.py). bonusDefend is the
+    # side-quest ledger: a cracked ward adds a die, weaken_monster
+    # takes one away.
+    base_defend = overrides.get("defend", catalog_entry["defend"]) + int(monster_state.get("bonusDefend", 0))
+    defend_dice = monster_defend_dice(game_state, monster_id, max(0, base_defend))
 
     result = resolve_hero_attack_engine(
         monster_name=monster_name,
@@ -1927,8 +2151,6 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
         current_body=monster_state["currentBody"],
     )
 
-    turn = game_state.get("turn", 0)
-    existing_log = game_state.get("log", [])
     new_log_entries = [{"turn": turn, "text": result.log}]
 
     game_state["monsters"][monster_id]["alive"] = not result.defeated

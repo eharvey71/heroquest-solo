@@ -5,7 +5,9 @@ import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
 import { usePathInput } from "../hooks/usePathInput";
 import {
+  advanceSideQuest,
   attemptBreakSpell,
+  beginSideQuest,
   castSpell,
   endTurn,
   describeError,
@@ -23,13 +25,20 @@ import {
   searchTrapsAndSecretDoors,
   searchTreasure,
   type CombatDieFace,
+  type SideQuestReport,
   undoLastAction,
 } from "../lib/functionsClient";
 import { spellCard, spellsForElements } from "../data/heroSpells";
 import { livingHeroes, revealedSquareKeys, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
-import { type DoorState, useQuestMap } from "../lib/useQuestMap";
+import { type DoorState, type SideQuest, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
+import { heroInRoom, type SceneEpilogue, SideQuestView } from "./SideQuestView";
+
+/** The 1989 rulebook's between-quests Armory (What Happens Between
+ * Quests?) -- shown once a quest is won, whatever the variant. */
+const ARMORY_BETWEEN_QUESTS =
+  "Between quests the Armory is open: spend the gold this quest earned on weapons and armor before the next one.";
 
 interface GameViewProps {
   gameId: string;
@@ -128,6 +137,9 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const [placementsDone, setPlacementsDone] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /** A side quest's ending, held on screen after the server has
+   * already cleared pendingSideQuest -- see SideQuestView's header. */
+  const [sceneEpilogue, setSceneEpilogue] = useState<SceneEpilogue | null>(null);
   const logRef = useRef<HTMLUListElement>(null);
   const storyRef = useRef<HTMLDivElement>(null);
 
@@ -202,6 +214,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     setLowestBpHeroId("");
     setTrapStop(null);
     setJumpLandingKey(null);
+    setSceneEpilogue(null);
   };
 
   // Door/stairway geometry is quest-owned (fetched once); door
@@ -213,7 +226,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   // quest-declared "open" means "no lock, no secret", NOT that the door
   // stands open, so with no game-state entry it reads as closed and
   // still needs the Open door button.
-  const { doors: questDoors, blockedSquares, stairway, furniture, narrative } = useQuestMap(game?.questId);
+  const { doors: questDoors, blockedSquares, stairway, furniture, narrative, sideQuests } = useQuestMap(game?.questId);
   const resolvedDoors = useMemo(
     () =>
       questDoors.map((d) => {
@@ -353,7 +366,19 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   // wandering monster came up, so this gates actions exactly like an
   // unanswered defence roll (and the server enforces the same).
   const pendingTreasureDraw = game.pendingTreasureDraw ?? null;
-  const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw;
+  // The expanded variant (design/side-quests-design.md): side quests
+  // are in play only when the GAME says so -- a traditional game on an
+  // expanded quest has no Journal and no gate. A scene in progress
+  // locks everything else, like a pending treasure draw.
+  const expanded = game.mode === "expanded" && sideQuests.length > 0;
+  const activeScene = game.pendingSideQuest ? sideQuests.find((sq) => sq.id === game.pendingSideQuest) : undefined;
+  const shownScene =
+    activeScene ?? (sceneEpilogue ? sideQuests.find((sq) => sq.id === sceneEpilogue.sideQuestId) : undefined);
+  const gate = game.gate ?? null;
+  const wardedMonsterIds = new Set(
+    gate?.kind === "ward" && gate.state === "closed" && gate.targetMonsterId ? [gate.targetMonsterId] : []
+  );
+  const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw || !!game.pendingSideQuest;
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
   // Turn-narration paragraphs in turn order (numeric -- the map's keys
@@ -385,7 +410,9 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const allHeroStatuses = game.heroStatus?.[heroId] ?? [];
   const activeHeroStatuses = allHeroStatuses.filter((s) => !MOVE_BOONS.has(s.status));
   const activeMoveBoons = allHeroStatuses.filter((s) => MOVE_BOONS.has(s.status));
-  const breakableStatus = activeHeroStatuses.find((s) => s.status !== "becalmed");
+  // Anything that wears off by itself (Tempest's becalmed, a side
+  // quest's dazed) has no break roll -- same rule as the server's.
+  const breakableStatus = activeHeroStatuses.find((s) => !s.missesTurns);
   const fallenHeroes = game.heroes.filter((h) => h.alive === false);
   // A finished quest -- won or lost -- takes no more actions. Undo still
   // works, so a misreported death is recoverable.
@@ -634,6 +661,21 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     await runAction(() => searchTreasure({ gameId, heroId, roomId: activeHeroRoomId }));
   };
 
+  const handleBeginSideQuest = async (sq: SideQuest) => {
+    const result = await runAction(() => beginSideQuest({ gameId, sideQuestId: sq.id }));
+    if (!result) return;
+    setSceneEpilogue(null);
+  };
+
+  const handleSceneChoice = async (choiceId: string, report?: SideQuestReport) => {
+    const scene = activeScene;
+    const result = await runAction(() => advanceSideQuest({ gameId, choiceId, ...(report ? { report } : {}) }));
+    if (!result || !scene) return;
+    if (result.finished) {
+      setSceneEpilogue({ sideQuestId: scene.id, title: scene.title, outcome: result.outcome, lines: result.log });
+    }
+  };
+
   const handleResolveTreasureDraw = async (wanderingMonsterDrawn: boolean) => {
     await runAction(() => resolveTreasureDraw({ gameId, wanderingMonsterDrawn }));
     // A drawn wandering monster attacks at once; the server queues that
@@ -707,6 +749,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
         <div className="banner">
           <h2>Quest Complete!</h2>
           <p style={{ fontStyle: "italic", color: "#e8dfc8" }}>{narrative.completionText}</p>
+          <p className="hint" style={{ margin: "6px 0 0" }}>{ARMORY_BETWEEN_QUESTS}</p>
         </div>
       )}
 
@@ -800,6 +843,19 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
 
       {errorMsg && <p style={{ color: "#e66" }}>Error: {errorMsg}</p>}
 
+      {shownScene && (
+        <SideQuestView
+          sideQuest={shownScene}
+          progress={game.sideQuests?.[shownScene.id]}
+          game={game}
+          busy={busy}
+          epilogue={sceneEpilogue}
+          error={errorMsg}
+          onChoose={handleSceneChoice}
+          onClose={() => setSceneEpilogue(null)}
+        />
+      )}
+
       <div className="game-layout">
         <div className="board-pane">
           <BoardView
@@ -817,6 +873,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
             activeHeroId={heroId}
             activeMonsterId={attackMonsterId}
             attackingMonsterIds={attackingMonsterIds}
+            wardedMonsterIds={wardedMonsterIds}
           />
         </div>
 
@@ -914,7 +971,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                   </>
                 ) : (
                   <span className="hint">
-                    The whirlwind passes on its own &mdash; this hero simply misses a turn.
+                    It passes on its own &mdash; this hero simply misses a turn.
                   </span>
                 )}
               </div>
@@ -1179,6 +1236,12 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                         : "not adjacent — dagger, crossbow or spell only"}
                     </span>
                   )}
+                  {wardedMonsterIds.has(attackMonsterId) && (
+                    <span style={{ color: "#c79ad6" }}>
+                      Warded &mdash; no blow or spell can harm this foe until the required side quest is done (see
+                      the Journal). The swing still spends the action.
+                    </span>
+                  )}
                   <div className="panel-row">
                     <button className="primary" onClick={handleAttack} disabled={busy || !attackMonsterId}>
                       Report skulls
@@ -1413,6 +1476,74 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                       </button>
                     </div>
                   </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {expanded && (
+            <div className="panel">
+              <p className="panel-title">Journal</p>
+              <div className="journal-list">
+                {sideQuests.map((sq) => {
+                  const progress = game.sideQuests?.[sq.id];
+                  const status = progress?.status;
+                  const isRoomHook = sq.hook.when === "room";
+                  // A room-hooked scene is unknown until its room is
+                  // revealed; it then stays offered whenever a hero is
+                  // back in that room (owner's call).
+                  if (isRoomHook && !(game.revealed?.rooms ?? []).includes(sq.hook.room ?? "")) return null;
+                  const here = !isRoomHook || heroInRoom(game, sq.hook.room, staticBoard.areaOf);
+                  const canBegin =
+                    playable && game.phase === "hero" && !waitingOnReport && (!status || status === "active") && here;
+                  const gateLine =
+                    sq.kind === "required" && gate
+                      ? gate.state === "closed"
+                        ? gate.kind === "ward"
+                          ? `${gate.targetName ?? "The villain"} is warded until this is done.`
+                          : "The quest's goal is sealed until this is done."
+                        : gate.state === "cracked"
+                          ? "The gate cracked rather than broke: the finale is harder, but open."
+                          : "Done. The way to the finale is open."
+                      : null;
+                  return (
+                    <div key={sq.id} className="journal-entry">
+                      <div className="journal-title">
+                        <div>
+                          {sq.title}
+                          {sq.kind === "required" ? " (required)" : ""}
+                        </div>
+                        <span className="hint">
+                          {isRoomHook
+                            ? `${sq.hook.npcName || "Something"} in ${sq.hook.room}`
+                            : "Before the first move"}
+                          {sq.hook.text ? ` -- ${sq.hook.text}` : ""}
+                        </span>
+                        {gateLine && <span className="journal-gate">{gateLine}</span>}
+                      </div>
+                      {status && status !== "active" ? (
+                        <span className={`journal-status ${status === "failure" ? "failed" : "done"}`}>{status}</span>
+                      ) : (
+                        <button
+                          className={sq.kind === "required" ? "primary" : undefined}
+                          onClick={() => handleBeginSideQuest(sq)}
+                          disabled={busy || !canBegin}
+                          title={!here ? `A hero must be standing in ${sq.hook.room}` : undefined}
+                        >
+                          {status === "active" ? "Resume" : "Begin"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {sideQuests.every(
+                  (sq) => sq.hook.when === "room" && !(game.revealed?.rooms ?? []).includes(sq.hook.room ?? "")
+                ) && <span className="hint">Nothing yet &mdash; side quests are offered as rooms are revealed.</span>}
+                {playable && (
+                  <span className="hint">
+                    A scene takes 10-15 minutes and locks the board until it ends. Optional ones can be left for
+                    later, or forever.
+                  </span>
                 )}
               </div>
             </div>

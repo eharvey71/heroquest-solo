@@ -116,6 +116,40 @@ export interface GameState {
    * the token along. Written whole by every endpoint that moves a
    * figure (main._last_moves); a figure that didn't move is absent. */
   lastMoves?: Record<string, Coord[]>;
+  /** How this game is played (design/side-quests-design.md section 0).
+   * "traditional" is exactly the game as it always was. */
+  mode?: "traditional" | "expanded";
+  /** Progress through each side quest, keyed by id; absent until a
+   * scene is begun. status is "active" or the terminal's outcome. */
+  sideQuests?: Record<string, SideQuestProgress>;
+  /** The scene in progress -- locks the main game like a pending
+   * treasure draw. */
+  pendingSideQuest?: string | null;
+  /** The required scene's hold on the objective: a warded boss takes no
+   * hero damage, a sealed goal doesn't complete. state closed | open |
+   * cracked (fail-forward hard mode). Null when traditional. */
+  gate?: GameGate | null;
+  /** Artifact cards handed over by side quests: artifactId -> heroId. */
+  artifactsHeld?: Record<string, string>;
+}
+
+export interface SideQuestProgress {
+  status: "active" | "success" | "partial" | "failure";
+  passageId: string;
+  flags?: string[];
+  history?: string[];
+  retried?: boolean;
+}
+
+export interface GameGate {
+  kind: "ward" | "seal";
+  sideQuestId: string;
+  state: "closed" | "open" | "cracked";
+  targetMonsterId?: string;
+  targetName?: string;
+  targetRoom?: string;
+  text?: string;
+  noticed?: boolean;
 }
 
 /** Heroes still on the board: the ones that can act, block squares and

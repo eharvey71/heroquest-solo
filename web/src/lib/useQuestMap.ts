@@ -39,6 +39,56 @@ export interface QuestNarrative {
   completionText: string;
 }
 
+/** A side-quest scene as the generator wrote it (functions/generator/
+ * side_quest_schema.py, canonical shape). Immutable quest content;
+ * progress through it is game state (GameState.sideQuests). */
+export interface SideQuestTest {
+  kind: "combat_dice" | "mind" | "body" | "zargon";
+  dice: number;
+  needSkulls: number;
+  success: string;
+  failure: string;
+}
+export interface SideQuestChoice {
+  id: string;
+  label: string;
+  requiresHero?: string;
+  requiresElement?: string;
+  requiresFlag?: string;
+  setsFlag?: string;
+  next?: string;
+  test?: SideQuestTest | null;
+}
+export interface SideQuestPassage {
+  text: string;
+  choices: SideQuestChoice[];
+}
+export interface SideQuestTerminal {
+  outcome: "success" | "partial" | "failure";
+  text: string;
+  effects: { type: string; [k: string]: unknown }[];
+}
+export interface SideQuest {
+  id: string;
+  kind: "optional" | "required";
+  title: string;
+  setting: string;
+  hook: { when: "prologue" | "room"; room?: string; npcName?: string; figureHint?: string; text?: string };
+  gateText?: string;
+  start: string;
+  passages: Record<string, SideQuestPassage>;
+  terminals: Record<string, SideQuestTerminal>;
+  retry?: { from: string; to: string; costText?: string } | null;
+}
+export interface QuestGate {
+  kind: "ward" | "seal";
+  sideQuestId: string;
+  targetMonsterId?: string;
+  targetName?: string;
+  targetRoom?: string;
+  text?: string;
+}
+
 export interface QuestMap {
   doors: QuestDoor[];
   /** Impassable squares -- the physical blocked-square tiles. Drawn
@@ -47,9 +97,23 @@ export interface QuestMap {
   stairway: QuestStairway | null;
   furniture: QuestFurniture[];
   narrative: QuestNarrative | null;
+  /** "expanded" when the quest carries side quests; absent/"traditional"
+   * otherwise. The game decides separately how it is PLAYED. */
+  mode: "traditional" | "expanded";
+  sideQuests: SideQuest[];
+  gate: QuestGate | null;
 }
 
-const EMPTY: QuestMap = { doors: [], blockedSquares: [], stairway: null, furniture: [], narrative: null };
+const EMPTY: QuestMap = {
+  doors: [],
+  blockedSquares: [],
+  stairway: null,
+  furniture: [],
+  narrative: null,
+  mode: "traditional",
+  sideQuests: [],
+  gate: null,
+};
 
 interface RawFurniture {
   type: string;
@@ -66,6 +130,9 @@ interface RawQuestDoc {
   objective?: { description?: string };
   completionText?: string;
   rooms?: Record<string, { furniture?: RawFurniture[] }>;
+  mode?: "traditional" | "expanded";
+  sideQuests?: SideQuest[];
+  gate?: QuestGate;
 }
 
 function extractFurniture(rooms: RawQuestDoc["rooms"]): QuestFurniture[] {
@@ -95,6 +162,9 @@ export function useQuestMap(questId: string | undefined): QuestMap {
         blockedSquares: raw.blockedSquares ?? [],
         stairway: raw.stairway ?? null,
         furniture: extractFurniture(raw.rooms),
+        mode: raw.mode === "expanded" && (raw.sideQuests?.length ?? 0) > 0 ? "expanded" : "traditional",
+        sideQuests: raw.sideQuests ?? [],
+        gate: raw.gate ?? null,
         narrative:
           raw.title || raw.backstory
             ? {

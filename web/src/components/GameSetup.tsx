@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { setGameArchived, setQuestStackArchived } from "../lib/archive";
-import { createGame, describeError, generateQuest } from "../lib/functionsClient";
+import { createGame, describeError, generateQuest, type PlayMode } from "../lib/functionsClient";
 import { SPELL_ELEMENTS } from "../data/heroSpells";
 import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
 import { useQuestMap } from "../lib/useQuestMap";
@@ -27,6 +27,7 @@ function questLine(quest: QuestSummary): string {
     quest.heroCount ? `${quest.heroCount} hero${quest.heroCount === 1 ? "" : "es"}` : null,
     quest.size,
     quest.difficulty,
+    quest.mode === "expanded" ? "expanded (side quests)" : null,
     quest.theme,
   ].filter(Boolean);
   return parts.join(" / ");
@@ -53,6 +54,12 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   );
   const [difficulty, setDifficulty] = useState<"standard" | "hard">("standard");
   const [size, setSize] = useState<"short" | "full">("full");
+  /** The variant a NEW quest is generated with (design/side-quests-
+   * design.md section 0). Traditional is exactly today's game. */
+  const [mode, setMode] = useState<PlayMode>("traditional");
+  /** How a game on an expanded quest is played -- a replay can go
+   * traditional. Ignored (forced traditional) on a traditional quest. */
+  const [playMode, setPlayMode] = useState<PlayMode>("expanded");
   const [theme, setTheme] = useState("");
   // A finished, chronicled game this new quest continues from -- "" means
   // standalone (the common case). See generator/prompt.py's CAMPAIGN
@@ -74,7 +81,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { narrative } = useQuestMap(questId ?? undefined);
+  const { narrative, mode: questMode, sideQuests: questSideQuests } = useQuestMap(questId ?? undefined);
   const library = useLibrary(refreshKey);
   // A removed game shouldn't offer itself as a campaign predecessor --
   // it's meant to be out of the way, not still steering new quests.
@@ -107,6 +114,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         heroCount: heroCount as 1 | 2 | 3 | 4,
         difficulty,
         size,
+        mode,
         ...(theme.trim() ? { theme: theme.trim() } : {}),
         ...(continuesFromGameId ? { continuesFromGameId } : {}),
       });
@@ -127,6 +135,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     if (quest.difficulty === "standard" || quest.difficulty === "hard") setDifficulty(quest.difficulty);
     if (quest.size === "short" || quest.size === "full") setSize(quest.size);
     setTheme(quest.theme ?? "");
+    setMode(quest.mode);
   };
 
   const handleCreateGame = async () => {
@@ -141,7 +150,12 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
       const spellbooks: Record<string, string[]> = {};
       if (selectedHeroes.has("wizard")) spellbooks.wizard = wizardElements;
       if (selectedHeroes.has("elf")) spellbooks.elf = [elfElement];
-      const res = await createGame({ questId, heroes, spellbooks });
+      const res = await createGame({
+        questId,
+        heroes,
+        spellbooks,
+        mode: questMode === "expanded" ? playMode : "traditional",
+      });
       onOpenGame(res.gameId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -212,6 +226,17 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
             Theme (optional): <input value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="e.g. undead crypt" />
           </label>
         </div>
+        <div style={{ marginTop: 8 }}>
+          Variant:{" "}
+          <label style={{ marginRight: 12 }}>
+            <input type="radio" name="variant" checked={mode === "traditional"} onChange={() => setMode("traditional")} />{" "}
+            Traditional
+          </label>
+          <label>
+            <input type="radio" name="variant" checked={mode === "expanded"} onChange={() => setMode("expanded")} />{" "}
+            Expanded: side quests
+          </label>
+        </div>
         {continuableGames.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <label>
@@ -230,6 +255,14 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         <p className="hint" style={{ maxWidth: 500 }}>
           Short size aims for a single sitting (fewer rooms, a shorter map to clear); full size is a
           longer, full-map quest matching the scope of the official quest book adventures.
+          {mode === "expanded" && (
+            <>
+              {" "}
+              Expanded adds one or two short optional side quests written from the same story &mdash; played in
+              the app in 10-15 minutes each &mdash; and, one time in three, a required one the finale depends on.
+              Generation takes a little longer.
+            </>
+          )}
           {continuableGames.length > 0 && (
             <>
               {" "}
@@ -268,6 +301,21 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
             </div>
           ) : (
             <p className="hint">Loading quest story...</p>
+          )}
+          {questMode === "expanded" && (
+            <div className="panel" style={{ maxWidth: 520, marginBottom: 12 }}>
+              <p className="panel-title">Play this quest as</p>
+              <div className="panel-row">
+                <label style={{ marginRight: 12 }}>
+                  <input type="radio" name="playMode" checked={playMode === "expanded"} onChange={() => setPlayMode("expanded")} />{" "}
+                  Expanded &mdash; {questSideQuests.length} side quest{questSideQuests.length === 1 ? "" : "s"} written for it
+                </label>
+                <label>
+                  <input type="radio" name="playMode" checked={playMode === "traditional"} onChange={() => setPlayMode("traditional")} />{" "}
+                  Traditional &mdash; the dungeon only
+                </label>
+              </div>
+            </div>
           )}
           {questHeroCount !== null && questHeroCount !== heroCount && (
             <p style={{ color: "#e6a23b", maxWidth: 600 }}>

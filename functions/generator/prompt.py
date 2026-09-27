@@ -179,6 +179,32 @@ still has everything they need.
 """
 
 
+def _side_quest_section(params: dict) -> str:
+    """The expanded variant (design/side-quests-design.md): a second
+    model call writes the side quests AFTER this quest validates, with
+    this quest as its context. When the server has rolled a REQUIRED
+    side quest, the objective will be gated by it -- a warded boss, a
+    sealed goal -- and the backstory has to say so, in general terms,
+    so the scene written later has something to answer. The scene
+    supplies the specifics; this prompt must not."""
+    if not params.get("requiredSideQuest"):
+        return ""
+    return """
+### A REQUIRED SIDE QUEST WILL GATE THE OBJECTIVE
+This quest is played in the expanded variant: a separate, later step
+writes one or more short side-quest scenes from your quest, and one of
+them is REQUIRED -- the party cannot finish the quest until it is done.
+Write your backstory so that it plants this, in one or two sentences,
+WITHOUT inventing the how: if your objective is kill_boss, the villain
+is warded and cannot be harmed until some deed elsewhere is done; for
+any other objective, the goal itself is sealed until some deed is done.
+Say that a ward or seal exists and that word of a way to undo it can be
+found; do NOT name the deed, the place or the helper -- the side-quest
+step invents those to fit your story. Mention it again, briefly, in the
+objective's description.
+"""
+
+
 def build_system_prompt(params: dict, catalogs: Catalogs, stairway_room: str) -> str:
     hero_count = params["heroCount"]
     difficulty = params.get("difficulty", "standard")
@@ -196,7 +222,7 @@ You control story, mood, room selection, monster/furniture/trap placement,
 door layout, and objective. You do NOT control rules or stats — monster stats
 are fixed, and your output is validated by code against the board geometry
 and balance budget. Invalid output is rejected, so follow every constraint.
-{_campaign_section(params)}
+{_campaign_section(params)}{_side_quest_section(params)}
 ### BOARD
 The board is a 26x19 grid. Coordinates are [x,y], origin top-left, x right,
 y down. Rooms (id, and the exact squares each contains):

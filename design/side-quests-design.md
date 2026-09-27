@@ -234,9 +234,11 @@ generator must include (`armory_visit`):
 > own gold; the app tracks neither. (House rule: buying mid-quest.
 > Skip it if you'd rather keep to the book.)
 
-The beat is a pause with a Continue button, never a form. It also
-appears, without the house-rule line, at the top of the Journal when a
-quest is complete, as a plain between-quests reminder.
+The beat is a pause with a Continue button, never a form. The plain
+between-quests reminder (no house-rule line) sits on the Quest
+Complete banner for every game, traditional or expanded -- the
+rulebook's rule applies whatever the variant, and the Journal only
+exists in expanded games.
 
 Only town scenes ever mention the Armory (owner's call). Every other
 setting rewards the party with something FOUND: an Artifact card, or an
@@ -359,6 +361,18 @@ UI:
 - Quests generated before this exists have no side quests. A later
   "Add side quests" button on the setup screen could backfill one
   quest at a time; not v1.
+
+## 13b. As built (phase 1, Sept 2026)
+
+Implemented as designed with these deltas: the scene page is a
+full-page overlay rather than a route (same effect, no router); the
+epilogue is held client-side after the terminal write clears
+pendingSideQuest, until the player presses "Back to the dungeon";
+`weaken_monster` takes a `stat` field (body | defend); a `dazed` hero
+status carries miss_turn; the required scene's hook-room rule is
+"fewer doors from the stairway than the objective room" (the fence
+skeleton check reduced to that); CLAUDE.md's design-artifacts entry
+lists every module. Phases 2-3 remain open.
 
 ## 14. Phasing
 

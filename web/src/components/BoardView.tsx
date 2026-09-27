@@ -31,6 +31,8 @@ interface BoardViewProps {
   /** Monsters with an unanswered defence prompt (pendingDefenses) --
    * whoever just attacked and is still waiting on a shield report. */
   attackingMonsterIds?: ReadonlySet<string>;
+  /** The warded boss of an expanded game's required side quest. */
+  wardedMonsterIds?: ReadonlySet<string>;
   /** Path-tracing state, owned by GameView so that "Moving X -- Confirm"
    * can sit in the rail beside the board rather than below it, where it
    * was easy to miss entirely. */
@@ -49,6 +51,7 @@ export function BoardView({
   activeHeroId,
   activeMonsterId,
   attackingMonsterIds,
+  wardedMonsterIds,
   pathInput,
 }: BoardViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -290,6 +293,7 @@ export function BoardView({
           activeHeroId={activeHeroId}
           activeMonsterId={activeMonsterId}
           attackingMonsterIds={attackingMonsterIds}
+          wardedMonsterIds={wardedMonsterIds}
         />
       </svg>
       <div className="board-legend">

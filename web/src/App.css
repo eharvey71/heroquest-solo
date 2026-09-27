@@ -370,3 +370,119 @@ button.quiet:hover:not(:disabled) {
   margin-top: 0;
   color: #e8c34a;
 }
+
+/* A side quest plays on its own page: the board and rail are covered
+   entirely, not dimmed -- the party has left the dungeon for a while.
+   Scrolls on its own so a long passage never fights the page. */
+.scene-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  overflow-y: auto;
+  background: #141210;
+  padding: 24px 16px 48px;
+}
+
+.scene-card {
+  width: min(760px, 100%);
+  margin: 0 auto;
+}
+
+.scene-kicker {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a8272;
+  margin: 0 0 6px;
+}
+
+.scene-card h2 {
+  margin: 0 0 4px;
+  color: #e8c34a;
+}
+
+.scene-text {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: #e8dfc8;
+  margin: 18px 0;
+}
+
+/* One choice per row, full width, left-aligned like a page of a
+   gamebook rather than a toolbar. */
+.scene-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scene-choices button {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.scene-choice-note {
+  display: block;
+  color: #9a917c;
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+/* The die prompt for the choice just taken, in the same amber as
+   every other "the app is waiting on your dice" panel. */
+.scene-test {
+  margin-top: 12px;
+}
+
+.scene-epilogue {
+  border-top: 1px solid #3a3a3a;
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.scene-epilogue ul {
+  margin: 8px 0 14px;
+  padding-left: 18px;
+  color: #c9bfa0;
+  line-height: 1.5;
+}
+
+/* The Journal: what the party has been offered, and where it stands. */
+.journal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.journal-entry {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.journal-entry .journal-title {
+  flex: 1 1 160px;
+}
+
+.journal-status {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a8272;
+}
+
+.journal-status.done {
+  color: #7fd67f;
+}
+
+.journal-status.failed {
+  color: #e05c5c;
+}
+
+.journal-gate {
+  color: #c79ad6;
+  font-size: 0.85rem;
+}

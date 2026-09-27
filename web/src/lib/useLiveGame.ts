@@ -41,6 +41,11 @@ interface RawGameDoc {
   chronicle?: string;
   narration?: Record<string, string>;
   lastMoves?: Record<string, Coord[]>;
+  mode?: GameState["mode"];
+  sideQuests?: GameState["sideQuests"];
+  pendingSideQuest?: string | null;
+  gate?: GameState["gate"];
+  artifactsHeld?: Record<string, string>;
   log?: LogEntry[];
 }
 
@@ -78,6 +83,11 @@ function toGameState(raw: RawGameDoc): GameState {
     chronicle: raw.chronicle,
     narration: raw.narration ?? {},
     lastMoves: raw.lastMoves ?? {},
+    mode: raw.mode === "expanded" ? "expanded" : "traditional",
+    sideQuests: raw.sideQuests ?? {},
+    pendingSideQuest: raw.pendingSideQuest ?? null,
+    gate: raw.gate ?? null,
+    artifactsHeld: raw.artifactsHeld ?? {},
     log: raw.log ?? [],
   };
 }

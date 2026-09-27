@@ -25,13 +25,17 @@ all -- it simply expires once the missed turn has passed.
 from __future__ import annotations
 
 # Statuses that stop a hero taking their turn.
-BLOCKING_STATUSES = ("asleep", "paralyzed", "commanded", "becalmed")
+# "dazed" is not a Chaos card: a side quest's miss_turn effect
+# (engine/side_quests.py). Same shape as Tempest's becalmed -- it
+# expires on its own after the missed turn and can't be broken.
+BLOCKING_STATUSES = ("asleep", "paralyzed", "commanded", "becalmed", "dazed")
 
 BLOCKED_REASON = {
     "asleep": "is asleep -- no moving, attacking or defending until the spell is broken",
     "paralyzed": "is paralyzed by the Cloud of Chaos -- no moving, attacking or defending until it breaks",
     "commanded": "is under Zargon's command -- Zargon moves them, not you",
     "becalmed": "is caught in the Tempest and misses this turn",
+    "dazed": "is still reeling from the side quest and misses this turn",
 }
 
 
@@ -102,7 +106,11 @@ def attempt_break(game_state: dict, hero_id: str, hero_name: str, rolled_six: bo
     status is the one being rolled against.
     """
     entries = statuses_for(game_state, hero_id)
-    breakable = [e for e in entries if e.get("status") in BLOCKING_STATUSES + ("afraid",) and e.get("status") != "becalmed"]
+    # Anything that wears off by itself (Tempest, a side quest's daze)
+    # has no saving roll -- it just expires.
+    breakable = [
+        e for e in entries if e.get("status") in BLOCKING_STATUSES + ("afraid",) and not e.get("missesTurns")
+    ]
     if not breakable:
         raise SpellNotOnHeroError(f"{hero_name} is not under a spell that can be broken")
 
@@ -132,7 +140,11 @@ def expire_turn_statuses(game_state: dict, turn: int) -> list[str]:
                 else:
                     entry["counted"] = True
                 if entry["missesTurns"] <= 0:
-                    log.append(f"The whirlwind around {hero_id} dies down -- they may act again next turn.")
+                    log.append(
+                        f"{hero_id} shakes off the daze -- they may act again next turn."
+                        if entry.get("status") == "dazed"
+                        else f"The whirlwind around {hero_id} dies down -- they may act again next turn."
+                    )
                     continue
             remaining.append(entry)
         if remaining:

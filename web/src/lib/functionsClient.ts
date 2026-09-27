@@ -45,7 +45,11 @@ export interface GenerateQuestRequest {
   /** A finished, chronicled game to write this quest as a sequel to --
    * see generator/prompt.py's CAMPAIGN CONTINUITY section. */
   continuesFromGameId?: string;
+  /** "traditional" (today's game, the default) or "expanded" (side
+   * quests written with the quest -- design/side-quests-design.md). */
+  mode?: PlayMode;
 }
+export type PlayMode = "traditional" | "expanded";
 export interface GenerateQuestResponse {
   questId: string;
 }
@@ -93,6 +97,10 @@ export interface CreateGameRequest {
   /** Which spell elements each caster took at the table: the Wizard
    * three, the Elf one of what's left. */
   spellbooks?: Record<string, string[]>;
+  /** How this game is played. Only an expanded quest can be played
+   * expanded; a traditional game on one starts with its gate open and
+   * no Journal. */
+  mode?: PlayMode;
 }
 export interface CreateGameResponse {
   gameId: string;
@@ -412,3 +420,27 @@ export interface AttemptBreakSpellResponse {
   log: string[];
 }
 export const attemptBreakSpell = call<AttemptBreakSpellRequest, AttemptBreakSpellResponse>("attempt_break_spell");
+
+// ---- side quests (design/side-quests-design.md) ----
+
+export interface BeginSideQuestRequest {
+  gameId: string;
+  sideQuestId: string;
+}
+/** The die result a choice's test asks for: skulls rolled on the
+ * hero's combat dice, or pass/fail of a Mind or Body Point roll. A
+ * Zargon test is rolled server-side and needs no report. */
+export type SideQuestReport = { skulls: number } | { passed: boolean };
+export interface AdvanceSideQuestRequest {
+  gameId: string;
+  choiceId: string;
+  report?: SideQuestReport;
+}
+export interface SideQuestStepResponse {
+  passageId: string | null;
+  finished: boolean;
+  outcome: "success" | "partial" | "failure" | null;
+  log: string[];
+}
+export const beginSideQuest = call<BeginSideQuestRequest, SideQuestStepResponse>("begin_side_quest");
+export const advanceSideQuest = call<AdvanceSideQuestRequest, SideQuestStepResponse>("advance_side_quest");
