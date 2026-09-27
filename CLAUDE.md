@@ -211,6 +211,17 @@ searched.<room>.treasureBy.
   doors); stairway: {room, pos} placed per quest.
 - quest-generator-design.md — generator + validator + budget design.
 - generator-prompt.md — LLM prompt template v0.1.
+- side-quests-design.md — Side Quests v0.1 (DESIGNED, NOT BUILT): short
+  narrative scenes generated with the quest, played on their own page
+  in 10-15 minutes. 1-2 optional per quest plus a server-rolled
+  required one (1 in 3) that gates the OBJECTIVE (a warded boss, a
+  sealed vault -- never a door). LLM writes prose and choice graph;
+  every choice resolves to an effect from a closed, priced list the
+  engine applies. Hero dice physical and reported, Zargon's digital,
+  same as everywhere. Failure fails FORWARD: a failed required scene
+  cracks the gate into hard mode, never an unwinnable quest. Town
+  scenes carry the Armory reminder. Read it before touching any of
+  this; it records the owner's brief and the open questions.
 
 ## Physical component caps (validator MUST enforce)
 Monster minis RECYCLE (dead minis return to the pool — official quests
@@ -727,6 +738,8 @@ and risk drifting out of sync with it.
 Known gaps:
 1. Command moves a hero on Zargon's turn -- deliberately left to the
    player, see "Not implemented, deliberately" above.
+3. SIDE QUESTS are designed (design/side-quests-design.md) and not
+   started. Phase 1 there is the next feature of any size.
 2. Real play has started (traps sprung in a corridor, treasure drawn,
    spells cast) and has already surfaced and fixed several bugs tests
    and the simulator missed -- the treasure-draw ordering, open pits,
