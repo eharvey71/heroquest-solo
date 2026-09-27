@@ -16,6 +16,25 @@ Armory is available."
 
 ---
 
+## 0. Two ways to play: traditional and expanded (owner's call)
+
+Side quests are a VARIANT the players choose, never the default they
+have to opt out of.
+
+- **Traditional**: exactly today's game. No side quests, no gate, no
+  Journal. Nothing about it changes.
+- **Expanded**: everything in this document.
+
+The choice is made where side quests are made: on the setup screen
+when generating a quest ("Traditional" / "Expanded: side quests"),
+default Traditional. It is stored on the quest (`mode`), because the
+required gate is woven into the backstory and cannot be bolted on
+later. Starting a game on an expanded quest offers the same choice
+again, so a replay can go traditional: the game stores `mode` too, and
+a traditional game on an expanded quest starts with the gate open and
+the Journal hidden. A traditional quest can only be played
+traditionally (there is nothing to expand).
+
 ## 1. Constraints this design inherits (CLAUDE.md, settled)
 
 - The LLM writes prose and structure; it never decides an outcome.
@@ -219,6 +238,12 @@ The beat is a pause with a Continue button, never a form. It also
 appears, without the house-rule line, at the top of the Journal when a
 quest is complete, as a plain between-quests reminder.
 
+Only town scenes ever mention the Armory (owner's call). Every other
+setting rewards the party with something FOUND: an Artifact card, or an
+announced piece of equipment, potion or purse of gold that the story
+puts in their hands. The generator is told this in so many words, so a
+cave never ends in a shop.
+
 ## 10. Generation pipeline
 
 1. `generate_quest` rolls the required coin (server RNG, 1 in 3) and,
@@ -349,13 +374,12 @@ UI:
 - **Phase 3**: horde objective and its source gate; sequel threads from
   side-quest outcomes; backfill for old quests.
 
-## 15. Open questions for the owner
+## 15. Owner's answers (Sept 2026)
 
-1. Required chance: 1 in 3 is a guess. Higher and every other quest
-   has a key; lower and the mechanic is rarely met.
-2. Mid-quest Armory: keep the house-rule line, or present the visit as
-   simply allowed?
-3. Should a room-hooked scene stay available after the party leaves the
-   room and returns, or is it a one-time offer? (Design says stays
-   available; a one-time offer is more tense but punishes a party that
-   was busy fighting.)
+1. Required chance: 1 in 3. Yes.
+2. Armory: only when the scene is set in a town. Elsewhere the party
+   finds an item instead, magical or otherwise (section 9). The
+   between-quests reminder stays.
+3. A room-hooked scene stays available when the party returns.
+4. Added after the fact: the whole thing is an optional variant. The
+   players choose traditional or expanded (section 0).

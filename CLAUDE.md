@@ -220,8 +220,12 @@ searched.<room>.treasureBy.
   engine applies. Hero dice physical and reported, Zargon's digital,
   same as everywhere. Failure fails FORWARD: a failed required scene
   cracks the gate into hard mode, never an unwinnable quest. Town
-  scenes carry the Armory reminder. Read it before touching any of
-  this; it records the owner's brief and the open questions.
+  scenes carry the Armory reminder; every other setting rewards a
+  FOUND item. The whole thing is a VARIANT the players choose at quest
+  generation ("Traditional" / "Expanded"), default Traditional, stored
+  on the quest and again on the game -- a traditional game must be
+  exactly today's game. Read the doc before touching any of this; it
+  records the owner's brief and answers.
 
 ## Physical component caps (validator MUST enforce)
 Monster minis RECYCLE (dead minis return to the pool — official quests
