@@ -201,6 +201,22 @@ searched.<room>.treasureBy.
     combat resolution). LLM is NEVER in the rules path — only quest
     generation and flavor narration (the chronicle, campaign
     continuity, turn narration).
+  - "THE QUEST GENERATOR DECLINED THIS REQUEST" with no detail was a
+    MISDIAGNOSED CUTOFF, not a refusal (found in live play, twice).
+    generator/client.py raised QuestGenerationRefused(None) whenever a
+    response had no text block -- and with adaptive thinking at high
+    effort, a response cut off by max_tokens while the model was still
+    thinking has exactly that shape: thinking blocks only, stop_reason
+    "max_tokens". stop_details is only ever populated on a real
+    "refusal" stop, so "None" there is the tell. Fixed three ways: the
+    two big calls (quest, side quests) STREAM (client.messages.stream +
+    get_final_message) so max_tokens can sit at 32000 -- thinking
+    tokens count against it, and the SDK refuses non-streaming requests
+    it estimates at over ~10 minutes; a no-text max_tokens response is
+    now QuestGenerationTruncated (the retry loop asks for a shorter
+    quest); and any other empty response names its block types and
+    stop reason. A real refusal reports its category and explanation.
+    chronicle.py and narration.py keep the small non-streaming calls.
 
 ## Design artifacts (in this repo /design)
 - board.json — 26x19 grid, 22 rooms, verified square-by-square against the

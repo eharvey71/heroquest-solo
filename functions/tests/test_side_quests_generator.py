@@ -47,6 +47,20 @@ def _response(payload, stop_reason="end_turn"):
     )
 
 
+class _FinalMessage:
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self._response
+
+
 class ScriptedClient:
     def __init__(self, payloads):
         self._payloads = list(payloads)
@@ -57,6 +71,10 @@ class ScriptedClient:
         self.calls.append(kwargs)
         payload = self._payloads.pop(0)
         return payload if isinstance(payload, SimpleNamespace) else _response(payload)
+
+    def stream(self, **kwargs):
+        # The production path: generator/client.final_message streams.
+        return _FinalMessage(self.create(**kwargs))
 
 
 PARAMS = {"heroCount": 4, "difficulty": "standard", "size": "full", "mode": "expanded"}

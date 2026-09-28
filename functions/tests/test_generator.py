@@ -46,20 +46,45 @@ def _text_response(payload, stop_reason="end_turn"):
     )
 
 
+class _FinalMessage:
+    """What client.messages.stream(...) hands back: a context manager
+    whose get_final_message() is the whole response."""
+
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def get_final_message(self):
+        return self._response
+
+
 class ScriptedClient:
     """Replays a fixed sequence of quest payloads, one per call. Records
     every request's messages so tests can assert on retry-message content.
+    Exposes BOTH create and stream, so the production path (stream +
+    get_final_message) is what these tests exercise; an entry that is
+    already a response object is returned as-is.
     """
 
     def __init__(self, payloads):
         self._payloads = list(payloads)
         self.calls = []
+        self.streamed = 0
         self.messages = self
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
         payload = self._payloads[len(self.calls) - 1]
-        return _text_response(payload)
+        return payload if isinstance(payload, SimpleNamespace) else _text_response(payload)
+
+    def stream(self, **kwargs):
+        self.streamed += 1
+        return _FinalMessage(self.create(**kwargs))
 
 
 class RefusingClient:
@@ -130,9 +155,46 @@ def test_auto_repair_absorbs_trivial_issue_within_one_attempt(good_quest_4h, goo
 
 def test_refusal_propagates_without_retrying(good_quest_4h_params, catalogs):
     client = RefusingClient()
-    with pytest.raises(QuestGenerationRefused):
+    with pytest.raises(QuestGenerationRefused) as exc_info:
         generate_quest(good_quest_4h_params, client, catalogs)
     assert client.calls == 1  # a refusal isn't a validation failure -- retrying identically won't help
+    # A real refusal names its category and explanation, so the client
+    # can show WHY instead of a bare "declined".
+    assert exc_info.value.stop_details == "cyber: nope"
+
+
+def test_the_big_calls_stream_with_real_headroom(good_quest_4h, good_quest_4h_params, catalogs):
+    from generator.client import MAX_TOKENS
+
+    client = ScriptedClient([good_quest_4h])
+    generate_quest(good_quest_4h_params, client, catalogs)
+    assert client.streamed == 1
+    assert client.calls[0]["max_tokens"] == MAX_TOKENS >= 24000
+
+
+def test_a_response_that_is_all_thinking_is_a_cutoff_not_a_refusal(good_quest_4h, good_quest_4h_params, catalogs):
+    """The live bug: at high effort the model was still thinking when it
+    hit max_tokens, the response had thinking blocks and no text, and it
+    was reported as 'the quest generator declined this request'. It is a
+    truncation -- retried with the shorter-quest hint."""
+    only_thinking = SimpleNamespace(
+        stop_reason="max_tokens",
+        stop_details=None,
+        content=[SimpleNamespace(type="thinking", thinking="")],
+    )
+    client = ScriptedClient([only_thinking, good_quest_4h])
+    result = generate_quest(good_quest_4h_params, client, catalogs)
+    assert result.attempts == 2
+    assert "shorter" in client.calls[1]["messages"][0]["content"]
+
+
+def test_an_empty_response_for_any_other_reason_says_what_came_back(good_quest_4h_params, catalogs):
+    empty = SimpleNamespace(stop_reason="end_turn", stop_details=None, content=[SimpleNamespace(type="thinking", thinking="")])
+    client = ScriptedClient([empty])
+    with pytest.raises(QuestGenerationRefused) as exc_info:
+        generate_quest(good_quest_4h_params, client, catalogs)
+    assert "no text in the response" in exc_info.value.stop_details
+    assert "end_turn" in exc_info.value.stop_details and "thinking" in exc_info.value.stop_details
 
 
 class TruncatingThenGoodClient:

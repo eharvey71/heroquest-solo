@@ -319,13 +319,18 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     try:
         result: GenerationResult = run_generation(params, client, _catalogs, on_progress=progress)
     except QuestGenerationRefused as e:
-        progress("failed", "The quest generator declined this request.")
+        # The detail is the whole diagnosis (a real refusal carries its
+        # category; an empty response says which blocks came back and
+        # why it stopped), so it goes to the logs as well as the client.
+        logging.warning("quest generation refused: %s", e.stop_details)
+        progress("failed", f"The quest generator declined this request: {e.stop_details}")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message="the quest generator declined this request",
             details={"stopDetails": str(e.stop_details)},
         ) from e
     except QuestGenerationFailed as e:
+        logging.warning("quest generation failed validation after %s attempts: %s", e.attempts, e.errors)
         progress("failed", f"The quest failed validation after {e.attempts} attempts.")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
@@ -438,8 +443,9 @@ def generate_side_quests(req: https_fn.CallableRequest) -> dict:
             details={"errors": e.errors},
         ) from e
     except QuestGenerationRefused as e:
+        logging.warning("side quest generation refused: %s", e.stop_details)
         quest_ref.update({"sideQuestsStatus": "failed", "sideQuestErrors": [str(e.stop_details)]})
-        progress("failed", "The generator declined to write the side quests.")
+        progress("failed", f"The generator declined to write the side quests: {e.stop_details}")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message="the generator declined to write the side quests",
