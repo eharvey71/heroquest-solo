@@ -29,6 +29,8 @@ export interface QuestSummary {
   archived: boolean;
   /** "expanded" when the quest was generated with side quests. */
   mode: "traditional" | "expanded";
+  /** ready once the scenes are written; pending/failed until then. */
+  sideQuestsStatus: "pending" | "ready" | "failed" | null;
 }
 
 export interface GameSummary {
@@ -90,6 +92,7 @@ export function useLibrary(refreshKey = 0): Library {
             createdAt?: unknown;
             archived?: boolean;
             mode?: string;
+            sideQuestsStatus?: "pending" | "ready" | "failed";
           };
           const params = data.generationParams ?? {};
           return {
@@ -103,6 +106,7 @@ export function useLibrary(refreshKey = 0): Library {
             createdAt: toDate(data.createdAt),
             archived: Boolean(data.archived),
             mode: data.mode === "expanded" ? "expanded" : "traditional",
+            sideQuestsStatus: data.mode === "expanded" ? (data.sideQuestsStatus ?? "pending") : null,
           };
         });
 

@@ -225,3 +225,76 @@ def test_firestore_round_trip_keeps_a_scene_intact():
     # would silently become {x, y}.
     wire = to_firestore_coords(copy.deepcopy(SCENE))
     assert from_firestore_coords(wire) == SCENE
+
+
+# ---- the second call: writing the scenes onto a saved quest ----
+
+
+def _expanded_quest(good_quest_4h, required=False):
+    return {
+        **copy.deepcopy(good_quest_4h),
+        "mode": "expanded",
+        "generationParams": {"heroCount": 4, "difficulty": "standard", "size": "full", "mode": "expanded"},
+        "sideQuestsStatus": "pending",
+        "sideQuestPlan": {"required": required},
+    }
+
+
+def test_write_side_quests_marks_the_quest_ready(good_quest_4h):
+    from tests.test_side_quests_generator import ScriptedClient, _wire
+    from tests.test_side_quests_validator import _scene
+
+    client = ScriptedClient([{"sideQuests": [_wire(_scene())]}])
+    stages = []
+    updates = main._write_side_quests(_expanded_quest(good_quest_4h), client, lambda stage, detail: stages.append(stage))
+    assert updates["sideQuestsStatus"] == "ready"
+    assert [sq["id"] for sq in updates["sideQuests"]] == ["SQ1"]
+    assert "gate" not in updates
+    assert stages[0] == "writing_side_quests" and "validating_side_quests" in stages
+
+
+def test_write_side_quests_builds_the_gate_when_the_plan_asked_for_one(good_quest_4h):
+    from tests.test_side_quests_generator import ScriptedClient, _wire
+    from tests.test_side_quests_validator import _required, _scene
+
+    client = ScriptedClient([{"sideQuests": [_wire(_scene()), _wire(_required(good_quest_4h))]}])
+    updates = main._write_side_quests(_expanded_quest(good_quest_4h, required=True), client)
+    assert updates["gate"]["kind"] == "ward"
+    assert updates["gate"]["sideQuestId"] == "SQ2"
+    assert updates["gate"]["targetMonsterId"] == "M17"
+
+
+def test_write_side_quests_raises_so_the_endpoint_can_record_the_failure(good_quest_4h):
+    from generator.side_quests import SideQuestGenerationFailed
+    from tests.test_side_quests_generator import ScriptedClient, _wire
+    from tests.test_side_quests_validator import _scene
+
+    bad = _scene()
+    bad["passages"]["p1"]["text"] = "Walk to R12."
+    client = ScriptedClient([{"sideQuests": [_wire(bad)]}] * 3)
+    with pytest.raises(SideQuestGenerationFailed):
+        main._write_side_quests(_expanded_quest(good_quest_4h), client)
+
+
+def test_job_progress_swallows_write_failures():
+    class _BadRef:
+        def set(self, *a, **k):
+            raise RuntimeError("firestore down")
+
+    class _BadDB:
+        def collection(self, name):
+            return self
+
+        def document(self, name):
+            return _BadRef()
+
+    progress = main._JobProgress(_BadDB(), "job-1")
+    progress("writing", "still fine")  # must not raise
+    assert main._JobProgress(_BadDB(), None)("x") is None
+
+
+def test_generation_params_carry_the_job_id():
+    assert main._parse_generation_params({"heroCount": 4, "jobId": "abc"})["jobId"] == "abc"
+    assert "jobId" not in main._parse_generation_params({"heroCount": 4})
+    with pytest.raises(main.https_fn.HttpsError):
+        main._parse_generation_params({"heroCount": 4, "jobId": "x" * 81})

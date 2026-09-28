@@ -248,24 +248,34 @@ cave never ends in a shop.
 
 ## 10. Generation pipeline
 
+Two callables, because one could not fit both inside the 8-minute
+callable limit (the first live run timed out and lost a quest that had
+already validated).
+
 1. `generate_quest` rolls the required coin (server RNG, 1 in 3) and,
    if it lands, adds a line to the main prompt: the objective is
    warded/sealed and the backstory must say by what.
-2. The main quest generates and validates exactly as today.
-3. A SECOND model call writes the side quests, with the validated quest
-   as context (title, backstory, objective, rooms used, named
-   monsters, artifacts already placed), heroCount, the required
-   decision and gate kind, the settings list, the effects catalog with
-   prices and caps, and the passage limits. Separate call on purpose:
-   quest generation's schema already saturated the grammar budget once
-   (see generator/client.py); the side-quest schema is its own, and a
-   failure here must not cost the quest.
+2. The main quest generates and validates exactly as today, and is
+   SAVED at once with mode "expanded", sideQuestsStatus "pending" and
+   sideQuestPlan {required}. The response says sideQuestsPending.
+3. The client calls `generate_side_quests(questId)`: a second model
+   call, its own 480-second budget, with the saved quest as context
+   (title, backstory, objective, rooms used, named monsters, artifacts
+   already placed), heroCount, the required decision and gate kind,
+   the settings list, the effects catalog with prices and caps, and
+   the passage limits. Its schema is its own (the quest's already
+   saturated the grammar budget once, see generator/client.py).
 4. Validate (section 11). Retry up to 2 times with the errors, like
-   quests.
-5. If side quests still fail validation: save the quest WITHOUT them
-   and WITHOUT the gate, log a warning. A quest with no side quests is
-   exactly today's quest. Never block quest generation on the side
-   story.
+   quests. Success merges sideQuests, gate and sideQuestsStatus
+   "ready" onto the quest doc.
+5. Failure records sideQuestsStatus "failed" and the errors. The quest
+   is already saved and plays as traditional; the setup screen offers
+   a retry. Never block quest generation on the side story.
+
+Both calls take a client-chosen jobId and write their stage to
+generationJobs/{jobId} as they go (writing attempt N, validating,
+retrying with the first errors quoted, fencing, saving), which the
+setup screen shows live beside the Generate button.
 
 Same model as quest generation (generator/client.py MODEL). One extra
 call, roughly 3-5k output tokens per quest.

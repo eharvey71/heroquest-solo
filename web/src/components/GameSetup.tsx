@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { useEffect, useState } from "react";
 import { setGameArchived, setQuestStackArchived } from "../lib/archive";
-import { createGame, describeError, generateQuest, type PlayMode } from "../lib/functionsClient";
+import { db } from "../lib/firebase";
+import {
+  createGame,
+  describeGenerationError,
+  generateQuest,
+  generateSideQuests,
+  type PlayMode,
+} from "../lib/functionsClient";
 import { SPELL_ELEMENTS } from "../data/heroSpells";
 import { useLibrary, type GameSummary, type QuestSummary } from "../lib/useLibrary";
 import { useQuestMap } from "../lib/useQuestMap";
@@ -16,6 +24,11 @@ const CLASSIC_HEROES = [
   { id: "wizard", name: "Wizard" },
 ];
 
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 function formatWhen(date: Date | null): string {
   if (!date) return "just now";
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
@@ -27,7 +40,11 @@ function questLine(quest: QuestSummary): string {
     quest.heroCount ? `${quest.heroCount} hero${quest.heroCount === 1 ? "" : "es"}` : null,
     quest.size,
     quest.difficulty,
-    quest.mode === "expanded" ? "expanded (side quests)" : null,
+    quest.mode === "expanded"
+      ? quest.sideQuestsStatus === "ready"
+        ? "expanded (side quests)"
+        : "expanded (side quests not written yet)"
+      : null,
     quest.theme,
   ].filter(Boolean);
   return parts.join(" / ");
@@ -81,7 +98,51 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const { narrative, mode: questMode, sideQuests: questSideQuests } = useQuestMap(questId ?? undefined);
+  // Live status of a generation in progress. The browser picks a job id,
+  // sends it with the call, and listens to generationJobs/{jobId}, which
+  // the backend writes each stage to (main._JobProgress) -- a callable
+  // is one long request the client can't otherwise see inside.
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<{ stage: string; detail: string } | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  // The side quests are a second call after the quest is saved, so a
+  // failure there leaves a usable (traditional) quest and a retry.
+  const [sideQuestsBusy, setSideQuestsBusy] = useState(false);
+  const [sideQuestError, setSideQuestError] = useState<string | null>(null);
+  const [questVersion, setQuestVersion] = useState(0);
+  const {
+    narrative,
+    mode: questMode,
+    requestedMode: questRequestedMode,
+    sideQuestsStatus: questSideQuestsStatus,
+    sideQuestErrors: questSideQuestErrors,
+    sideQuests: questSideQuests,
+  } = useQuestMap(questId ?? undefined, questVersion);
+
+  useEffect(() => {
+    if (!jobId) return;
+    const unsubscribe = onSnapshot(
+      doc(db, "generationJobs", jobId),
+      (snap) => {
+        const data = snap.data() as { stage?: string; detail?: string } | undefined;
+        if (data?.stage) setJobStatus({ stage: data.stage, detail: data.detail ?? "" });
+      },
+      () => {
+        // A rules or network hiccup on the status doc must never look
+        // like a generation failure -- the call itself reports that.
+      }
+    );
+    return unsubscribe;
+  }, [jobId]);
+
+  const working = busy || sideQuestsBusy;
+  useEffect(() => {
+    if (!working || startedAt === null) return;
+    setElapsed(Date.now() - startedAt);
+    const timer = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
+    return () => clearInterval(timer);
+  }, [working, startedAt]);
   const library = useLibrary(refreshKey);
   // A removed game shouldn't offer itself as a campaign predecessor --
   // it's meant to be out of the way, not still steering new quests.
@@ -105,31 +166,72 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     });
   };
 
+  const startJob = () => {
+    const id = crypto.randomUUID();
+    setJobId(id);
+    setJobStatus({ stage: "starting", detail: "Contacting the generator…" });
+    setStartedAt(Date.now());
+    setElapsed(0);
+    return id;
+  };
+
+  const writeSideQuests = async (forQuestId: string, forJobId: string) => {
+    setSideQuestsBusy(true);
+    setSideQuestError(null);
+    try {
+      await generateSideQuests({ questId: forQuestId, jobId: forJobId });
+    } catch (e) {
+      setSideQuestError(describeGenerationError(e));
+    } finally {
+      setSideQuestsBusy(false);
+      // Re-read the quest either way: it now carries the scenes, or the
+      // failed status and its errors.
+      setQuestVersion((v) => v + 1);
+      setRefreshKey((k) => k + 1);
+    }
+  };
+
   const handleGenerateQuest = async () => {
     if (heroCount < 1 || heroCount > 4) return;
     setBusy(true);
     setError(null);
+    setSideQuestError(null);
+    const newJobId = startJob();
+    let pending: { questId: string } | null = null;
     try {
       const res = await generateQuest({
         heroCount: heroCount as 1 | 2 | 3 | 4,
         difficulty,
         size,
         mode,
+        jobId: newJobId,
         ...(theme.trim() ? { theme: theme.trim() } : {}),
         ...(continuesFromGameId ? { continuesFromGameId } : {}),
       });
       setQuestId(res.questId);
       setQuestHeroCount(heroCount);
       setRefreshKey((k) => k + 1);
+      if (res.sideQuestsPending) pending = { questId: res.questId };
     } catch (e) {
-      setError(describeError(e));
+      setError(describeGenerationError(e));
     } finally {
       setBusy(false);
     }
+    // Outside the try: the quest is saved whatever happens next.
+    if (pending) await writeSideQuests(pending.questId, newJobId);
+  };
+
+  const handleRetrySideQuests = async () => {
+    if (!questId) return;
+    const newJobId = startJob();
+    await writeSideQuests(questId, newJobId);
   };
 
   const handleReplayQuest = (quest: QuestSummary) => {
     setError(null);
+    setSideQuestError(null);
+    setJobStatus(null);
+    setStartedAt(null);
     setQuestId(quest.id);
     setQuestHeroCount(quest.heroCount);
     if (quest.difficulty === "standard" || quest.difficulty === "hard") setDifficulty(quest.difficulty);
@@ -271,10 +373,17 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
             </>
           )}
         </p>
-        <div>
-          <button onClick={handleGenerateQuest} disabled={busy || heroCount < 1}>
-            {busy && !questId ? "Generating..." : "Generate Quest"}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <button onClick={handleGenerateQuest} disabled={working || heroCount < 1}>
+            {busy ? "Generating..." : "Generate Quest"}
           </button>
+          {jobStatus && (
+            <span className="gen-status" aria-live="polite">
+              {working && <span className="gen-spinner" aria-hidden />}
+              <span>{jobStatus.detail || jobStatus.stage}</span>
+              {startedAt !== null && working && <span className="hint">{formatElapsed(elapsed)}</span>}
+            </span>
+          )}
         </div>
       </fieldset>
 
@@ -282,7 +391,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         <div style={{ marginTop: 16 }}>
           <p>
             Quest ready: <code>{questId}</code>{" "}
-            <button onClick={() => { setQuestId(null); setQuestHeroCount(null); }} disabled={busy}>
+            <button onClick={() => { setQuestId(null); setQuestHeroCount(null); setJobStatus(null); setSideQuestError(null); }} disabled={working}>
               Choose a different quest
             </button>
           </p>
@@ -301,6 +410,34 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
             </div>
           ) : (
             <p className="hint">Loading quest story...</p>
+          )}
+          {questRequestedMode === "expanded" && questSideQuestsStatus !== "ready" && (
+            <div className="panel" style={{ maxWidth: 520, marginBottom: 12 }}>
+              <p className="panel-title">Side quests</p>
+              <div className="panel-stack">
+                {sideQuestsBusy ? (
+                  <span className="hint">Being written now &mdash; see the status above.</span>
+                ) : (
+                  <>
+                    <span className="hint">
+                      {questSideQuestsStatus === "failed"
+                        ? "The generator's scenes failed the checks. The quest itself is fine and can be played traditional now, or try the side quests again."
+                        : "Not written yet. The quest can be played traditional now, or write the side quests first."}
+                    </span>
+                    {(sideQuestError || questSideQuestErrors.length > 0) && (
+                      <span style={{ color: "#e6a23b" }}>
+                        {sideQuestError ?? questSideQuestErrors.slice(0, 2).join("; ")}
+                      </span>
+                    )}
+                    <div className="panel-row">
+                      <button onClick={handleRetrySideQuests} disabled={working}>
+                        {questSideQuestsStatus === "failed" ? "Try the side quests again" : "Write the side quests"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
           {questMode === "expanded" && (
             <div className="panel" style={{ maxWidth: 520, marginBottom: 12 }}>
@@ -391,7 +528,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
           <button
             style={{ marginTop: 8 }}
             onClick={handleCreateGame}
-            disabled={busy || heroCount < 1 || (selectedHeroes.has("wizard") && wizardElements.length !== 3)}
+            disabled={working || heroCount < 1 || (selectedHeroes.has("wizard") && wizardElements.length !== 3)}
           >
             {busy ? "Creating..." : "Create Game"}
           </button>

@@ -100,6 +100,15 @@ export interface QuestMap {
   /** "expanded" when the quest carries side quests; absent/"traditional"
    * otherwise. The game decides separately how it is PLAYED. */
   mode: "traditional" | "expanded";
+  /** The variant the quest was GENERATED with, whether or not its
+   * scenes have arrived yet -- an expanded quest whose second call
+   * failed or hasn't run reads "expanded" here and "traditional" in
+   * `mode`. */
+  requestedMode: "traditional" | "expanded";
+  /** Where the scenes stand: pending (second call not finished),
+   * ready, failed (retry offered), or null for a traditional quest. */
+  sideQuestsStatus: "pending" | "ready" | "failed" | null;
+  sideQuestErrors: string[];
   sideQuests: SideQuest[];
   gate: QuestGate | null;
 }
@@ -111,6 +120,9 @@ const EMPTY: QuestMap = {
   furniture: [],
   narrative: null,
   mode: "traditional",
+  requestedMode: "traditional",
+  sideQuestsStatus: null,
+  sideQuestErrors: [],
   sideQuests: [],
   gate: null,
 };
@@ -131,6 +143,8 @@ interface RawQuestDoc {
   completionText?: string;
   rooms?: Record<string, { furniture?: RawFurniture[] }>;
   mode?: "traditional" | "expanded";
+  sideQuestsStatus?: "pending" | "ready" | "failed";
+  sideQuestErrors?: string[];
   sideQuests?: SideQuest[];
   gate?: QuestGate;
 }
@@ -145,7 +159,10 @@ function extractFurniture(rooms: RawQuestDoc["rooms"]): QuestFurniture[] {
   return items;
 }
 
-export function useQuestMap(questId: string | undefined): QuestMap {
+/** `version` re-fetches the same quest: the setup screen bumps it once
+ * generateSideQuests has written the scenes onto a quest already
+ * loaded. */
+export function useQuestMap(questId: string | undefined, version = 0): QuestMap {
   const [map, setMap] = useState<QuestMap>(EMPTY);
 
   useEffect(() => {
@@ -163,6 +180,9 @@ export function useQuestMap(questId: string | undefined): QuestMap {
         stairway: raw.stairway ?? null,
         furniture: extractFurniture(raw.rooms),
         mode: raw.mode === "expanded" && (raw.sideQuests?.length ?? 0) > 0 ? "expanded" : "traditional",
+        requestedMode: raw.mode === "expanded" ? "expanded" : "traditional",
+        sideQuestsStatus: raw.mode === "expanded" ? (raw.sideQuestsStatus ?? "pending") : null,
+        sideQuestErrors: raw.sideQuestErrors ?? [],
         sideQuests: raw.sideQuests ?? [],
         gate: raw.gate ?? null,
         narrative:
@@ -179,7 +199,7 @@ export function useQuestMap(questId: string | undefined): QuestMap {
     return () => {
       cancelled = true;
     };
-  }, [questId]);
+  }, [questId, version]);
 
   return map;
 }

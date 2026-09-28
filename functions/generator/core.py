@@ -37,6 +37,21 @@ MALFORMED_RETRY_HINT = (
 MAX_ATTEMPTS = 3
 
 
+def notify(on_progress, stage: str, detail: str) -> None:
+    """Live status for the setup screen (main._JobProgress writes it to
+    a Firestore doc the browser listens to). Optional and best-effort:
+    generation never depends on it, and tests pass nothing."""
+    if on_progress is not None:
+        on_progress(stage, detail)
+
+
+def summarize_errors(errors: list, limit: int = 2, width: int = 90) -> str:
+    """The first couple of validator errors, clipped, for a status line."""
+    shown = [str(e)[:width] + ("…" if len(str(e)) > width else "") for e in errors[:limit]]
+    more = len(errors) - len(shown)
+    return "; ".join(shown) + (f"; and {more} more" if more > 0 else "")
+
+
 @dataclass
 class GenerationResult:
     quest: dict
@@ -74,11 +89,13 @@ def _fence_play_area(quest: dict, params: dict, catalogs: Catalogs, passed: Vali
     return passed
 
 
-def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> GenerationResult:
+def generate_quest(params: dict, client, catalogs: Catalogs | None = None, on_progress=None) -> GenerationResult:
     """params: {"heroCount": 1-4, "difficulty": "standard"|"hard",
     "size": "short"|"full", "theme": str}. `client` is an Anthropic
     client (or anything with a matching `.messages.create`) — injected so
-    tests can pass a fake instead of calling the real API.
+    tests can pass a fake instead of calling the real API. `on_progress`
+    (stage, detail) is called at each step for the setup screen's live
+    status; see notify().
     """
     catalogs = catalogs or load_catalogs()
     schema = build_quest_json_schema(catalogs)
@@ -92,23 +109,38 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None) -> Ge
     message = build_user_message(params)
     last_errors = ["no attempt completed"]
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        notify(
+            on_progress,
+            "writing",
+            f"Writing the quest -- attempt {attempt} of {MAX_ATTEMPTS}. The model is thinking; "
+            f"this is the long part (usually 1-2 minutes).",
+        )
         try:
             quest = call_llm(client, system_prompt, message, schema)
         except QuestGenerationTruncated:
             last_errors = [TRUNCATION_RETRY_HINT]
             message = build_retry_message(last_errors)
+            notify(on_progress, "retrying", f"Attempt {attempt}: the answer was cut off by the length limit. Asking for a shorter quest.")
             continue
         except QuestGenerationMalformed:
             last_errors = [MALFORMED_RETRY_HINT]
             message = build_retry_message(last_errors)
+            notify(on_progress, "retrying", f"Attempt {attempt}: the answer wasn't valid JSON. Asking again.")
             continue
 
+        notify(on_progress, "validating", "Checking the quest: geometry, reachability, monster budget, artifacts.")
         apply_auto_repair(quest, params, catalogs)
         result = validate_quest(quest, validation_params, catalogs)
         if result.ok:
+            notify(on_progress, "fencing", "The quest passed every check. Fencing the play area with blocked-square tiles.")
             result = _fence_play_area(quest, validation_params, catalogs, result)
             return GenerationResult(quest=quest, validation=result, attempts=attempt)
         last_errors = result.errors
         message = build_retry_message(last_errors)
+        notify(
+            on_progress,
+            "retrying",
+            f"Attempt {attempt} failed {len(last_errors)} check(s): {summarize_errors(last_errors)}. Asking for a fix.",
+        )
 
     raise QuestGenerationFailed(errors=last_errors, attempts=MAX_ATTEMPTS)

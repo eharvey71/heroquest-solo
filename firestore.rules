@@ -46,6 +46,14 @@ service cloud.firestore {
       allow read, write: if isOwner();
     }
 
+    // Live status of a quest being generated: written by the functions
+    // (Admin SDK, bypasses these rules) and only ever READ by the
+    // owner's browser -- main._JobProgress.
+    match /generationJobs/{jobId} {
+      allow read: if isOwner();
+      allow write: if false;
+    }
+
     match /games/{gameId} {
       allow read, write: if isOwner();
       // Undo snapshots live under the game they belong to.

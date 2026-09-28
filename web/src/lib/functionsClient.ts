@@ -48,10 +48,19 @@ export interface GenerateQuestRequest {
   /** "traditional" (today's game, the default) or "expanded" (side
    * quests written with the quest -- design/side-quests-design.md). */
   mode?: PlayMode;
+  /** A client-chosen id: the backend writes each stage of the work to
+   * generationJobs/{jobId}, which the setup screen listens to for its
+   * live status line. */
+  jobId?: string;
 }
 export type PlayMode = "traditional" | "expanded";
 export interface GenerateQuestResponse {
   questId: string;
+  mode?: PlayMode;
+  /** True for an expanded quest: the scenes are written by a second
+   * call, generateSideQuests, so the quest is saved before the
+   * long second step can time out. */
+  sideQuestsPending?: boolean;
 }
 // generate_quest's backend timeout_sec=480 (up to 3 LLM round trips at
 // high effort, ~100s each) -- the JS SDK's own default callable
@@ -60,6 +69,35 @@ export interface GenerateQuestResponse {
 export const generateQuest = call<GenerateQuestRequest, GenerateQuestResponse>("generate_quest", {
   timeout: 480_000,
 });
+
+// ---- generateSideQuests ----
+
+export interface GenerateSideQuestsRequest {
+  questId: string;
+  jobId?: string;
+}
+export interface GenerateSideQuestsResponse {
+  count: number;
+  required: boolean;
+  alreadyWritten?: boolean;
+}
+export const generateSideQuests = call<GenerateSideQuestsRequest, GenerateSideQuestsResponse>("generate_side_quests", {
+  timeout: 480_000,
+});
+
+/** Like describeError, plus the validator's own error list when a
+ * generation call failed on its checks -- the first two, so the
+ * setup screen can say WHAT failed without a trip to the console. */
+export function describeGenerationError(e: unknown): string {
+  const base = describeError(e);
+  const details = (e as { details?: unknown } | null | undefined)?.details;
+  const errors = details && typeof details === "object" ? (details as { errors?: unknown }).errors : undefined;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const shown = errors.slice(0, 2).map(String).join("; ");
+    return `${base} -- ${shown}${errors.length > 2 ? `; and ${errors.length - 2} more` : ""}`;
+  }
+  return base;
+}
 
 // ---- generateChronicle ----
 

@@ -486,3 +486,39 @@ button.quiet:hover:not(:disabled) {
   color: #c79ad6;
   font-size: 0.85rem;
 }
+
+/* The setup screen's live status while a quest is being generated:
+   whatever stage the backend last wrote (main._JobProgress), an
+   elapsed clock, and a small spinner while a call is in flight. Wide
+   enough for a sentence, never wider than the row. */
+.gen-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 620px;
+  color: #c9bfa0;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.gen-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #5a5648;
+  border-top-color: #e8c34a;
+  border-radius: 50%;
+  animation: gen-spin 0.9s linear infinite;
+}
+
+@keyframes gen-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gen-spinner {
+    animation: none;
+  }
+}

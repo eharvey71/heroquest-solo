@@ -238,3 +238,19 @@ def test_malformed_response_retries_with_json_hint(good_quest_4h, good_quest_4h_
     assert result.attempts == 2
     retry_text = client.calls[1]["messages"][0]["content"]
     assert MALFORMED_RETRY_HINT in retry_text
+
+
+def test_progress_reports_each_stage_and_the_retry_reason(good_quest_4h, good_quest_4h_params, catalogs):
+    """The setup screen's live status: writing -> validating -> (retrying
+    with the error count) -> fencing. Optional -- every other test here
+    passes no callback."""
+    bad = copy.deepcopy(good_quest_4h)
+    bad["rooms"]["R2"]["monsters"][0]["type"] = "beholder"
+    client = ScriptedClient([bad, good_quest_4h])
+    seen = []
+    generate_quest(good_quest_4h_params, client, catalogs, on_progress=lambda stage, detail: seen.append((stage, detail)))
+    stages = [s for s, _ in seen]
+    assert stages == ["writing", "validating", "retrying", "writing", "validating", "fencing"]
+    retry_detail = next(d for s, d in seen if s == "retrying")
+    assert "attempt 1 failed" in retry_detail.lower() and "beholder" in retry_detail
+    assert "attempt 2 of 3" in seen[3][1]

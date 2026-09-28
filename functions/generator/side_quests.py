@@ -29,7 +29,7 @@ from validator.side_quests import (
 from engine.side_quests import ARMORY_REMINDER, ELEMENTS, HERO_IDS, REWARD_POINTS, SETTINGS
 
 from .client import QuestGenerationMalformed, QuestGenerationTruncated, call_llm_raw
-from .core import MALFORMED_RETRY_HINT, MAX_ATTEMPTS
+from .core import MALFORMED_RETRY_HINT, MAX_ATTEMPTS, notify, summarize_errors
 from .prompt import build_retry_message
 from .side_quest_schema import build_side_quest_json_schema, to_canonical_side_quests
 
@@ -257,33 +257,48 @@ were given, no markdown, no commentary."""
 
 
 def generate_side_quests(
-    quest: dict, params: dict, client, catalogs: Catalogs, gate: dict | None
+    quest: dict, params: dict, client, catalogs: Catalogs, gate: dict | None, on_progress=None
 ) -> SideQuestGenerationResult:
     """Retries with the validator's errors like generate_quest does.
     Raises SideQuestGenerationFailed when no attempt validates; the
-    caller decides that means "save the quest without them"."""
+    caller decides that means "the quest stays playable as traditional".
+    `on_progress` as in core.generate_quest."""
     schema = build_side_quest_json_schema(catalogs, quest)
     system_prompt = build_side_quest_system_prompt(catalogs, gate)
     message = _quest_context(quest, params)
+    what = "one or two optional scenes plus the required one" if gate else "one or two optional scenes"
     last_errors = ["no attempt completed"]
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        notify(
+            on_progress,
+            "writing_side_quests",
+            f"Writing the side quests -- attempt {attempt} of {MAX_ATTEMPTS}: {what}. Another 1-2 minutes.",
+        )
         try:
             payload = call_llm_raw(client, system_prompt, message, schema, max_tokens=SIDE_QUEST_MAX_TOKENS)
         except QuestGenerationTruncated:
             last_errors = [TRUNCATION_HINT]
             message = build_retry_message(last_errors)
+            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: the scenes were cut off by the length limit. Asking for shorter ones.")
             continue
         except QuestGenerationMalformed:
             last_errors = [MALFORMED_RETRY_HINT]
             message = build_retry_message(last_errors)
+            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: the answer wasn't valid JSON. Asking again.")
             continue
 
+        notify(on_progress, "validating_side_quests", "Checking the scenes: every path ends, no dead ends, rewards within caps, no ids in the prose.")
         side_quests = to_canonical_side_quests(payload if isinstance(payload, dict) else {})
         errors = check_side_quests(side_quests, quest, catalogs, required_gate=gate)
         if not errors:
             return SideQuestGenerationResult(side_quests=side_quests, attempts=attempt)
         last_errors = errors
         message = build_retry_message(last_errors)
+        notify(
+            on_progress,
+            "retrying_side_quests",
+            f"Attempt {attempt}: the scenes failed {len(errors)} check(s): {summarize_errors(errors)}. Asking for a fix.",
+        )
 
     raise SideQuestGenerationFailed(errors=last_errors, attempts=MAX_ATTEMPTS)
 

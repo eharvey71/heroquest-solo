@@ -106,7 +106,7 @@ from generator.fence import apply_fence
 from generator.side_quests import (
     SideQuestGenerationFailed,
     build_gate_spec,
-    generate_side_quests,
+    generate_side_quests as run_side_quest_generation,
     required_side_quest,
     roll_required,
 )
@@ -212,12 +212,39 @@ def _parse_generation_params(data) -> dict:
             code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"mode must be one of {sorted(VALID_MODES)}"
         )
 
+    # The setup screen's handle on the live status doc (_JobProgress).
+    job_id = data.get("jobId")
+    if job_id is not None and (not isinstance(job_id, str) or len(job_id) > 80):
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="jobId must be a short string")
+
     params = {"heroCount": hero_count, "difficulty": difficulty, "size": size, "mode": mode}
     if theme:
         params["theme"] = theme
     if continues_from_game_id:
         params["continuesFromGameId"] = continues_from_game_id
+    if job_id:
+        params["jobId"] = job_id
     return params
+
+
+class _JobProgress:
+    """Live status for the setup screen. A quest is one long callable
+    the browser can't see inside, so each stage is written to
+    generationJobs/{jobId} (the client picks the id and listens;
+    firestore.rules lets the owner read it). Best effort: a failed
+    status write is logged and never fails generation. Docs are tiny
+    and left behind -- nothing reads them again."""
+
+    def __init__(self, db, job_id):
+        self._ref = db.collection("generationJobs").document(job_id) if job_id else None
+
+    def __call__(self, stage: str, detail: str = "") -> None:
+        if self._ref is None:
+            return
+        try:
+            self._ref.set({"stage": stage, "detail": detail, "updatedAt": firestore.SERVER_TIMESTAMP}, merge=True)
+        except Exception as e:  # noqa: BLE001 -- status is never worth failing the call over
+            logging.warning("progress write failed: %s", e)
 
 
 def _resolve_campaign_context(db, game_id: str) -> dict:
@@ -269,54 +296,42 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
 
     params = _parse_generation_params(req.data)
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
+    db = firestore.client()
+    progress = _JobProgress(db, params.pop("jobId", None))
 
     continues_from_game_id = params.pop("continuesFromGameId", None)
     if continues_from_game_id:
-        params["campaignContext"] = _resolve_campaign_context(firestore.client(), continues_from_game_id)
+        params["campaignContext"] = _resolve_campaign_context(db, continues_from_game_id)
 
     # The expanded variant rolls its required-side-quest coin BEFORE the
     # quest is written, so the backstory can plant the ward or seal
     # (generator/prompt.py's _side_quest_section). The server's coin,
-    # never the model's.
+    # never the model's. The side quests themselves are written by a
+    # SECOND callable, generate_side_quests, once this quest is saved:
+    # one call could not fit both inside the 8-minute limit, and a
+    # timeout after the quest had validated threw the quest away.
     mode = params.get("mode", "traditional")
     required_wanted = mode == "expanded" and roll_required()
     if required_wanted:
         params["requiredSideQuest"] = True
 
+    progress("starting", "Building the prompt.")
     try:
-        result: GenerationResult = run_generation(params, client, _catalogs)
+        result: GenerationResult = run_generation(params, client, _catalogs, on_progress=progress)
     except QuestGenerationRefused as e:
+        progress("failed", "The quest generator declined this request.")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message="the quest generator declined this request",
             details={"stopDetails": str(e.stop_details)},
         ) from e
     except QuestGenerationFailed as e:
+        progress("failed", f"The quest failed validation after {e.attempts} attempts.")
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
             message=f"quest failed validation after {e.attempts} attempts",
             details={"errors": e.errors},
         ) from e
-
-    # Expanded only: a SECOND model call writes the side quests from the
-    # validated quest (generator/side_quests.py). Its failure never
-    # costs the quest -- the quest saves without side quests and
-    # without the gate, which is exactly a traditional quest.
-    side_quests: list = []
-    gate = None
-    side_quest_warnings: list = []
-    if mode == "expanded":
-        gate_spec = build_gate_spec(result.quest) if required_wanted else None
-        try:
-            sq_result = generate_side_quests(result.quest, params, client, _catalogs, gate_spec)
-            side_quests = sq_result.side_quests
-            required = required_side_quest(side_quests)
-            if gate_spec and required:
-                gate = {**gate_spec, "sideQuestId": required["id"], "text": required.get("gateText", "")}
-        except (SideQuestGenerationFailed, QuestGenerationRefused) as e:
-            logging.warning("side quests dropped: %s", e)
-            side_quest_warnings = [f"side quests could not be generated: {e}"]
-            side_quests = []
 
     # campaignContext carried the previous game's full chronicle into the
     # prompt -- worth having in memory for that one call, not worth
@@ -324,22 +339,118 @@ def generate_quest(req: https_fn.CallableRequest) -> dict:
     # the lightweight provenance pointer that's actually useful to keep.
     stored_params = {k: v for k, v in params.items() if k not in ("campaignContext", "requiredSideQuest")}
 
-    doc_ref = firestore.client().collection("quests").document()
+    progress("saving", "Saving the quest.")
+    doc_ref = db.collection("quests").document()
     doc_ref.set(
         {
             **to_firestore_coords(result.quest),
             "generationParams": stored_params,
-            "validationWarnings": result.validation.warnings + side_quest_warnings,
+            "validationWarnings": result.validation.warnings,
             "attempts": result.attempts,
             "createdAt": firestore.SERVER_TIMESTAMP,
-            "mode": mode if side_quests else "traditional",
-            **({"sideQuests": to_firestore_coords(side_quests)} if side_quests else {}),
-            **({"gate": gate} if gate else {}),
+            "mode": mode,
+            # Expanded: the scenes arrive with generate_side_quests. Until
+            # then (or if that fails) the quest plays as traditional;
+            # sideQuestPlan remembers the coin the backstory was written to.
+            **(
+                {"sideQuestsStatus": "pending", "sideQuestPlan": {"required": required_wanted}}
+                if mode == "expanded"
+                else {}
+            ),
             **({"continuesFromGameId": continues_from_game_id} if continues_from_game_id else {}),
         }
     )
+    progress("done", "Quest saved." + (" Now writing the side quests." if mode == "expanded" else ""))
 
-    return {"questId": doc_ref.id}
+    return {"questId": doc_ref.id, "mode": mode, "sideQuestsPending": mode == "expanded"}
+
+
+def _write_side_quests(quest: dict, client, progress=None) -> dict:
+    """The second half of an expanded quest: the scenes, written from
+    the SAVED quest. Returns the fields to merge into the quest doc.
+    Raises SideQuestGenerationFailed / QuestGenerationRefused; the
+    endpoint records the failure on the doc so the setup screen can
+    offer a retry, and the quest stays playable as traditional."""
+    params = dict(quest.get("generationParams") or {})
+    params.setdefault("heroCount", 4)
+    plan = quest.get("sideQuestPlan") or {}
+    gate_spec = build_gate_spec(quest) if plan.get("required") else None
+    sq_result = run_side_quest_generation(quest, params, client, _catalogs, gate_spec, on_progress=progress)
+    side_quests = sq_result.side_quests
+    updates: dict = {
+        "sideQuests": to_firestore_coords(side_quests),
+        "sideQuestsStatus": "ready",
+        "sideQuestErrors": [],
+        "sideQuestAttempts": sq_result.attempts,
+    }
+    required = required_side_quest(side_quests)
+    if gate_spec and required:
+        updates["gate"] = {**gate_spec, "sideQuestId": required["id"], "text": required.get("gateText", "")}
+    return updates
+
+
+@https_fn.on_call(secrets=[ANTHROPIC_API_KEY], timeout_sec=480, memory=options.MemoryOption.MB_512)
+@_surface_errors
+def generate_side_quests(req: https_fn.CallableRequest) -> dict:
+    """Writes an expanded quest's side quests (design/side-quests-
+    design.md) as a second call after generate_quest has saved the
+    quest. Idempotent: a quest that already has scenes returns them.
+    On failure the quest doc records sideQuestsStatus "failed" and the
+    errors, the quest remains playable as traditional, and the setup
+    screen offers to try again.
+    """
+    _require_owner(req, "sign in to generate a quest")
+
+    import anthropic
+
+    data = req.data if isinstance(req.data, dict) else {}
+    quest_id = data.get("questId")
+    job_id = data.get("jobId")
+    if not isinstance(quest_id, str) or not quest_id:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="questId is required")
+    if job_id is not None and (not isinstance(job_id, str) or len(job_id) > 80):
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="jobId must be a short string")
+
+    db = firestore.client()
+    quest_ref = db.collection("quests").document(quest_id)
+    snap = quest_ref.get()
+    if not snap.exists:
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message="quest not found")
+    quest = from_firestore_coords(snap.to_dict())
+    if quest.get("mode") != "expanded":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="this quest was generated as traditional -- there are no side quests to write",
+        )
+    if quest.get("sideQuests"):
+        return {"count": len(quest["sideQuests"]), "required": bool(quest.get("gate")), "alreadyWritten": True}
+
+    progress = _JobProgress(db, job_id)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY.value)
+    try:
+        updates = _write_side_quests(quest, client, progress)
+    except SideQuestGenerationFailed as e:
+        quest_ref.update({"sideQuestsStatus": "failed", "sideQuestErrors": [str(x) for x in e.errors]})
+        progress("failed", f"The side quests failed validation after {e.attempts} attempts. The quest is saved and can be played traditional.")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message=f"side quests failed validation after {e.attempts} attempts -- the quest is saved and can be played traditional",
+            details={"errors": e.errors},
+        ) from e
+    except QuestGenerationRefused as e:
+        quest_ref.update({"sideQuestsStatus": "failed", "sideQuestErrors": [str(e.stop_details)]})
+        progress("failed", "The generator declined to write the side quests.")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            message="the generator declined to write the side quests",
+            details={"stopDetails": str(e.stop_details)},
+        ) from e
+
+    progress("saving_side_quests", "Saving the side quests.")
+    quest_ref.update(updates)
+    count = len(updates["sideQuests"])
+    progress("done", f"{count} side quest{'s' if count != 1 else ''} saved.")
+    return {"count": count, "required": "gate" in updates}
 
 
 def _apply_generate_chronicle(db, game_ref, client):

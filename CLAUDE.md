@@ -220,15 +220,34 @@ searched.<room>.treasureBy.
     a replay of an expanded quest offers the same choice again and the
     game stores its own `mode`. A traditional game is EXACTLY today's
     game -- no Journal, no gate, every new field inert.
-  - Generation (generator/side_quests.py): the server rolls the
-    required coin (1 in 3) BEFORE the main prompt so the backstory can
-    plant the ward/seal (prompt.py _side_quest_section); after the
-    quest validates, a SECOND model call with its own prompt-embedded
-    schema (side_quest_schema.py, everything required-with-sentinel,
-    passages/terminals as arrays converted to dicts) writes 1-2
-    optional scenes plus the required one, retried up to 3 times on
-    validator errors. Its failure DROPS the side quests and the gate
-    and saves the quest as traditional -- never blocks generation.
+  - Generation is TWO CALLABLES, not one (found the hard way: one call
+    holding both the quest and the scenes blew the 8-minute callable
+    limit, and the timeout threw away a quest that had already
+    validated). generate_quest rolls the required coin (1 in 3) BEFORE
+    the main prompt so the backstory can plant the ward/seal (prompt.py
+    _side_quest_section), SAVES the quest with mode "expanded",
+    sideQuestsStatus "pending" and sideQuestPlan {required}, and
+    returns sideQuestsPending. The client then calls
+    generate_side_quests(questId) -- its own 480s budget -- which
+    writes 1-2 optional scenes plus the required one with a second
+    prompt-embedded schema (generator/side_quests.py +
+    side_quest_schema.py, everything required-with-sentinel,
+    passages/terminals as arrays converted to dicts), retried up to 3
+    times on validator errors, then merges sideQuests / gate /
+    sideQuestsStatus "ready" onto the quest doc. Failure records
+    sideQuestsStatus "failed" plus the errors; the quest is already
+    saved, plays as traditional, and the setup screen offers "Try the
+    side quests again" (idempotent: a quest that already has scenes
+    returns them). useQuestMap's `mode` is "expanded" only once scenes
+    exist; `requestedMode` says what was asked for.
+  - LIVE STATUS while generating: the browser picks a jobId, sends it
+    with both calls, and listens to generationJobs/{jobId}; the backend
+    writes each stage there (main._JobProgress, best effort, never
+    fails a call; firestore.rules: owner read only). Stages come from
+    generator/core.py's notify() -- writing attempt N of 3, validating,
+    retrying with the first two validator errors quoted, fencing,
+    saving -- and the side-quest equivalents. Shown beside the Generate
+    button with an elapsed clock. Job docs are tiny and left behind.
   - Validator (validator/side_quests.py): 5-10 nodes, depth <= 7, 2-3
     choices per passage with at least one untagged, acyclic apart from
     ONE declared retry edge, every terminal reachable, no dead ends, a
