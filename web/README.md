@@ -1,7 +1,10 @@
 # web/
 
 React + TypeScript + Vite. `npm run dev` for local dev, `npm run build`
-outputs to `dist/` (what `firebase deploy` serves).
+outputs to `dist/` (what `firebase deploy` serves). You never run the
+build by hand before a deploy: firebase.json's hosting `predeploy` hook
+runs `npm install` and `npm run build` in this directory from the repo
+root, and a failed build aborts the deploy.
 
 - `src/data/board.json` — synced from `design/board.json`; `src/lib/board.ts`
   loads it into a typed model (mirrors `functions/validator/catalogs.py`'s

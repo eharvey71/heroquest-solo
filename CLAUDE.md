@@ -907,6 +907,16 @@ Three enforcement points, because each covers a hole the others don't:
   config/owner is readable only by the owner, so a successful read is
   the proof. There is no string the client can lie about.
 
+## Deploying
+`firebase deploy` from the repo root does everything: firebase.json's
+hosting `predeploy` hook runs `npm install` and `npm run build` in web/
+first (a failed build aborts the deploy), then rules, functions and
+hosting go up. Added after a deploy shipped stale hosting because the
+build step was left out of the instructions. So deploy instructions
+are `git pull` then `firebase deploy` -- never tell the owner to build
+by hand, and never let hosting go up without the hook (`--only
+functions` skips it, which is fine; `--only hosting` runs it).
+
 ## Firestore is only ever touched from the deployed functions (settled)
 Nothing in this repo opens a Firestore client on the owner's machine:
 main.py's initialize_app()/firestore.client() run only inside Cloud

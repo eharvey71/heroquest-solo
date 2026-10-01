@@ -1,8 +1,16 @@
 {
   "hosting": {
     "site": "hq-zargon-solo",
+    "predeploy": [
+      "npm --prefix web install --no-audit --no-fund",
+      "npm --prefix web run build"
+    ],
     "public": "web/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "rewrites": [
       {
         "source": "**",
