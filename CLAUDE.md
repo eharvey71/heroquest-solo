@@ -140,6 +140,14 @@ searched.<room>.treasureBy.
   already lets the owner write quests/games directly (the same
   boundary config/owner's claim-by-write already uses), and flipping a
   visibility flag has no business logic to hide behind the Admin SDK.
+  PERMANENT DELETION exists only for removed rows (owner's ask: test
+  quests clogging "Show removed"): a Delete button per archived row and
+  "Delete all removed" above the list, each behind a confirm. archive.ts
+  re-reads the document and refuses anything not archived, so removing
+  is the gate; a game's undo subcollection is deleted first in batches
+  (no cascade in Firestore), and a quest goes only once no live game
+  points at it. Same direct client writes as archiving. generationJobs
+  docs are not covered (client can't write them) and don't need to be.
 - Backend: Python Cloud Functions.
   - generateQuest(params) -> questId: prompt build + LLM call + validate +
     auto-repair + retry loop (max 3) + Firestore write. Client never sees

@@ -1,6 +1,13 @@
 import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { setGameArchived, setQuestStackArchived } from "../lib/archive";
+import {
+  deleteGameForever,
+  deleteQuestStackForever,
+  deleteRemovedForever,
+  findRemoved,
+  setGameArchived,
+  setQuestStackArchived,
+} from "../lib/archive";
 import { db } from "../lib/firebase";
 import {
   createGame,
@@ -279,6 +286,42 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     }
   };
 
+  // Permanent deletion is offered only on rows already removed, and
+  // archive.ts refuses anything else server-side-of-the-click too.
+  const runDelete = async (busyId: string, work: () => Promise<unknown>) => {
+    setArchiveBusyId(busyId);
+    setError(null);
+    try {
+      await work();
+      setRefreshKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setArchiveBusyId(null);
+    }
+  };
+
+  const handleDeleteQuest = (quest: QuestSummary) => {
+    if (!window.confirm(`Delete "${quest.title}" and every removed game played on it, permanently?`)) return;
+    void runDelete(quest.id, () => deleteQuestStackForever(quest.id));
+  };
+
+  const handleDeleteGame = (game: GameSummary) => {
+    if (!window.confirm("Delete this game and its undo history, permanently?")) return;
+    void runDelete(game.id, () => deleteGameForever(game.id));
+  };
+
+  const handleDeleteAllRemoved = () =>
+    runDelete("__all__", async () => {
+      const items = await findRemoved();
+      if (items.questIds.length === 0 && items.gameIds.length === 0) {
+        throw new Error("Nothing is removed.");
+      }
+      const what = `${items.questIds.length} removed quest(s) and ${items.gameIds.length} removed game(s)`;
+      if (!window.confirm(`Delete ${what} permanently? This cannot be undone.`)) return;
+      await deleteRemovedForever(items);
+    });
+
   const handleToggleGameArchived = async (game: GameSummary) => {
     setArchiveBusyId(game.id);
     setError(null);
@@ -552,6 +595,14 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
         <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show
         removed
       </label>
+      {showArchived && (
+        <p className="hint" style={{ margin: "0 0 10px" }}>
+          Removed rows are faded. Restore brings one back; Delete is permanent.{" "}
+          <button className="quiet" disabled={archiveBusyId !== null} onClick={() => void handleDeleteAllRemoved()}>
+            Delete all removed
+          </button>
+        </p>
+      )}
       {library.loading && <p className="hint">Loading...</p>}
       {library.error && <p style={{ color: "#e66" }}>Couldn't load past games: {library.error}</p>}
 
@@ -601,6 +652,16 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
                       >
                         {quest.archived ? "Restore" : "Remove"}
                       </button>
+                      {quest.archived && (
+                        <button
+                          className="danger"
+                          style={{ flexShrink: 0 }}
+                          disabled={archiveBusyId !== null}
+                          onClick={() => handleDeleteQuest(quest)}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                     {games.length === 0 ? (
                       <p className="hint" style={{ margin: "6px 0 0 20px" }}>
@@ -623,6 +684,14 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
                             >
                               {game.archived ? "Restore" : "Remove"}
                             </button>
+                            {game.archived && (
+                              <>
+                                {" "}
+                                <button className="danger" disabled={archiveBusyId !== null} onClick={() => handleDeleteGame(game)}>
+                                  Delete
+                                </button>
+                              </>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -649,6 +718,14 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
                       <button disabled={archiveBusyId === game.id} onClick={() => handleToggleGameArchived(game)}>
                         {game.archived ? "Restore" : "Remove"}
                       </button>
+                      {game.archived && (
+                        <>
+                          {" "}
+                          <button className="danger" disabled={archiveBusyId !== null} onClick={() => handleDeleteGame(game)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

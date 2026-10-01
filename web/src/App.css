@@ -321,6 +321,16 @@ button.primary:hover:not(:disabled) {
  * as disabled. :disabled's own opacity dip is the only signal for
  * "can't press this"; a quiet button at rest needs enough contrast
  * against that to not be mistaken for one. */
+button.danger {
+  background: transparent;
+  border-color: #6a3030;
+  color: #d98080;
+}
+button.danger:hover:not(:disabled) {
+  background: #2a1a1a;
+  border-color: #a04040;
+  color: #f0a0a0;
+}
 button.quiet {
   background: transparent;
   border-color: #5a5648;
