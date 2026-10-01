@@ -380,6 +380,13 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     gate?.kind === "ward" && gate.state === "closed" && gate.targetMonsterId ? [gate.targetMonsterId] : []
   );
   const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw || !!game.pendingSideQuest;
+  // A finished quest -- won or lost -- takes no more actions. Undo still
+  // works, so a misreported death is recoverable. Declared HERE, above
+  // the Journal derivation that reads it inside an immediately-run
+  // map: a `const` further down is in its temporal dead zone there,
+  // TypeScript doesn't flag reads inside closures, and the shipped
+  // bundle threw "Cannot access before initialization" on every load.
+  const playable = game.status !== "complete" && game.status !== "lost";
   // What the party KNOWS of each scene (design/side-quests-design.md,
   // owner's rule after the first live game): nothing about a
   // room-hooked scene until a hero has stood in its room -- not its
@@ -456,10 +463,6 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   // quest's dazed) has no break roll -- same rule as the server's.
   const breakableStatus = activeHeroStatuses.find((s) => !s.missesTurns);
   const fallenHeroes = game.heroes.filter((h) => h.alive === false);
-  // A finished quest -- won or lost -- takes no more actions. Undo still
-  // works, so a misreported death is recoverable.
-  const playable = game.status !== "complete" && game.status !== "lost";
-
   const activeHero = heroes.find((h) => h.id === heroId);
   // Only the cards this hero is actually holding: the elements were
   // chosen when the game was created (game state's spellbooks).
