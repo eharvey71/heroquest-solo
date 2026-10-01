@@ -98,7 +98,7 @@ export function SideQuestView({ sideQuest, progress, game, busy, epilogue, error
   // The choice whose die the player is now rolling at the table.
   const [pendingTest, setPendingTest] = useState<SideQuestChoice | null>(null);
 
-  const passageId = progress?.passageId ?? sideQuest.start;
+  const passageId = progress?.status === "active" && progress.passageId ? progress.passageId : sideQuest.start;
   const passage = sideQuest.passages[passageId];
   const passageCount = Object.keys(sideQuest.passages).length;
   const stepsTaken = progress?.history?.length ?? 0;

@@ -238,6 +238,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   );
   const [narrativeOpen, setNarrativeOpen] = useState(false);
   const [chronicleOpen, setChronicleOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   const [chronicleRequested, setChronicleRequested] = useState(false);
   const [chronicleError, setChronicleError] = useState<string | null>(null);
 
@@ -379,6 +380,47 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     gate?.kind === "ward" && gate.state === "closed" && gate.targetMonsterId ? [gate.targetMonsterId] : []
   );
   const waitingOnReport = pendingDefenses.length > 0 || !!pendingTreasureDraw || !!game.pendingSideQuest;
+  // What the party KNOWS of each scene (design/side-quests-design.md,
+  // owner's rule after the first live game): nothing about a
+  // room-hooked scene until a hero has stood in its room -- not its
+  // name, not its place. A prologue is offered from the start. A
+  // required scene not yet met shows only the backstory's rumour, with
+  // no location. Server-side, the encounter is recorded as status
+  // "known" (engine/side_quests.encounter_updates); here it's also
+  // live, so the cue appears the moment a hero steps in.
+  const journal = expanded
+    ? sideQuests.map((sq) => {
+        const progress = game.sideQuests?.[sq.id];
+        const status = progress?.status;
+        const isRoomHook = sq.hook.when === "room";
+        const here = !isRoomHook || heroInRoom(game, sq.hook.room, staticBoard.areaOf);
+        const done = !!status && status !== "known" && status !== "active";
+        const known = !isRoomHook || !!status || here;
+        const tier: "hidden" | "rumour" | "known" | "active" | "done" = done
+          ? "done"
+          : status === "active"
+            ? "active"
+            : known
+              ? "known"
+              : sq.kind === "required"
+                ? "rumour"
+                : "hidden";
+        const canBegin = playable && game.phase === "hero" && !waitingOnReport && !done && here;
+        return { sq, progress, status, tier, here, canBegin };
+      })
+    : [];
+  const journalCues = journal.filter((j) => j.tier === "active" || (j.tier === "known" && j.canBegin));
+  const journalVisible = journal.filter((j) => j.tier !== "hidden");
+  const gateLine = (sq: SideQuest): string | null =>
+    sq.kind === "required" && gate
+      ? gate.state === "closed"
+        ? gate.kind === "ward"
+          ? `${gate.targetName ?? "The villain"} is warded until this is done.`
+          : "The quest's goal is sealed until this is done."
+        : gate.state === "cracked"
+          ? "The gate cracked rather than broke: the finale is harder, but open."
+          : "Done. The way to the finale is open."
+      : null;
   // Tiles and minis the player still has to put on the physical board.
   const placements: string[] = game.placementInstructions ?? [];
   // Turn-narration paragraphs in turn order (numeric -- the map's keys
@@ -791,6 +833,11 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                 Story
               </button>
             )}
+            {expanded && (
+              <button className="quiet" onClick={() => setJournalOpen(true)}>
+                Journal{journalCues.length > 0 ? ` (${journalCues.length})` : ""}
+              </button>
+            )}
             {!playable && game.chronicle && (
               <button className="quiet" onClick={() => setChronicleOpen(true)}>
                 Chronicle
@@ -826,7 +873,81 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
                 <strong>Objective:</strong> {narrative.objective}
               </p>
             )}
+            {narrationTurns.length > 0 && (
+              <>
+                <h4 style={{ margin: "18px 0 6px", color: "#9fb3c8" }}>The story so far&hellip;</h4>
+                <div className="story-so-far" style={{ maxHeight: "none" }}>
+                  {narrationTurns.map((turn) => (
+                    <p key={`n${turn}`}>{game.narration?.[String(turn)]}</p>
+                  ))}
+                </div>
+              </>
+            )}
             <button onClick={() => setNarrativeOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {expanded && journalOpen && (
+        <div className="story-overlay" onClick={() => setJournalOpen(false)}>
+          <div className="story-card" onClick={(e) => e.stopPropagation()}>
+            <h3>Journal</h3>
+            {journalVisible.length === 0 && (
+              <p className="hint">Nothing yet. Side quests are found by exploring: walk up to whoever is waiting.</p>
+            )}
+            <div className="journal-list">
+              {journalVisible.map(({ sq, progress, status, tier, here, canBegin }) => (
+                <div key={sq.id} className="journal-entry">
+                  <div className="journal-title">
+                    {tier === "rumour" ? (
+                      <>
+                        <div>A rumour (required)</div>
+                        <span className="hint">{gate?.text || sq.gateText || "Word of a way to undo it can be found."}</span>
+                        <span className="journal-gate">{gateLine(sq)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          {sq.title}
+                          {sq.kind === "required" ? " (required)" : ""}
+                        </div>
+                        <span className="hint">
+                          {sq.hook.when === "room"
+                            ? `${sq.hook.npcName || "Something"} in ${sq.hook.room}`
+                            : "Before the first move"}
+                          {sq.hook.text ? ` -- ${sq.hook.text}` : ""}
+                        </span>
+                        {gateLine(sq) && <span className="journal-gate">{gateLine(sq)}</span>}
+                        {tier === "done" && progress?.status && (
+                          <span className={`journal-status ${status === "failure" ? "failed" : "done"}`}>{status}</span>
+                        )}
+                        {tier === "known" && !here && (
+                          <span className="hint">Return to {sq.hook.room} to take it up.</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  {(tier === "known" || tier === "active") && (
+                    <button
+                      className={sq.kind === "required" ? "primary" : undefined}
+                      onClick={() => {
+                        setJournalOpen(false);
+                        void handleBeginSideQuest(sq);
+                      }}
+                      disabled={busy || !canBegin}
+                      title={!here ? `A hero must be standing in ${sq.hook.room}` : undefined}
+                    >
+                      {tier === "active" ? "Resume" : "Begin"}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="hint" style={{ marginTop: 12 }}>
+              A scene takes 10-15 minutes and locks the board until it ends. Optional ones can be left for later,
+              or forever.
+            </p>
+            <button onClick={() => setJournalOpen(false)}>Close</button>
           </div>
         </div>
       )}
@@ -1481,81 +1602,43 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
             </div>
           )}
 
-          {expanded && (
-            <div className="panel">
-              <p className="panel-title">Journal</p>
-              <div className="journal-list">
-                {sideQuests.map((sq) => {
-                  const progress = game.sideQuests?.[sq.id];
-                  const status = progress?.status;
-                  const isRoomHook = sq.hook.when === "room";
-                  // A room-hooked scene is unknown until its room is
-                  // revealed; it then stays offered whenever a hero is
-                  // back in that room (owner's call).
-                  if (isRoomHook && !(game.revealed?.rooms ?? []).includes(sq.hook.room ?? "")) return null;
-                  const here = !isRoomHook || heroInRoom(game, sq.hook.room, staticBoard.areaOf);
-                  const canBegin =
-                    playable && game.phase === "hero" && !waitingOnReport && (!status || status === "active") && here;
-                  const gateLine =
-                    sq.kind === "required" && gate
-                      ? gate.state === "closed"
-                        ? gate.kind === "ward"
-                          ? `${gate.targetName ?? "The villain"} is warded until this is done.`
-                          : "The quest's goal is sealed until this is done."
-                        : gate.state === "cracked"
-                          ? "The gate cracked rather than broke: the finale is harder, but open."
-                          : "Done. The way to the finale is open."
-                      : null;
-                  return (
-                    <div key={sq.id} className="journal-entry">
-                      <div className="journal-title">
-                        <div>
-                          {sq.title}
-                          {sq.kind === "required" ? " (required)" : ""}
-                        </div>
-                        <span className="hint">
-                          {isRoomHook
-                            ? `${sq.hook.npcName || "Something"} in ${sq.hook.room}`
-                            : "Before the first move"}
-                          {sq.hook.text ? ` -- ${sq.hook.text}` : ""}
-                        </span>
-                        {gateLine && <span className="journal-gate">{gateLine}</span>}
-                      </div>
-                      {status && status !== "active" ? (
-                        <span className={`journal-status ${status === "failure" ? "failed" : "done"}`}>{status}</span>
-                      ) : (
-                        <button
-                          className={sq.kind === "required" ? "primary" : undefined}
-                          onClick={() => handleBeginSideQuest(sq)}
-                          disabled={busy || !canBegin}
-                          title={!here ? `A hero must be standing in ${sq.hook.room}` : undefined}
-                        >
-                          {status === "active" ? "Resume" : "Begin"}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {sideQuests.every(
-                  (sq) => sq.hook.when === "room" && !(game.revealed?.rooms ?? []).includes(sq.hook.room ?? "")
-                ) && <span className="hint">Nothing yet &mdash; side quests are offered as rooms are revealed.</span>}
-                {playable && (
-                  <span className="hint">
-                    A scene takes 10-15 minutes and locks the board until it ends. Optional ones can be left for
-                    later, or forever.
-                  </span>
-                )}
+          {journalCues.length > 0 && (
+            <div className="alert alert-place">
+              <p className="alert-title">Someone has something to say</p>
+              <div className="panel-stack">
+                {journalCues.map(({ sq, tier }) => (
+                  <div key={sq.id} className="panel-row">
+                    <span>
+                      {sq.hook.when === "room" ? `${sq.hook.npcName || "Something"} here` : sq.title}
+                      {sq.kind === "required" ? " (required)" : ""}
+                    </span>
+                    <button className="primary" onClick={() => handleBeginSideQuest(sq)} disabled={busy}>
+                      {tier === "active" ? "Resume" : "Begin"}
+                    </button>
+                    <button className="quiet" onClick={() => setJournalOpen(true)} disabled={busy}>
+                      Journal
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           {narrationTurns.length > 0 && (
             <div className="panel">
-              <p className="panel-title">The story so far&hellip;</p>
-              <div className="story-so-far" ref={storyRef}>
-                {narrationTurns.map((turn) => (
-                  <p key={`n${turn}`}>{game.narration?.[String(turn)]}</p>
-                ))}
+              <p className="panel-title">
+                The story so far&hellip;{" "}
+                {narrationTurns.length > 1 && narrative && (
+                  <button className="quiet" style={{ padding: "1px 8px", fontSize: "0.75rem" }} onClick={() => setNarrativeOpen(true)}>
+                    all {narrationTurns.length} turns
+                  </button>
+                )}
+              </p>
+              {/* Only the newest paragraph lives in the rail -- the whole
+                  running tale sits under the backstory in the Story
+                  overlay, where prose reads better than in a 15vh box. */}
+              <div className="story-so-far story-latest" ref={storyRef}>
+                <p>{game.narration?.[String(narrationTurns[narrationTurns.length - 1])]}</p>
               </div>
             </div>
           )}

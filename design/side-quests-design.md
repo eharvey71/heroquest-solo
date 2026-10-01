@@ -88,12 +88,23 @@ the server's, never the model's.
 | hook | when it appears | who offers it |
 |---|---|---|
 | prologue | game start, after the story overlay, before the first move | the road in, a tavern rumour, a messenger |
-| room | the moment a room is revealed (door opened) | an NPC figure in the room (any spare meeple), a shrine, a prisoner, a body with a letter |
+| room | when a hero stands IN the room (its door opening only places the figure) | an NPC figure in the room (any spare meeple), a shrine, a prisoner, a body with a letter |
 
 Offered, not forced. The Journal (section 12) lists every discovered
 side quest with a Begin button; a room-hooked scene can only be begun
 while a hero stands in that room. "Required" means required to WIN,
 not required to play right now. The party may walk on and come back.
+
+DISCOVERY IS PHYSICAL (owner's correction after the first live game,
+Oct 2026): the Journal must never say where a scene is before the
+party has found it. Revealing the room only asks the player to place
+the NPC's figure -- what opening a door shows at the table -- and the
+scene stays unlisted until a hero stands in the room; then the hook
+text is logged once and the scene is "known" (engine/side_quests.py's
+npc_placements and encounter_updates). A required scene the party
+hasn't met is listed only as a rumour: the backstory's gate text and
+the gate line, no title and no room. Prologues are offered from the
+start.
 
 Required side quests hook at the prologue or in a room the validator
 proves is on the way: on the fence skeleton (never cut), not the
@@ -101,8 +112,9 @@ objective room, and closer to the stairway (in doors) than the
 objective room, so the party meets the hook before the finale.
 
 An NPC hook emits a placement instruction ("Place a figure for Old
-Hessa at square [x,y]") through the existing placement queue. The NPC
-occupies no square in the engine and blocks nothing.
+Hessa anywhere in R13 (an old woman)") through the existing placement
+queue when the room is revealed. The NPC occupies no square in the
+engine and blocks nothing.
 
 ## 5. Scene structure and the time budget
 
@@ -328,8 +340,10 @@ no room ids or coordinates.
 Game state (all undo-snapshotted, all refresh-safe):
 
 ```
-sideQuests: { SQ1: { status: "hidden|available|active|success|partial|failure",
+sideQuests: { SQ1: { status: "known|active|success|partial|failure",
                      passageId, flags: [], history: [choiceIds], retried: false } }
+  -- absent = not yet met; "known" = a hero has stood in the hook room
+     (written by the move/door endpoints), the scene not yet begun
 pendingSideQuest: "SQ1" | null       -- locks the main game while active
 gate: { sideQuestId, kind, state }   -- required scenes only
 artifactsHeld: { ringOfReturn: "elf" } -- placement-only record, as chest loot is
@@ -345,11 +359,16 @@ under the current turn, so turn narration and the chronicle see the
 side story without any new prompt plumbing.
 
 UI:
-- **Journal** panel in the rail, below the action panel: each known
-  side quest with its status, a Begin button (enabled when its hook
-  condition holds), and, for a required one, the gate line ("The
-  Warlock is warded until this is done"). The Journal also holds the
-  between-quests Armory reminder once a quest is complete.
+- **Journal**: a header button (badged with how many scenes can be
+  begun or resumed now) opening an overlay -- not a rail panel, which
+  crowded the rail and gave locations away. Tiers: hidden (room-hooked,
+  never met: not listed), rumour (the required scene before it's met:
+  gate text only), known (title, NPC and room, hook text, Begin or
+  "Return to Rn"), active (Resume), done (status). For a required one,
+  the gate line ("The Warlock is warded until this is done"). The rail
+  shows only an actionable cue -- "Someone has something to say", the
+  NPC's name, Begin, Journal -- while a scene can be begun or resumed.
+  The between-quests Armory reminder sits on the Quest Complete banner.
 - **Side-quest page**: full width, board hidden. Title and setting
   banner, the passage prose in the story-so-far voice, choice buttons,
   and the test prompt in the same one-click die rows the defence and
@@ -357,8 +376,11 @@ UI:
   most 7"). Undo in the header works on scene steps like anything
   else. No Abandon button: beginning a scene is the commitment; the
   scene is short by construction.
-- A room-hook reveal shows a quiet "Someone here has a task for you"
-  line in the placement alert, not a modal.
+- A room-hook reveal shows only the figure placement in the "Place on
+  the board" alert; the offer itself waits for a hero to step in.
+- The rail's "story so far" panel shows the newest narration paragraph
+  only, with an "all N turns" button; the whole tale reads under the
+  backstory in the Story overlay.
 
 ## 13. Story threads onward
 
@@ -382,7 +404,12 @@ pendingSideQuest, until the player presses "Back to the dungeon";
 status carries miss_turn; the required scene's hook-room rule is
 "fewer doors from the stairway than the objective room" (the fence
 skeleton check reduced to that); CLAUDE.md's design-artifacts entry
-lists every module. Phases 2-3 remain open.
+lists every module. Oct 2026, after the first live expanded game: the
+Journal moved from the rail to a header overlay with the discovery
+tiers of section 4 (status "known", npc_placements / encounter_updates
+in the engine), the rail keeps an actionable cue only, and the story
+panel shows the latest paragraph with the full tale in the Story
+overlay. Phases 2-3 remain open.
 
 ## 14. Phasing
 

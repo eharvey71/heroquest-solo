@@ -71,7 +71,9 @@ from engine.side_quests import (
     SideQuestError,
     advance_side_quest as advance_side_quest_engine,
     begin_side_quest as begin_side_quest_engine,
+    encounter_updates,
     gate_notice,
+    npc_placements,
     seal_blocks,
     ward_blocks,
 )
@@ -992,10 +994,24 @@ def _apply_movement(transaction, db, game_ref, hero_id, path):
     if result.spent_move_spells:
         updates["heroStatus"] = game_state.get("heroStatus", {})
 
+    # Side-quest discovery (engine/side_quests.py): a hero now standing
+    # in a hook room makes that scene known; a room this move revealed
+    # calls for its NPC's figure.
+    met_updates, met_log = encounter_updates(_catalogs.board, quest, game_state)
+    updates.update(met_updates)
+    new_log_entries.extend({"turn": turn, "text": line} for line in met_log)
+
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
-    _queue_placements(updates, game_state, [t.placement_instruction for t in result.triggered_traps])
+    _queue_placements(
+        updates,
+        game_state,
+        [
+            *(t.placement_instruction for t in result.triggered_traps),
+            *npc_placements(quest, game_state, result.newly_revealed_rooms),
+        ],
+    )
     _push_undo(transaction, game_ref, before, updates, "the hero's move")
     transaction.update(game_ref, updates)
 
@@ -1140,7 +1156,14 @@ def _apply_open_door(transaction, db, game_ref, hero_id, door_id):
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries
 
-    _queue_placements(updates, game_state, [result.placement_instruction])
+    _queue_placements(
+        updates,
+        game_state,
+        [
+            result.placement_instruction,
+            *npc_placements(quest, game_state, [result.revealed_room] if result.revealed_room else []),
+        ],
+    )
     _push_undo(transaction, game_ref, before, updates, "opening the door")
     transaction.update(game_ref, updates)
     return result
@@ -1881,6 +1904,9 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_id, target_monst
             updates["revealed.rooms"] = revealed_rooms
             game_state["revealed"]["rooms"] = revealed_rooms
             new_log_entries.append({"turn": turn, "text": f"{room} revealed."})
+            genie_placements = npc_placements(quest, game_state, [room])
+            if genie_placements:
+                _queue_placements(updates, game_state, genie_placements)
 
     _mark_objective_if_complete(quest, game_state, updates, new_log_entries, turn)
     updates["log"] = existing_log + new_log_entries

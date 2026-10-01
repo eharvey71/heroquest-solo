@@ -12,7 +12,9 @@ from engine.side_quests import (
     advance_side_quest,
     begin_side_quest,
     choice_visible,
+    encounter_updates,
     hook_available,
+    npc_placements,
     seal_blocks,
     ward_blocks,
 )
@@ -397,3 +399,35 @@ def test_an_optional_scene_leaves_the_gate_alone(catalogs):
     game, _ = _finish_with(catalogs, [], kind="optional", outcome="failure")
     assert game["gate"]["state"] == "closed"
     assert ward_blocks(game, "M1")
+
+
+# ---- discovery: the Journal learns of a scene only when the party meets it ----
+
+
+def test_revealing_the_room_only_asks_for_a_figure(catalogs):
+    lines = npc_placements(QUEST, _game(), ["R2"])
+    assert lines == ["Place a figure for Old Hessa anywhere in R2 (any robed figure)."]
+    assert npc_placements(QUEST, _game(), ["R1"]) == []
+    assert npc_placements(QUEST, _game(mode="traditional"), ["R2"]) == []
+
+
+def test_a_hero_in_the_room_makes_the_scene_known_once(catalogs):
+    game = _game()  # heroes stand in R2
+    updates, log = encounter_updates(catalogs.board, QUEST, game)
+    assert updates == {"sideQuests.SQ1": {"status": "known"}}
+    assert game["sideQuests"]["SQ1"] == {"status": "known"}
+    assert any("Old Hessa: Hessa beckons." in line and "Journal" in line for line in log)
+    # Idempotent: the second visit writes nothing.
+    assert encounter_updates(catalogs.board, QUEST, game) == ({}, [])
+
+
+def test_a_hero_elsewhere_learns_nothing(catalogs):
+    game = _game(heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [2, 2], "alive": True}])
+    assert encounter_updates(catalogs.board, QUEST, game) == ({}, [])
+
+
+def test_a_known_scene_can_be_begun_and_a_finished_one_cannot(catalogs):
+    game = _game(sideQuests={"SQ1": {"status": "known"}})
+    begin_side_quest(board=catalogs.board, quest=QUEST, game_state=game, sq_id="SQ1")
+    assert game["sideQuests"]["SQ1"]["status"] == "active"
+    assert game["sideQuests"]["SQ1"]["passageId"] == "p1"

@@ -298,3 +298,29 @@ def test_generation_params_carry_the_job_id():
     assert "jobId" not in main._parse_generation_params({"heroCount": 4})
     with pytest.raises(main.https_fn.HttpsError):
         main._parse_generation_params({"heroCount": 4, "jobId": "x" * 81})
+
+
+# ---- discovery through the endpoints ----
+
+
+def test_walking_into_the_hook_room_makes_the_scene_known():
+    # The hero starts outside R2 and walks in; SCENE's hook is Old Hessa in R2.
+    game = _game(heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [5, 1], "alive": True}])
+    txn = _Txn()
+    main._apply_movement.to_wrap(txn, _DB(), game, "barbarian", [[5, 1], [5, 2]])
+    assert txn.updates["sideQuests.SQ1"] == {"status": "known"}
+    assert any("Old Hessa" in e["text"] for e in txn.updates["log"])
+
+
+def test_opening_the_door_only_asks_for_the_figure():
+    quest = copy.deepcopy(QUEST)
+    quest["doors"][0]["state"] = "closed"
+    game = _game(
+        heroes=[{"id": "barbarian", "name": "Barbarian", "pos": [4, 1], "alive": True}],
+        revealed={"rooms": ["R1"], "corridorSquares": []},
+        doors={},
+    )
+    txn = _Txn()
+    main._apply_open_door.to_wrap(txn, _DB(quest), game, "barbarian", "D1")
+    assert any("figure for Old Hessa" in line and "R2" in line for line in txn.updates["placementInstructions"])
+    assert "sideQuests.SQ1" not in txn.updates  # nobody has met her yet

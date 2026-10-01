@@ -172,6 +172,59 @@ def _is_retry_edge(sq: dict, from_id: str | None, targets: set[str]) -> bool:
     return bool(retry) and from_id == retry.get("from") and retry.get("to") in targets
 
 
+# ---- discovery ---------------------------------------------------------------
+#
+# The Journal must never say where a scene is before the party has found
+# it (owner's call, after the first live game: entries naming "R13"
+# appeared as soon as a door opened). So discovery is physical: when a
+# room with an NPC hook is REVEALED the player is told to place a
+# figure -- what opening a door shows in the physical game -- and only
+# when a hero is standing IN the room does the scene become "known"
+# and the Journal show its name, place and offer. Both are recorded by
+# the endpoints that move heroes and open doors, via these two helpers.
+
+
+def npc_placements(quest: dict, game_state: dict, rooms) -> list[str]:
+    """Placement lines for every room-hooked scene whose room is among
+    `rooms` (just revealed). Expanded games only. Says WHO stands there
+    and what figure to use -- nothing about the scene."""
+    if game_state.get("mode") != "expanded":
+        return []
+    lines = []
+    for sq in quest.get("sideQuests", []) or []:
+        hook = sq.get("hook") or {}
+        if hook.get("when") != "room" or hook.get("room") not in set(rooms):
+            continue
+        who = hook.get("npcName") or "something that wants your attention"
+        figure = hook.get("figureHint") or "any spare figure"
+        lines.append(f"Place a figure for {who} anywhere in {hook['room']} ({figure}).")
+    return lines
+
+
+def encounter_updates(board: Board, quest: dict, game_state: dict) -> tuple[dict, list[str]]:
+    """Marks every not-yet-begun room-hooked scene whose room now holds a
+    living hero as "known" (game.sideQuests[id] = {status: "known"}),
+    mutating game_state, and returns (Firestore updates, log lines).
+    Idempotent. The scene's offer -- the hook text -- is logged once,
+    here, when the party first meets it."""
+    if game_state.get("mode") != "expanded":
+        return {}, []
+    updates: dict = {}
+    log: list[str] = []
+    progress_all = game_state.setdefault("sideQuests", {})
+    for sq in quest.get("sideQuests", []) or []:
+        hook = sq.get("hook") or {}
+        if hook.get("when") != "room" or sq.get("id") in progress_all:
+            continue
+        if not _hero_squares_in_room(board, game_state, hook.get("room", "")):
+            continue
+        progress_all[sq["id"]] = {"status": "known"}
+        updates[f"sideQuests.{sq['id']}"] = {"status": "known"}
+        who = hook.get("npcName") or "Someone here"
+        log.append(f"[{sq.get('title', sq['id'])}] {who}: {hook.get('text', '').strip()} (See the Journal.)".strip())
+    return updates, log
+
+
 # ---- the gate --------------------------------------------------------------
 
 
@@ -207,12 +260,15 @@ def begin_side_quest(*, board: Board, quest: dict, game_state: dict, sq_id: str)
     if sq is None:
         raise SideQuestError(f"no side quest '{sq_id}' in this quest")
     progress = (game_state.get("sideQuests") or {}).get(sq_id)
-    if progress and progress.get("status") != "active":
+    if progress and progress.get("status") not in (None, "known", "active"):
         raise SideQuestError(f"'{sq.get('title', sq_id)}' is already over")
     if not hook_available(board, game_state, sq):
         raise SideQuestError(f"a hero must be standing in the room where '{sq.get('title', sq_id)}' is offered")
 
-    progress = progress or {"status": "active", "passageId": sq["start"], "flags": [], "history": [], "retried": False}
+    if not progress or progress.get("status") == "known":
+        # "known" is the encounter record (encounter_updates): the party
+        # has met the hook but not begun the scene. Begin starts fresh.
+        progress = {"status": "active", "passageId": sq["start"], "flags": [], "history": [], "retried": False}
     game_state.setdefault("sideQuests", {})[sq_id] = progress
     game_state["pendingSideQuest"] = sq_id
     hook_text = (sq.get("hook") or {}).get("text") or ""

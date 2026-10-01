@@ -276,7 +276,21 @@ searched.<room>.treasureBy.
     monster-or-trap id in any read-aloud text.
   - Engine (engine/side_quests.py): begin (prologue any time in the hero
     phase; room hook needs a living hero IN that room, and stays
-    offered on a return), advance one passage per call. Tests on the
+    offered on a return), advance one passage per call.
+    DISCOVERY IS PHYSICAL (owner's correction after the first live
+    game: Journal entries named "R13" and the whole offer the moment
+    its door opened, so the party knew in advance where every mystery
+    would happen). Two helpers, called by every endpoint that moves a
+    hero or opens a door (_apply_movement, _apply_open_door, the
+    Genie's door): npc_placements(quest, game, revealed_rooms) queues
+    only "Place a figure for <npc> anywhere in Rn (<figure hint>)" --
+    what opening a door shows at the table, nothing about the scene;
+    encounter_updates(board, quest, game) marks a not-yet-begun
+    room-hooked scene whose room now holds a living hero as
+    game.sideQuests[id] = {status: "known"} and logs the hook text
+    once ("[Title] Old Hessa: ... (See the Journal.)"). begin accepts
+    "known" as "not started" and replaces it with a fresh active
+    record. Both are no-ops in a traditional game. Tests on the
     app's terms: combat_dice = hero reports skulls, mind/body = hero
     reports pass/fail (the app never learns the value), zargon = the app
     rolls. Choices tagged requiresHero / requiresElement (a caster holds
@@ -309,10 +323,26 @@ searched.<room>.treasureBy.
     the one endpoint that runs while it is set. Every scene step is a
     transaction with an undo snapshot ("beginning the side quest" /
     "the side quest step"); undo works mid-scene from the header.
-  - Client: Journal panel in the rail (expanded games only) lists
-    scenes with status and a Begin/Resume button, hides room-hooked
-    ones until their room is revealed, disables Begin until a hero
-    stands in the room, and states the gate. The scene plays in
+  - Client: the Journal is a HEADER button (expanded games only, in
+    the same portal slot as Story/Chronicle/Undo, badged with the
+    count of scenes that can be begun or resumed right now) opening an
+    overlay, not a rail panel -- the rail was running out of room and
+    a standing list was the thing giving locations away. Each scene
+    sits in one of five tiers (GameView's `journal`): hidden (a
+    room-hooked scene nobody has met: not listed at all), rumour (the
+    REQUIRED scene before it's met: listed as "A rumour (required)"
+    with the gate's backstory text and the gate line, no title and no
+    room), known (a hero has stood in its room, or it's a prologue:
+    title, "<npc> in Rn", hook text, Begin -- "Return to Rn to take it
+    up" if the party has moved on), active (Resume), done (status).
+    `known` is computed live from hero positions as well as read from
+    the server's "known" status, so the entry appears on the step in.
+    The rail keeps only an ACTIONABLE cue: an alert "Someone has
+    something to say" naming the NPC ("Old Hessa here") with Begin and
+    a Journal button, shown while a scene is beginnable or resumable.
+    THE STORY PANEL in the rail shows only the newest narration
+    paragraph plus an "all N turns" button; the whole running tale now
+    sits under the backstory in the Story overlay. The scene plays in
     SideQuestView, a fixed full-page overlay (board covered, not
     dimmed: the party has left); it keeps the EPILOGUE on screen after
     the server has already cleared pendingSideQuest (the terminal's

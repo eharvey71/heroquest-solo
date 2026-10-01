@@ -134,8 +134,10 @@ export interface GameState {
 }
 
 export interface SideQuestProgress {
-  status: "active" | "success" | "partial" | "failure";
-  passageId: string;
+  /** "known": the party has met the hook (a hero stood in its room)
+   * but not begun the scene -- the Journal may now name it. */
+  status: "known" | "active" | "success" | "partial" | "failure";
+  passageId?: string;
   flags?: string[];
   history?: string[];
   retried?: boolean;
