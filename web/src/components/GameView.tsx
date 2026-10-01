@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { board as staticBoard, CORRIDOR, type Coord, squareKey } from "../lib/board";
 import { crossingKey } from "../lib/boardGeometry";
 import { furnitureSquareKeys } from "../lib/furniture";
@@ -42,10 +41,6 @@ const ARMORY_BETWEEN_QUESTS =
 
 interface GameViewProps {
   gameId: string;
-  /** Where the Story / Undo / game-id controls render: a slot in
-   * App's header row, so they sit with the other top-level buttons
-   * instead of beside the turn heading. Null until the slot mounts. */
-  toolsSlot?: HTMLElement | null;
 }
 
 /** The hero's own one-move spell boons (engine/hero_movement.py honours
@@ -103,7 +98,7 @@ const ACTION_LABELS: Record<ActionKey, string> = {
   spell: "Cast a spell",
 };
 
-export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
+export function GameView({ gameId }: GameViewProps) {
   const { game, loading, error } = useLiveGame(gameId);
 
   const [heroId, setHeroId] = useState<string>("");
@@ -201,22 +196,6 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     await runAction(() => attemptBreakSpell({ gameId, heroId: id, rolledSix }));
   };
 
-  const handleUndo = async () => {
-    const result = await runAction(() => undoLastAction({ gameId }));
-    if (!result) return;
-    // Anything half-entered belonged to the action just rolled back:
-    // a traced path, an expanded action form, a rolled-but-unresolved
-    // Zargon turn. The defence queue is game state now, so the restore
-    // handles that one on its own.
-    pathInput.clear();
-    setOpenAction(null);
-    setRolledTurn(null);
-    setLowestBpHeroId("");
-    setTrapStop(null);
-    setJumpLandingKey(null);
-    setSceneEpilogue(null);
-  };
-
   // Door/stairway geometry is quest-owned (fetched once); door
   // *state* is game-owned (overrides quest.doors' initial state) --
   // merge them for rendering, same precedence the backend uses (see
@@ -239,6 +218,7 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
   const [narrativeOpen, setNarrativeOpen] = useState(false);
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
   const [chronicleRequested, setChronicleRequested] = useState(false);
   const [chronicleError, setChronicleError] = useState<string | null>(null);
 
@@ -518,15 +498,31 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
       )
     : [];
 
+  const handleCopyId = () => {
+    void navigator.clipboard?.writeText(gameId).then(() => {
+      setCopiedId(true);
+      window.setTimeout(() => setCopiedId(false), 1500);
+    });
+  };
+
+  const handleUndo = async () => {
+    const result = await runAction(() => undoLastAction({ gameId }));
+    if (!result) return;
+    // Anything half-entered belonged to the action just rolled back:
+    // a traced path, an expanded action form, a rolled-but-unresolved
+    // Zargon turn. The defence queue is game state now, so the restore
+    // handles that one on its own.
+    pathInput.clear();
+    setOpenAction(null);
+    setRolledTurn(null);
+    setLowestBpHeroId("");
+    setTrapStop(null);
+    setJumpLandingKey(null);
+    setSceneEpilogue(null);
+  };
+
   const movingHero = heroes.find((h) => h.id === pathInput.selectedHeroId);
   const tracedSteps = Math.max(pathInput.path.length - 1, 0);
-
-  const handleConfirmTracedMove = async () => {
-    if (!movingHero || !pathInput.canConfirm) return;
-    const path = pathInput.path;
-    pathInput.clear();
-    await handleConfirmMove(movingHero.id, path);
-  };
 
   const handleConfirmMove = async (movingHeroId: string, path: Coord[]) => {
     // Every consequence -- tile instructions, trap springs, why a move
@@ -546,6 +542,13 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
     } else {
       setTrapStop(null);
     }
+  };
+
+  const handleConfirmTracedMove = async () => {
+    if (!movingHero || !pathInput.canConfirm) return;
+    const path = pathInput.path;
+    pathInput.clear();
+    await handleConfirmMove(movingHero.id, path);
   };
 
   // A trap the party has FOUND is still armed, so movement stops in
@@ -819,50 +822,57 @@ export function GameView({ gameId, toolsSlot = null }: GameViewProps) {
         </div>
       )}
 
-      <h2 style={{ margin: "0 0 10px" }}>
-        Turn {game.turn} &mdash;{" "}
-        {game.phase === "hero"
-          ? game.heroes.length === 1
-            ? `Hero phase (action ${game.heroPhaseSegment ?? 1} of 2)`
-            : "Hero phase"
-          : "Zargon's turn"}
-      </h2>
-
-      {toolsSlot &&
-        createPortal(
-          <>
-            {narrative && (
-              <button className="quiet" onClick={() => setNarrativeOpen(true)}>
-                Story
-              </button>
-            )}
-            {expanded && (
-              <button className="quiet" onClick={() => setJournalOpen(true)}>
-                Journal{journalCues.length > 0 ? ` (${journalCues.length})` : ""}
-              </button>
-            )}
-            {!playable && game.chronicle && (
-              <button className="quiet" onClick={() => setChronicleOpen(true)}>
-                Chronicle
-              </button>
-            )}
-            {!playable && !game.chronicle && !chronicleError && (
-              <span className="hint">Writing the chronicle&hellip;</span>
-            )}
-            {!playable && !game.chronicle && chronicleError && (
-              <span className="hint" style={{ color: "#e6a23b" }}>
-                Chronicle failed to generate
-              </span>
-            )}
-            <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
-              {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
+      {/* THE GAME BAR: one full-width row above the board and the rail
+          for everything about THIS game that isn't a hero action -- the
+          turn heading on the left; on the right the reading overlays
+          (Story, Journal, Chronicle), then Undo, then the game id, dim
+          and last (click copies it). These used to render by portal
+          into App's header beside "Back to quests" and Sign out, which
+          read as one undifferentiated row of buttons: App's header now
+          holds only the app (brand, the way back, the account). */}
+      <div className="game-bar">
+        <h2>
+          Turn {game.turn} &mdash;{" "}
+          {game.phase === "hero"
+            ? game.heroes.length === 1
+              ? `Hero phase (action ${game.heroPhaseSegment ?? 1} of 2)`
+              : "Hero phase"
+            : "Zargon's turn"}
+        </h2>
+        <div className="game-tools">
+          {narrative && (
+            <button className="quiet" onClick={() => setNarrativeOpen(true)}>
+              Story
             </button>
-            <span className="hint">
-              <code>{gameId}</code>
+          )}
+          {expanded && (
+            <button className="quiet" onClick={() => setJournalOpen(true)}>
+              Journal
+              {journalCues.length > 0 && <span className="badge">{journalCues.length}</span>}
+            </button>
+          )}
+          {!playable && game.chronicle && (
+            <button className="quiet" onClick={() => setChronicleOpen(true)}>
+              Chronicle
+            </button>
+          )}
+          {!playable && !game.chronicle && !chronicleError && (
+            <span className="hint">Writing the chronicle&hellip;</span>
+          )}
+          {!playable && !game.chronicle && chronicleError && (
+            <span className="hint" style={{ color: "#e6a23b" }}>
+              Chronicle failed to generate
             </span>
-          </>,
-          toolsSlot
-        )}
+          )}
+          <span className="tools-divider" aria-hidden="true" />
+          <button onClick={handleUndo} disabled={busy || !game.undoDepth}>
+            {game.undoLabel ? `Undo ${game.undoLabel}` : "Undo"}
+          </button>
+          <button className="id-chip" title="Game id -- click to copy" onClick={handleCopyId}>
+            {copiedId ? "copied" : gameId}
+          </button>
+        </div>
+      </div>
 
       {narrative && narrativeOpen && (
         // Click anywhere outside to put it away -- it is read-aloud text,

@@ -100,14 +100,19 @@ searched.<room>.treasureBy.
   Playwright harness (corner turned, undo retraced, stale route
   ignored) -- the rAF timestamp can precede the walk's own start
   stamp, which indexed the path at -1 until clamped.
-  HEADER ROW: Story, Chronicle, Undo and the game id live in App's
-  header beside "Back to quests & games" and Sign out -- one row for
-  everything that isn't a game action. They used to share a row with
-  the turn heading above the rail, where they crowded and sometimes
-  collided with rail panels. GameView renders them through a React
-  portal into a slot element App passes down (toolsSlot) -- their
-  state is GameView's, and the slot is passed as an element rather
-  than looked up by id so it exists by the time GameView renders.
+  TWO ROWS OF CHROME, each with one job. App's header is the APP:
+  brand, "<- Quests & games" beside it while a game is open, and the
+  account (email, Sign out) on the right. GameView's GAME BAR is the
+  full-width row beneath, above board and rail: the turn heading on
+  the left; on the right the reading overlays (Story, Journal with a
+  count badge, Chronicle), a thin divider, Undo (labelled with the
+  step it undoes), and the game id last as a dim dashed chip that
+  copies itself on click. Two arrangements were tried and rejected:
+  the tools inside the rail column beside the turn heading (crowded
+  440px, collided with rail panels), then portalled into App's header
+  next to navigation and Sign out (the owner's screenshot: one
+  undifferentiated run of seven buttons and a raw id). The portal and
+  toolsSlot are gone; the bar is ordinary GameView markup.
   LEGEND COLOURS come from the constants BoardTerrain draws with
   (exported DOOR_COLORS / STAIRWAY_STROKE), not copies -- they had
   drifted. Closed door is dark red, stairway dark purple, armed-trap
@@ -909,9 +914,15 @@ Three enforcement points, because each covers a hole the others don't:
 
 ## Deploying
 `firebase deploy` from the repo root does everything: firebase.json's
-hosting `predeploy` hook runs `npm install` and `npm run build` in web/
-first (a failed build aborts the deploy), then rules, functions and
-hosting go up. Added after a deploy shipped stale hosting because the
+hosting `predeploy` hook runs `npm install`, `npm run lint` and
+`npm run build` in web/ first (a failed lint or build aborts the
+deploy), then rules, functions and hosting go up. The lint is ONE
+rule, @typescript-eslint/no-use-before-define (web/eslint.config.js):
+tsc lets a closure read a `const` declared further down, and a map
+callback run during render did exactly that -- the shipped bundle
+threw "Cannot access before initialization" on every game load. Keep
+the rule strict (variables: true); a handler that trips it just moves
+below what it reads. Added after a deploy shipped stale hosting because the
 build step was left out of the instructions. So deploy instructions
 are `git pull` then `firebase deploy` -- never tell the owner to build
 by hand, and never let hosting go up without the hook (`--only

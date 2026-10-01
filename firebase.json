@@ -3,6 +3,7 @@
     "site": "hq-zargon-solo",
     "predeploy": [
       "npm --prefix web install --no-audit --no-fund",
+      "npm --prefix web run lint",
       "npm --prefix web run build"
     ],
     "public": "web/dist",

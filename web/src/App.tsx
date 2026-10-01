@@ -45,8 +45,6 @@ function App() {
     setGameId(id);
   };
 
-  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
-
   const handleLeaveGame = () => {
     localStorage.removeItem(GAME_ID_STORAGE_KEY);
     setGameId(null);
@@ -54,23 +52,25 @@ function App() {
 
   return (
     <div className="app">
+      {/* App chrome only: the brand, the way back to the quest list,
+          the account. Everything about the game in progress -- turn,
+          Story, Journal, Undo, game id -- is GameView's own game bar,
+          the row beneath this one. They shared this row once and it
+          read as one undifferentiated run of buttons. */}
       <div className="app-header">
-        <h1>HeroQuest Zargon</h1>
+        <div className="header-left">
+          <h1>HeroQuest Zargon</h1>
+          {user && gameId && ownership === "owner" && (
+            <button className="quiet" onClick={handleLeaveGame}>
+              &larr; Quests &amp; games
+            </button>
+          )}
+        </div>
         {user && (
-          <span className="hint header-tools">
-            {/* GameView's own controls (Story, Undo, the game id) render
-                into this slot, so everything you press that isn't a
-                game action sits in one row at the top -- they used to
-                share a row with the turn heading, where they crowded
-                the rail. A portal because their state is GameView's;
-                the slot is passed as an element (not looked up by id)
-                so it exists by the time GameView renders. */}
-            {gameId && ownership === "owner" && <span ref={setToolsSlot} className="header-tools" />}
-            {gameId && ownership === "owner" && (
-              <button onClick={handleLeaveGame}>Back to quests &amp; games</button>
-            )}
-            {user.email ?? "signed in"}{" "}
+          <span className="hint header-account">
+            {user.email ?? "signed in"}
             <button
+              className="quiet"
               onClick={() => {
                 localStorage.removeItem(GAME_ID_STORAGE_KEY);
                 setGameId(null);
@@ -105,7 +105,7 @@ function App() {
 
       {user && ownership === "owner" && !gameId && <GameSetup onOpenGame={handleOpenGame} />}
 
-      {user && ownership === "owner" && gameId && <GameView gameId={gameId} toolsSlot={toolsSlot} />}
+      {user && ownership === "owner" && gameId && <GameView gameId={gameId} />}
     </div>
   );
 }

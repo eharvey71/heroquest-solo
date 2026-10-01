@@ -14,23 +14,82 @@
   padding: 20px 24px 40px;
 }
 
+/* Two rows of chrome above the board, each with one job. App's header:
+   brand, the way back, the account. GameView's game bar: the turn
+   heading and this game's tools. Both are kept short because the
+   board's size is computed from the viewport height minus them. */
 .app-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  gap: 16px;
   flex-wrap: wrap;
+  margin-bottom: 10px;
 }
-
-/* The header's right-hand cluster: the open game's own controls
-   (portalled in from GameView), then navigation and the account. One
-   flex row, nested so the game's slot can be empty without leaving a
-   stray gap. */
-.header-tools {
+.app-header h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.header-account {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.game-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+.game-bar h2 {
+  margin: 0;
+}
+.game-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Readers (Story, Journal, Chronicle) on one side of the line, Undo on
+   the other: opening a page to read vs. changing the game. */
+.tools-divider {
+  width: 1px;
+  height: 22px;
+  background: #3a3a3a;
+  margin: 0 4px;
+}
+.id-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  color: #777;
+  background: transparent;
+  border: 1px dashed #3a3a3a;
+  padding: 3px 8px;
+}
+.id-chip:hover:not(:disabled) {
+  color: #bbb;
+  border-color: #666;
+  background: transparent;
+}
+.badge {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #c9bfa0;
+  color: #1a1a1a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
 }
 
 .game-layout {
