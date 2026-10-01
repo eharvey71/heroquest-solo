@@ -28,13 +28,19 @@ from validator.side_quests import (
 )
 from engine.side_quests import ARMORY_REMINDER, ELEMENTS, HERO_IDS, REWARD_POINTS, SETTINGS
 
-from .client import QuestGenerationMalformed, QuestGenerationTruncated, call_llm_raw
+from .client import MAX_TOKENS, QuestGenerationMalformed, QuestGenerationTruncated, call_llm_raw
 from .core import MALFORMED_RETRY_HINT, MAX_ATTEMPTS, notify, summarize_errors
 from .prompt import build_retry_message
 from .side_quest_schema import build_side_quest_json_schema, to_canonical_side_quests
 
 REQUIRED_SIDE_QUEST_CHANCE = 1 / 3  # owner's call, design section 15
-SIDE_QUEST_MAX_TOKENS = 9000
+# Same budget as the quest call, for the same reason: adaptive thinking
+# at high effort draws from it too, and the call streams. 9000 (set
+# before streaming existed) cut off all three attempts of the first
+# live expanded quest.
+SIDE_QUEST_MAX_TOKENS = MAX_TOKENS
+TRUNCATED_USER_MESSAGE = "the scenes were cut off by the length limit"
+MALFORMED_USER_MESSAGE = "the answer wasn't valid JSON"
 
 TRUNCATION_HINT = (
     "the previous response was cut off by the token limit before completing valid JSON -- "
@@ -267,24 +273,31 @@ def generate_side_quests(
     system_prompt = build_side_quest_system_prompt(catalogs, gate)
     message = _quest_context(quest, params)
     what = "one or two optional scenes plus the required one" if gate else "one or two optional scenes"
+    # `last_errors` is what the model is told (retry hints); `last_reason`
+    # is what the player is told -- on the status line while the next
+    # attempt runs, and stored on the quest if every attempt fails.
     last_errors = ["no attempt completed"]
+    last_reason = ""
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        after = f" (attempt {attempt - 1}: {last_reason})" if last_reason else ""
         notify(
             on_progress,
             "writing_side_quests",
-            f"Writing the side quests -- attempt {attempt} of {MAX_ATTEMPTS}: {what}. Another 1-2 minutes.",
+            f"Writing the side quests -- attempt {attempt} of {MAX_ATTEMPTS}{after}: {what}. Another 1-2 minutes.",
         )
         try:
             payload = call_llm_raw(client, system_prompt, message, schema, max_tokens=SIDE_QUEST_MAX_TOKENS)
         except QuestGenerationTruncated:
             last_errors = [TRUNCATION_HINT]
+            last_reason = TRUNCATED_USER_MESSAGE
             message = build_retry_message(last_errors)
-            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: the scenes were cut off by the length limit. Asking for shorter ones.")
+            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: {last_reason}. Asking for shorter ones.")
             continue
         except QuestGenerationMalformed:
             last_errors = [MALFORMED_RETRY_HINT]
+            last_reason = MALFORMED_USER_MESSAGE
             message = build_retry_message(last_errors)
-            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: the answer wasn't valid JSON. Asking again.")
+            notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: {last_reason}. Asking again.")
             continue
 
         notify(on_progress, "validating_side_quests", "Checking the scenes: every path ends, no dead ends, rewards within caps, no ids in the prose.")
@@ -293,14 +306,14 @@ def generate_side_quests(
         if not errors:
             return SideQuestGenerationResult(side_quests=side_quests, attempts=attempt)
         last_errors = errors
+        last_reason = f"failed {len(errors)} check(s): {summarize_errors(errors)}"
         message = build_retry_message(last_errors)
-        notify(
-            on_progress,
-            "retrying_side_quests",
-            f"Attempt {attempt}: the scenes failed {len(errors)} check(s): {summarize_errors(errors)}. Asking for a fix.",
-        )
+        notify(on_progress, "retrying_side_quests", f"Attempt {attempt}: the scenes {last_reason}. Asking for a fix.")
 
-    raise SideQuestGenerationFailed(errors=last_errors, attempts=MAX_ATTEMPTS)
+    # Validator errors are readable as they are; a cutoff or bad JSON
+    # stores the player's sentence, not the hint written for the model.
+    stored = last_errors if last_errors not in ([TRUNCATION_HINT], [MALFORMED_RETRY_HINT]) else [f"{last_reason} on every attempt"]
+    raise SideQuestGenerationFailed(errors=stored, attempts=MAX_ATTEMPTS)
 
 
 def required_side_quest(side_quests: list) -> dict | None:

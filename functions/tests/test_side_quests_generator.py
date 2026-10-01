@@ -10,7 +10,9 @@ import pytest
 
 from generator.prompt import build_system_prompt
 from generator.side_quests import (
+    SIDE_QUEST_MAX_TOKENS,
     SideQuestGenerationFailed,
+    TRUNCATED_USER_MESSAGE,
     build_gate_spec,
     build_side_quest_system_prompt,
     generate_side_quests,
@@ -163,3 +165,22 @@ def test_the_schema_enumerates_this_quests_rooms_and_monsters(good_quest_4h, cat
     schema = build_side_quest_json_schema(catalogs, good_quest_4h)
     text = json.dumps(schema)
     assert '"M17"' in text and '"R12"' in text and '"ring_of_return"' in text
+
+
+def test_three_cutoffs_store_a_plain_reason_and_keep_it_on_the_status_line(good_quest_4h, catalogs):
+    cut = SimpleNamespace(stop_reason="max_tokens", stop_details=None, content=[SimpleNamespace(type="text", text='{"sideQuests": [')])
+    client = ScriptedClient([cut, cut, cut])
+    seen = []
+    with pytest.raises(SideQuestGenerationFailed) as exc_info:
+        generate_side_quests(good_quest_4h, PARAMS, client, catalogs, gate=None, on_progress=lambda s, d: seen.append((s, d)))
+    # The player reads a sentence, not the hint written for the model.
+    assert exc_info.value.errors == [f"{TRUNCATED_USER_MESSAGE} on every attempt"]
+    # The model still gets the hint.
+    assert "shorter" in client.calls[1]["messages"][0]["content"]
+    # The next attempt's status line carries the previous failure.
+    writing = [d for s, d in seen if s == "writing_side_quests"]
+    assert "attempt 1:" not in writing[0]
+    assert f"(attempt 1: {TRUNCATED_USER_MESSAGE})" in writing[1]
+    assert f"(attempt 2: {TRUNCATED_USER_MESSAGE})" in writing[2]
+    # Same budget as the quest call -- 9000 cut off every real attempt.
+    assert all(c["max_tokens"] == SIDE_QUEST_MAX_TOKENS >= 32000 for c in client.calls)

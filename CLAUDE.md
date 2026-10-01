@@ -222,6 +222,12 @@ searched.<room>.treasureBy.
     quest); and any other empty response names its block types and
     stop reason. A real refusal reports its category and explanation.
     chronicle.py and narration.py keep the small non-streaming calls.
+    BOTH big calls share that 32000 budget: the side-quest call kept
+    its pre-streaming 9000 for one release and every attempt of the
+    first live expanded quest was cut off (SIDE_QUEST_MAX_TOKENS is
+    now MAX_TOKENS). While a retry runs, the status line keeps the
+    previous attempt's failure in brackets; after a final failure the
+    quest stores a player-facing sentence, never the model's hint.
 
 ## Design artifacts (in this repo /design)
 - board.json — 26x19 grid, 22 rooms, verified square-by-square against the

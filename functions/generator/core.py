@@ -108,24 +108,28 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None, on_pr
 
     message = build_user_message(params)
     last_errors = ["no attempt completed"]
+    last_reason = ""  # the previous attempt's failure, kept on the status line
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        after = f" (attempt {attempt - 1}: {last_reason})" if last_reason else ""
         notify(
             on_progress,
             "writing",
-            f"Writing the quest -- attempt {attempt} of {MAX_ATTEMPTS}. The model is thinking; "
+            f"Writing the quest -- attempt {attempt} of {MAX_ATTEMPTS}{after}. The model is thinking; "
             f"this is the long part (usually 1-2 minutes).",
         )
         try:
             quest = call_llm(client, system_prompt, message, schema)
         except QuestGenerationTruncated:
             last_errors = [TRUNCATION_RETRY_HINT]
+            last_reason = "the answer was cut off by the length limit"
             message = build_retry_message(last_errors)
-            notify(on_progress, "retrying", f"Attempt {attempt}: the answer was cut off by the length limit. Asking for a shorter quest.")
+            notify(on_progress, "retrying", f"Attempt {attempt}: {last_reason}. Asking for a shorter quest.")
             continue
         except QuestGenerationMalformed:
             last_errors = [MALFORMED_RETRY_HINT]
+            last_reason = "the answer wasn't valid JSON"
             message = build_retry_message(last_errors)
-            notify(on_progress, "retrying", f"Attempt {attempt}: the answer wasn't valid JSON. Asking again.")
+            notify(on_progress, "retrying", f"Attempt {attempt}: {last_reason}. Asking again.")
             continue
 
         notify(on_progress, "validating", "Checking the quest: geometry, reachability, monster budget, artifacts.")
@@ -136,11 +140,8 @@ def generate_quest(params: dict, client, catalogs: Catalogs | None = None, on_pr
             result = _fence_play_area(quest, validation_params, catalogs, result)
             return GenerationResult(quest=quest, validation=result, attempts=attempt)
         last_errors = result.errors
+        last_reason = f"failed {len(last_errors)} check(s): {summarize_errors(last_errors)}"
         message = build_retry_message(last_errors)
-        notify(
-            on_progress,
-            "retrying",
-            f"Attempt {attempt} failed {len(last_errors)} check(s): {summarize_errors(last_errors)}. Asking for a fix.",
-        )
+        notify(on_progress, "retrying", f"Attempt {attempt} {last_reason}. Asking for a fix.")
 
     raise QuestGenerationFailed(errors=last_errors, attempts=MAX_ATTEMPTS)
