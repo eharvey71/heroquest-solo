@@ -111,6 +111,9 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
   // is one long request the client can't otherwise see inside.
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<{ stage: string; detail: string } | null>(null);
+  // 2 for a full expanded generation (quest, then scenes) so the status
+  // line can say which step is running; 1 for anything else.
+  const [jobSteps, setJobSteps] = useState<1 | 2>(1);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   // The side quests are a second call after the quest is saved, so a
@@ -173,9 +176,10 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     });
   };
 
-  const startJob = () => {
+  const startJob = (steps: 1 | 2) => {
     const id = crypto.randomUUID();
     setJobId(id);
+    setJobSteps(steps);
     setJobStatus({ stage: "starting", detail: "Contacting the generator…" });
     setStartedAt(Date.now());
     setElapsed(0);
@@ -203,7 +207,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     setBusy(true);
     setError(null);
     setSideQuestError(null);
-    const newJobId = startJob();
+    const newJobId = startJob(mode === "expanded" ? 2 : 1);
     let pending: { questId: string } | null = null;
     try {
       const res = await generateQuest({
@@ -230,7 +234,7 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
 
   const handleRetrySideQuests = async () => {
     if (!questId) return;
-    const newJobId = startJob();
+    const newJobId = startJob(1);
     await writeSideQuests(questId, newJobId);
   };
 
@@ -423,8 +427,11 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
           {jobStatus && (
             <span className="gen-status" aria-live="polite">
               {working && <span className="gen-spinner" aria-hidden />}
-              <span>{jobStatus.detail || jobStatus.stage}</span>
-              {startedAt !== null && working && <span className="hint">{formatElapsed(elapsed)}</span>}
+              <span className="gen-text">
+                {jobSteps === 2 && (jobStatus.stage.includes("side_quest") ? "Step 2 of 2: " : "Step 1 of 2: ")}
+                {jobStatus.detail || jobStatus.stage}
+              </span>
+              {startedAt !== null && working && <span className="hint gen-clock">{formatElapsed(elapsed)}</span>}
             </span>
           )}
         </div>

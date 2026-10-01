@@ -560,14 +560,29 @@ button.quiet:hover:not(:disabled) {
    whatever stage the backend last wrote (main._JobProgress), an
    elapsed clock, and a small spinner while a call is in flight. Wide
    enough for a sentence, never wider than the row. */
+/* The status line takes the rest of the row beside the Generate button.
+   The clock has its own fixed column with tabular digits, so a "1"
+   turning into a "2" can't change its width and reflow the text. */
 .gen-status {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  flex: 1 1 320px;
+  min-width: 0;
   max-width: 620px;
   color: #c9bfa0;
   font-size: 0.9rem;
   line-height: 1.35;
+}
+.gen-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gen-clock {
+  flex: none;
+  min-width: 4.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .gen-spinner {
