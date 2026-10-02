@@ -1001,6 +1001,15 @@ from .firebaserc (the repo's own `firebase use` alias) and pass it
 explicitly; never rely on the ambient default, and never tell the
 owner to run an ad-hoc firebase_admin / `gcloud firestore` one-liner.
 
+## Commit identity
+Commits are authored as the owner, not the tool. At the start of every
+session run, in the repo:
+  git config user.name "eharvey71"
+  git config user.email "eharvey71@users.noreply.github.com"
+(the sandbox default is "Claude <noreply@anthropic.com>", which is what
+the first 70 commits carry). The Co-Authored-By / Claude-Session
+trailers stay unless the owner says otherwise.
+
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.
 - One command at a time during active execution; wait for results.
