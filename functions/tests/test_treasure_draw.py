@@ -158,7 +158,7 @@ def test_reporting_the_monster_spawns_it_and_queues_its_attack():
     pending = txn.updates["pendingDefenses"]
     assert len(pending) == 1
     assert pending[0]["heroId"] == "barbarian"
-    assert pending[0]["monsterName"] == "orc"
+    assert pending[0]["monsterName"] == "Orc"
     assert any("place" in i.lower() for i in txn.updates["placementInstructions"])
 
 
