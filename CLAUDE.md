@@ -146,8 +146,12 @@ searched.<room>.treasureBy.
   re-reads the document and refuses anything not archived, so removing
   is the gate; a game's undo subcollection is deleted first in batches
   (no cascade in Firestore), and a quest goes only once no live game
-  points at it. Same direct client writes as archiving. generationJobs
-  docs are not covered (client can't write them) and don't need to be.
+  points at it. The per-row Delete is a direct client write like
+  archiving; the two BULK buttons ("Delete all removed", and "Delete
+  everything" behind a typed DELETE) call main.purge_data, a backend
+  callable with the same rules plus recursive deletes and a sweep of
+  generationJobs -- the browser sees only one page of the list and
+  can't write the job docs. Owner's ask after testing: a clean slate.
 - Backend: Python Cloud Functions.
   - generateQuest(params) -> questId: prompt build + LLM call + validate +
     auto-repair + retry loop (max 3) + Firestore write. Client never sees

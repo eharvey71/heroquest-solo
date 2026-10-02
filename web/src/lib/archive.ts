@@ -95,30 +95,12 @@ export interface RemovedItems {
 }
 
 /** Everything currently removed, from live queries rather than the
- * library's page, so the count the owner confirms is the real one. */
+ * library's page, so the count the owner confirms before the backend
+ * purge (functionsClient.purgeData) is the real one. */
 export async function findRemoved(): Promise<RemovedItems> {
   const [quests, games] = await Promise.all([
     getDocs(query(collection(db, "quests"), where("archived", "==", true))),
     getDocs(query(collection(db, "games"), where("archived", "==", true))),
   ]);
   return { questIds: quests.docs.map((d) => d.id), gameIds: games.docs.map((d) => d.id) };
-}
-
-/** Deletes everything findRemoved() returned. Quest stacks first (they
- * take their removed games with them), then any removed game left. */
-export async function deleteRemovedForever(items: RemovedItems): Promise<{ quests: number; games: number }> {
-  let quests = 0;
-  let games = 0;
-  for (const questId of items.questIds) {
-    const r = await deleteQuestStackForever(questId);
-    if (r.quest) quests += 1;
-    games += r.games;
-  }
-  for (const gameId of items.gameIds) {
-    const snap = await getDoc(doc(db, "games", gameId));
-    if (!snap.exists()) continue; // already went with its quest
-    await deleteGameForever(gameId);
-    games += 1;
-  }
-  return { quests, games };
 }

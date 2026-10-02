@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import {
   deleteGameForever,
   deleteQuestStackForever,
-  deleteRemovedForever,
   findRemoved,
   setGameArchived,
   setQuestStackArchived,
@@ -13,6 +12,7 @@ import {
   createGame,
   describeGenerationError,
   generateQuest,
+  purgeData,
   generateSideQuests,
   type PlayMode,
 } from "../lib/functionsClient";
@@ -315,6 +315,9 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
     void runDelete(game.id, () => deleteGameForever(game.id));
   };
 
+  // Bulk deletion runs on the backend (main.purge_data): it sees every
+  // document, not just the page the list loaded, and clears the job
+  // docs the browser can't write.
   const handleDeleteAllRemoved = () =>
     runDelete("__all__", async () => {
       const items = await findRemoved();
@@ -323,7 +326,19 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
       }
       const what = `${items.questIds.length} removed quest(s) and ${items.gameIds.length} removed game(s)`;
       if (!window.confirm(`Delete ${what} permanently? This cannot be undone.`)) return;
-      await deleteRemovedForever(items);
+      await purgeData({ scope: "removed" });
+    });
+
+  const handleDeleteEverything = () =>
+    runDelete("__all__", async () => {
+      const typed = window.prompt(
+        "This deletes EVERY quest and game, including any in progress, and cannot be undone. Type DELETE to confirm."
+      );
+      if (typed !== "DELETE") return;
+      await purgeData({ scope: "everything" });
+      setQuestId(null);
+      setQuestHeroCount(null);
+      setJobStatus(null);
     });
 
   const handleToggleGameArchived = async (game: GameSummary) => {
@@ -607,6 +622,9 @@ export function GameSetup({ onOpenGame }: GameSetupProps) {
           Removed rows are faded. Restore brings one back; Delete is permanent.{" "}
           <button className="quiet" disabled={archiveBusyId !== null} onClick={() => void handleDeleteAllRemoved()}>
             Delete all removed
+          </button>{" "}
+          <button className="danger" disabled={archiveBusyId !== null} onClick={() => void handleDeleteEverything()}>
+            Delete everything
           </button>
         </p>
       )}

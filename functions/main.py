@@ -168,6 +168,44 @@ def health_check(req: https_fn.CallableRequest) -> dict:
     return {"status": "ok", "service": "heroquest-zargon"}
 
 
+def _purge(db, scope: str) -> dict:
+    """Owner housekeeping. "removed": every archived game, and every
+    archived quest no live game still points at (the setup screen's
+    Remove is the gate, as for the client-side Delete). "everything":
+    all quests and games -- a clean slate after testing. Both clear
+    generationJobs, which the browser can't write. Recursive deletes,
+    so a game's undo subcollection goes with it. Server side rather
+    than the client because the client only sees one page of the list
+    and can't touch the job docs."""
+    if scope not in ("removed", "everything"):
+        raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="scope must be 'removed' or 'everything'")
+    games = list(db.collection("games").stream())
+    quests = list(db.collection("quests").stream())
+    live_quest_ids = {(g.to_dict() or {}).get("questId") for g in games if (g.to_dict() or {}).get("archived") is not True}
+    counts = {"quests": 0, "games": 0, "jobs": 0}
+    for g in games:
+        if scope == "everything" or (g.to_dict() or {}).get("archived") is True:
+            db.recursive_delete(g.reference)
+            counts["games"] += 1
+    for q in quests:
+        if scope == "everything" or ((q.to_dict() or {}).get("archived") is True and q.id not in live_quest_ids):
+            db.recursive_delete(q.reference)
+            counts["quests"] += 1
+    for j in db.collection("generationJobs").stream():
+        db.recursive_delete(j.reference)
+        counts["jobs"] += 1
+    return counts
+
+
+@https_fn.on_call(timeout_sec=300)
+@_surface_errors
+def purge_data(req: https_fn.CallableRequest) -> dict:
+    """Deletes removed quests and games, or everything -- see _purge."""
+    _require_owner(req, "sign in to delete quests")
+    data = req.data if isinstance(req.data, dict) else {}
+    return _purge(firestore.client(), str(data.get("scope", "")))
+
+
 def _parse_generation_params(data) -> dict:
     if not isinstance(data, dict):
         raise https_fn.HttpsError(

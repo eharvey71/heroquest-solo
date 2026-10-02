@@ -482,3 +482,18 @@ export interface SideQuestStepResponse {
 }
 export const beginSideQuest = call<BeginSideQuestRequest, SideQuestStepResponse>("begin_side_quest");
 export const advanceSideQuest = call<AdvanceSideQuestRequest, SideQuestStepResponse>("advance_side_quest");
+
+// ---- purgeData ----
+
+/** Owner housekeeping, server side: "removed" deletes archived games
+ * and archived quests nothing live still plays; "everything" is a
+ * clean slate. Both clear the generation job docs. */
+export interface PurgeDataRequest {
+  scope: "removed" | "everything";
+}
+export interface PurgeDataResponse {
+  quests: number;
+  games: number;
+  jobs: number;
+}
+export const purgeData = call<PurgeDataRequest, PurgeDataResponse>("purge_data", { timeout: 300_000 });
