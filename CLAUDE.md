@@ -74,7 +74,17 @@ searched.<room>.treasureBy.
   (failed-precondition / invalid-argument / not-found: "room still has
   monsters in it") is Zargon declining the action, so GameView shows it
   as an amber "Not allowed" alert at the top of the rail; only other
-  failures (internal, network, auth) reach the red "Error:" line. Path tracing state lives in
+  failures (internal, network, auth) reach the red "Error:" line.
+  JUST NOW (GameView): the log lines the last action added, diffed
+  from the previous snapshot's log (a multiset diff -- a defence report
+  splices its line into the middle), shown as a panel at the top of
+  the rail under the waiting alerts and above Active hero. The result
+  of the button you pressed used to land in the Log at the bottom, off
+  screen, and Zargon's moves and swings are stamped to the turn that
+  just ended, so no "current turn" filter would have caught them. An
+  undo clears it; a fresh load shows nothing until you act; a snapshot
+  that adds no lines (a narration arriving) leaves it alone. The Log
+  stays the record. Path tracing state lives in
   GameView, not BoardView, so "Confirm move" sits in the rail next to
   the board instead of under it.
   TOKENS WALK THEIR ROUTE (Tokens.tsx): a hero or monster that moved
@@ -203,12 +213,15 @@ searched.<room>.treasureBy.
     render and only narrates turns that close after that, so opening
     an old finished game narrates just its one final turn, not one LLM
     call per turn ever played. Same non-transactional, no-undo-
-    snapshot reasoning as the chronicle. Rendered as its own "The
-    story so far..." panel directly above the Log (GameView.tsx) --
-    the paragraphs accumulate in turn order and read as one running
-    tale, auto-scrolled to the newest. Splicing them between log lines
-    was tried first and read badly: prose interrupting a monospace
-    record. The log stays purely mechanical (and shorter for it).
+    snapshot reasoning as the chronicle. Read in the STORY OVERLAY,
+    under the backstory, as one running tale; the Story button in the
+    game bar wears a badge counting paragraphs written since the
+    overlay was last open (GameView's storySeen; what was there on
+    load is not news). A rail panel was tried twice -- every paragraph
+    in a 15vh box, then the newest only -- and both ate rail space the
+    actions needed; splicing them between log lines was tried before
+    that and read badly: prose interrupting a monospace record. The
+    log stays purely mechanical (and shorter for it).
     Narration and the chronicle both build their prompt from the same
     log lines, and both hit the same bug: those lines carry the app's
     own bookkeeping labels (room ids like R16, square coordinates,
@@ -374,9 +387,8 @@ searched.<room>.treasureBy.
     The rail keeps only an ACTIONABLE cue: an alert "Someone has
     something to say" naming the NPC ("Old Hessa here") with Begin and
     a Journal button, shown while a scene is beginnable or resumable.
-    THE STORY PANEL in the rail shows only the newest narration
-    paragraph plus an "all N turns" button; the whole running tale now
-    sits under the backstory in the Story overlay. The scene plays in
+    There is no story panel in the rail (see turn narration above: the
+    Story button badges new paragraphs). The scene plays in
     SideQuestView, a fixed full-page overlay (board covered, not
     dimmed: the party has left); it keeps the EPILOGUE on screen after
     the server has already cleared pendingSideQuest (the terminal's

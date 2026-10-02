@@ -28,7 +28,7 @@ import {
   undoLastAction,
 } from "../lib/functionsClient";
 import { spellCard, spellsForElements } from "../data/heroSpells";
-import { livingHeroes, revealedSquareKeys, type MonsterToken } from "../lib/gameState";
+import { livingHeroes, revealedSquareKeys, type LogEntry, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, type SideQuest, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
@@ -143,7 +143,17 @@ export function GameView({ gameId }: GameViewProps) {
    * already cleared pendingSideQuest -- see SideQuestView's header. */
   const [sceneEpilogue, setSceneEpilogue] = useState<SceneEpilogue | null>(null);
   const logRef = useRef<HTMLUListElement>(null);
-  const storyRef = useRef<HTMLDivElement>(null);
+  // JUST NOW: the log lines the last action added, shown at the top of
+  // the rail beside the controls. The Log at the bottom is the record,
+  // but the result of the button you just pressed was landing off
+  // screen -- and Zargon's moves and swings are stamped to the turn
+  // that just ended, so no "current turn" filter would catch them.
+  // Diffed against the previous snapshot's log (a multiset diff, since
+  // a defence report splices its line into the middle); an undo, which
+  // shrinks the log, clears it; a fresh load shows nothing.
+  const [narrativeOpen, setNarrativeOpen] = useState(false);
+  const prevLogRef = useRef<LogEntry[] | null>(null);
+  const [justNow, setJustNow] = useState<LogEntry[]>([]);
 
   useEffect(() => {
     // A hero who has fallen can't be the active one -- hand the
@@ -166,18 +176,40 @@ export function GameView({ gameId }: GameViewProps) {
     if (list) list.scrollTop = list.scrollHeight;
   }, [game?.log?.length]);
 
-  // Same for the story panel: the newest paragraph is the live one.
-  // Deferred a frame -- scrolling in the same tick as the DOM update
-  // measured the box before the new paragraph had laid out, leaving
-  // the latest text below the fold.
-  const narrationCount = Object.keys(game?.narration ?? {}).length;
   useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      const box = storyRef.current;
-      if (box) box.scrollTop = box.scrollHeight;
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [narrationCount]);
+    if (!game) return;
+    const now = game.log ?? [];
+    const prev = prevLogRef.current;
+    prevLogRef.current = now;
+    if (prev === null) return;
+    if (now.length < prev.length) {
+      setJustNow([]);
+      return;
+    }
+    const seen = new Map<string, number>();
+    for (const e of prev) {
+      const k = `${e.turn}|${e.text}`;
+      seen.set(k, (seen.get(k) ?? 0) + 1);
+    }
+    const fresh: LogEntry[] = [];
+    for (const e of now) {
+      const k = `${e.turn}|${e.text}`;
+      const n = seen.get(k) ?? 0;
+      if (n > 0) seen.set(k, n - 1);
+      else fresh.push(e);
+    }
+    // A snapshot that added no lines (a narration arriving) keeps the
+    // panel as it was.
+    if (fresh.length > 0) setJustNow(fresh);
+  }, [game]);
+
+  // The Story button badges paragraphs written since the overlay was
+  // last open; what was already there on load is not news.
+  const narrationCount = Object.keys(game?.narration ?? {}).length;
+  const [storySeen, setStorySeen] = useState<number | null>(null);
+  useEffect(() => {
+    if (game && (storySeen === null || narrativeOpen)) setStorySeen(narrationCount);
+  }, [game, narrationCount, narrativeOpen, storySeen]);
 
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true);
@@ -229,7 +261,6 @@ export function GameView({ gameId }: GameViewProps) {
       }),
     [questDoors, game?.doors]
   );
-  const [narrativeOpen, setNarrativeOpen] = useState(false);
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
@@ -533,6 +564,7 @@ export function GameView({ gameId }: GameViewProps) {
     setTrapStop(null);
     setJumpLandingKey(null);
     setSceneEpilogue(null);
+    setJustNow([]);
   };
 
   const movingHero = heroes.find((h) => h.id === pathInput.selectedHeroId);
@@ -857,6 +889,9 @@ export function GameView({ gameId }: GameViewProps) {
           {narrative && (
             <button className="quiet" onClick={() => setNarrativeOpen(true)}>
               Story
+              {storySeen !== null && narrationCount > storySeen && (
+                <span className="badge">{narrationCount - storySeen}</span>
+              )}
             </button>
           )}
           {expanded && (
@@ -1252,6 +1287,22 @@ export function GameView({ gameId }: GameViewProps) {
                   Monsters clear open pits automatically. To go another way instead, just trace a new path.
                 </span>
               </div>
+            </div>
+          )}
+
+          {justNow.length > 0 && (
+            <div className="panel panel-justnow">
+              <p className="panel-title">Just now</p>
+              <ul className="log-list justnow-list">
+                {justNow.map((entry, i) => (
+                  <li
+                    key={`j${i}`}
+                    className={/\b(Place the|Replace the closed door piece)\b/.test(entry.text) ? "log-tile" : undefined}
+                  >
+                    {entry.text}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -1656,25 +1707,6 @@ export function GameView({ gameId }: GameViewProps) {
                     </button>
                   </div>
                 ))}
-              </div>
-            </div>
-          )}
-
-          {narrationTurns.length > 0 && (
-            <div className="panel">
-              <p className="panel-title">
-                The story so far&hellip;{" "}
-                {narrationTurns.length > 1 && narrative && (
-                  <button className="quiet" style={{ padding: "1px 8px", fontSize: "0.75rem" }} onClick={() => setNarrativeOpen(true)}>
-                    all {narrationTurns.length} turns
-                  </button>
-                )}
-              </p>
-              {/* Only the newest paragraph lives in the rail -- the whole
-                  running tale sits under the backstory in the Story
-                  overlay, where prose reads better than in a 15vh box. */}
-              <div className="story-so-far story-latest" ref={storyRef}>
-                <p>{game.narration?.[String(narrationTurns[narrationTurns.length - 1])]}</p>
               </div>
             </div>
           )}

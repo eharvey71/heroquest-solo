@@ -617,7 +617,11 @@ button.quiet:hover:not(:disabled) {
 }
 
 /* The rail shows only the newest narration paragraph; no scroll box. */
-.story-latest {
-  max-height: none;
-  overflow: visible;
+/* The result of the last action, beside the controls -- see GameView's
+   JUST NOW. */
+.panel-justnow {
+  border-left: 3px solid #c9bfa0;
+}
+.justnow-list {
+  max-height: 190px;
 }
