@@ -35,6 +35,7 @@ from firebase_admin import firestore, initialize_app
 from firebase_functions import https_fn, options
 from firebase_functions.params import SecretParam
 
+from engine.names import monster_display_name
 from engine.combat import MonsterDefenseResult
 from engine.combat import record_hero_defense as record_hero_defense_engine
 from engine.combat import resolve_hero_attack as resolve_hero_attack_engine
@@ -1357,7 +1358,7 @@ def _write_treasure_card_outcome(updates, game_state, turn, hero_id, spawn, mons
                 # never seen this figure before and needs to be told
                 # what it is and where to stand it.
                 "monsterId": new_monster_id,
-                "monsterName": spawn["type"],
+                "monsterName": monster_display_name(spawn["type"]),
                 "pos": list(spawn["pos"]),
                 "turn": turn,
             }
@@ -2302,7 +2303,7 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message=f"unknown monster type '{monster_def['type']}'"
         )
     overrides = monster_def.get("overrides", {})
-    monster_name = monster_def.get("name") or monster_def["type"]
+    monster_name = monster_def.get("name") or monster_display_name(monster_def["type"])
     turn = game_state.get("turn", 0)
     existing_log = game_state.get("log", [])
 

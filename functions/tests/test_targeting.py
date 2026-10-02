@@ -175,7 +175,7 @@ def test_treasure_card_spawn_adjacent_to_searcher(catalogs):
     assert result["type"] == "orc"
     assert result["attacksImmediately"] is True
     assert result["pos"] in {(3, 2), (1, 2), (2, 3), (2, 1)}
-    assert result["placementInstruction"] == f"Place the orc mini at square [{result['pos'][0]},{result['pos'][1]}]."
+    assert result["placementInstruction"] == f"Place the Orc mini at square [{result['pos'][0]},{result['pos'][1]}]."
 
 
 def test_treasure_card_spawn_falls_back_when_boxed_in(catalogs):
@@ -259,7 +259,7 @@ def test_turn_roll_spawn_prefers_frontier_nearest_the_party(catalogs):
     assert result["type"] == "goblin"
     assert result["attacksImmediately"] is False
     assert result["pos"] == (8, 1)
-    assert result["placementInstruction"] == "Place the goblin mini at square [8,1]."
+    assert result["placementInstruction"] == "Place the Goblin mini at square [8,1]."
 
 
 def test_turn_roll_spawn_falls_back_to_stairway_with_no_frontier(catalogs):

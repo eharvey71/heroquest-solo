@@ -338,7 +338,7 @@ def test_spawn_wandering_adds_a_monster_and_a_placement(catalogs):
     game, step = _finish_with(catalogs, [{"type": "spawn_wandering"}])
     wanderers = [m for mid, m in game["monsters"].items() if mid.startswith("W")]
     assert len(wanderers) == 1 and wanderers[0]["type"] == "orc" and wanderers[0]["currentBody"] == 1
-    assert step.placements and "orc mini" in step.placements[0]
+    assert step.placements and "Orc mini" in step.placements[0]
 
 
 def test_miss_turn_leaves_a_hero_dazed_for_a_turn(catalogs):

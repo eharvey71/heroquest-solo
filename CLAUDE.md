@@ -806,6 +806,15 @@ generated quest gets the general rule: two or three cards, each once.
 So chaosSpellsCast stays a set of spell ids, and no repeat-counting is
 built.
 
+NAMES ON SCREEN: a monster the quest didn't name is shown by its
+type's display name ("Chaos Warrior", "Orc"), never the id -- every
+player-facing string (log, placement lines, defence prompts, the
+client's Attack and Cast lists) goes through engine/names.py or the
+client's prettyType. The Chaos alert describes a status in the card's
+own terms (GameView's STATUS_TEXT: "Under Zargon's command", what the
+hero can and can't do) rather than "commanded (command)", which is
+what the owner first saw.
+
 The physical/digital line runs straight through the middle of the deck:
 - The app applies what it owns: damage to MONSTERS, summons (capped by
   free minis, proxy suggested otherwise), the Escape teleport, and the

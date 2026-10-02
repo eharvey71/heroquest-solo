@@ -31,6 +31,7 @@ from .hero_movement import shareable_squares
 
 from .movement import Coord, passable_door_edges, revealed_squares
 from .chaos_spells import ChaosSpellUnavailableError, choose_spell, resolve_chaos_spell
+from .names import monster_display_name, monster_name as _display
 from .heroes import living_heroes
 from .monster_status import is_held, roll_break_attempts
 from .targeting import (
@@ -227,7 +228,7 @@ def resolve_zargon_turn(
             spawned_monster=spawn,
             log=[
                 opening,
-                f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}",
+                f"A wandering {monster_display_name(spawn['type'])} appears! {spawn['placementInstruction']}",
                 ZARGON_TURN_END,
             ],
         )
@@ -262,13 +263,13 @@ def resolve_zargon_turn(
         held = is_held(game_state, monster_id)
         if held is not None:
             line = (
-                f"{mdef.get('name') or mdef['type']} is asleep and does nothing."
+                f"{_display(mdef)} is asleep and does nothing."
                 if held.get("status") == "asleep"
-                else f"{mdef.get('name') or mdef['type']} is still caught in the whirlwind."
+                else f"{_display(mdef)} is still caught in the whirlwind."
             )
             results.append(
                 MonsterActionResult(
-                    monster_id=monster_id, monster_name=mdef.get("name") or mdef["type"],
+                    monster_id=monster_id, monster_name=_display(mdef),
                     action="held", turn_result=None, log=[line],
                 )
             )
@@ -291,7 +292,7 @@ def resolve_zargon_turn(
         if pos in pit_squares:
             attack_dice = max(1, attack_dice - 1)
         move_points = overrides.get("move", catalog_entry["move"])
-        monster_name = mdef.get("name") or mdef["type"]
+        monster_name = _display(mdef)
 
         occupied = set(hero_positions.values()) | {
             p for other_id, p in monster_positions.items() if other_id != monster_id

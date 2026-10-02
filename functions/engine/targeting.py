@@ -17,6 +17,7 @@ needs to ask at all when there's more than one hero to choose from.
 from __future__ import annotations
 
 import random
+from .names import monster_display_name
 from collections import deque
 
 from validator.catalogs import Board
@@ -182,7 +183,7 @@ def _nearest_free_square(board: Board, start: Coord, occupied: set[Coord], area:
 
 
 def _placement_instruction(monster_type: str, pos: Coord) -> str:
-    return f"Place the {monster_type} mini at square [{pos[0]},{pos[1]}]."
+    return f"Place the {monster_display_name(monster_type)} mini at square [{pos[0]},{pos[1]}]."
 
 
 def spawn_wandering_monster_from_treasure_card(

@@ -35,6 +35,7 @@ from .hero_spells import HERO_SPELLS, spellbook_for
 from .hero_status import add_status as add_hero_status
 from .heroes import living_heroes
 from .movement import revealed_squares
+from .names import monster_display_name
 from .targeting import spawn_wandering_monster_from_turn_roll
 
 Coord = tuple[int, int]
@@ -421,7 +422,7 @@ def _monster_name(quest: dict, monster_id: str) -> str:
     for room in quest.get("rooms", {}).values():
         for m in room.get("monsters", []):
             if m.get("id") == monster_id:
-                return m.get("name") or m.get("type", monster_id)
+                return m.get("name") or monster_display_name(m.get("type", monster_id))
     return monster_id
 
 
@@ -604,4 +605,4 @@ def _spawn(board, catalogs, quest, game_state, updates, placements, say, *, why:
     monsters[new_id] = {"type": spawn["type"], "pos": list(spawn["pos"]), "currentBody": body, "alive": True}
     updates[f"monsters.{new_id}"] = monsters[new_id]
     placements.append(spawn["placementInstruction"])
-    say(f"{why}: a {spawn['type']} prowls the dungeon. {spawn['placementInstruction']}")
+    say(f"{why}: a {monster_display_name(spawn['type'])} prowls the dungeon. {spawn['placementInstruction']}")

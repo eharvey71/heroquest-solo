@@ -188,9 +188,9 @@ def test_a_wandering_monster_card_names_what_walked_in():
     # is and where to stand it, and a placement line must accompany it.
     prompt = txn.updates["pendingDefenses"][-1]
     assert prompt["monsterId"] == "W1"
-    assert prompt["monsterName"] == "orc"
+    assert prompt["monsterName"] == "Orc"
     assert prompt["pos"]
-    assert any("orc" in line for line in txn.updates["placementInstructions"])
+    assert any("Orc" in line for line in txn.updates["placementInstructions"])
 
 
 def test_ending_the_hero_phase_clears_stale_placements():

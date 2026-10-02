@@ -33,6 +33,7 @@ shaded area to be stranded in. Walls simply stop blocking for one move.
 from __future__ import annotations
 
 import json
+from .names import monster_display_name
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -320,5 +321,5 @@ def _monster_name(quest: dict, monster_id: str | None, monster: dict) -> str:
     for room in quest.get("rooms", {}).values():
         for m in room.get("monsters", []):
             if m.get("id") == monster_id:
-                return m.get("name") or m.get("type", monster_id or "the monster")
+                return m.get("name") or monster_display_name(m.get("type")) if m.get("type") else (monster_id or "the monster")
     return monster.get("type", monster_id or "the monster")

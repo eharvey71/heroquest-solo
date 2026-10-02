@@ -39,6 +39,7 @@ from pathlib import Path
 from validator.catalogs import CORRIDOR, Board, Catalogs
 
 from .line_of_sight import has_line_of_sight
+from .names import monster_display_name
 from .movement import passable_door_edges, squares_adjacent_to
 
 Coord = tuple[int, int]
@@ -415,14 +416,14 @@ def _resolve_summon(board, catalogs, game_state, heroes, caster_pos, spell, resu
             result.summons.append({"type": monster_type, "pos": square})
         if placed:
             where = ", ".join(f"[{sq[0]},{sq[1]}]" for sq in squares[:placed])
-            instruction = f"Place {placed} {monster_type}(s) at {where}."
+            instruction = f"Place {placed} {monster_display_name(monster_type)} mini(s) at {where}."
             result.placement_instructions.append(instruction)
             result.log.append(instruction)
         if placed < wanted:
             short = wanted - placed
-            reason = "no free square" if len(squares) < wanted else f"only {free_minis} {monster_type} mini(s) free"
+            reason = "no free square" if len(squares) < wanted else f"only {free_minis} {monster_display_name(monster_type)} mini(s) free"
             result.log.append(
-                f"{short} more {monster_type}(s) were called but there is {reason} -- "
+                f"{short} more {monster_display_name(monster_type)}(s) were called but there is {reason} -- "
                 f"proxy them or leave them out, Zargon's call."
             )
     return result

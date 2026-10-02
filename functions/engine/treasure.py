@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from validator.catalogs import Board, Catalogs
 
 from .combat import MonsterAttackRoll, roll_monster_attack
+from .names import monster_display_name
 from .furniture_traps import armed_furniture_traps, room_searched_for_traps, spring_furniture_traps
 from .heroes import HeroCannotActError, find_living_hero, living_heroes, require_hero_can_act
 from .targeting import spawn_wandering_monster_from_treasure_card
@@ -175,10 +176,10 @@ def resolve_treasure_card(
     if spawn is None:
         return TreasureCardResult(log=["The wandering monster finds no room to appear -- it slinks away."])
 
-    log = [f"A wandering {spawn['type']} appears! {spawn['placementInstruction']}"]
+    log = [f"A wandering {monster_display_name(spawn['type'])} appears! {spawn['placementInstruction']}"]
     catalog_entry = catalogs.monsters.get(spawn["type"], {})
     monster_attack = roll_monster_attack(
-        monster_name=spawn["type"],
+        monster_name=monster_display_name(spawn["type"]),
         hero_name=hero_name,
         attack_dice=catalog_entry.get("attack", 0),
         rng=rng,

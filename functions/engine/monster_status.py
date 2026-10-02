@@ -18,6 +18,7 @@ the difference between a nuisance and a genuinely good card.
 from __future__ import annotations
 
 import random
+from .names import monster_display_name
 
 BLOCKING_STATUSES = ("asleep", "becalmed")
 
@@ -88,7 +89,8 @@ def roll_break_attempts(
     for monster_id in list(registry):
         for entry in list(registry.get(monster_id, [])):
             status = entry.get("status")
-            name = monster_defs.get(monster_id, {}).get("name") or monster_id
+            mdef = monster_defs.get(monster_id, {})
+            name = mdef.get("name") or (monster_display_name(mdef["type"]) if mdef.get("type") else monster_id)
 
             if status == "becalmed":
                 if entry.get("since", turn) < turn:

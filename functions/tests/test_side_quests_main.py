@@ -346,5 +346,5 @@ def test_a_spawned_wanderer_can_be_attacked():
     game = _game(monsters={**GAME["monsters"], "W1": {"type": "orc", "pos": [2, 2], "currentBody": 1, "alive": True}})
     txn = _Txn()
     result = main._apply_hero_attack.to_wrap(txn, _DB(), game, "W1", 3)
-    assert result.monster_name == "orc"
+    assert result.monster_name == "Orc"
     assert result.skulls_faced == 3

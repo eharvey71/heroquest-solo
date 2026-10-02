@@ -28,11 +28,30 @@ import {
   undoLastAction,
 } from "../lib/functionsClient";
 import { spellCard, spellsForElements } from "../data/heroSpells";
-import { livingHeroes, revealedSquareKeys, type LogEntry, type MonsterToken } from "../lib/gameState";
+import { livingHeroes, prettyType, revealedSquareKeys, type LogEntry, type MonsterToken } from "../lib/gameState";
 import { useLiveGame } from "../lib/useLiveGame";
 import { type DoorState, type SideQuest, useQuestMap } from "../lib/useQuestMap";
 import { BoardView } from "./BoardView";
 import { heroInRoom, type SceneEpilogue, SideQuestView } from "./SideQuestView";
+
+/** What each Chaos status means at the table, in the cards' own
+ * terms (data/chaos_spells.json; "dazed" is a side quest's miss_turn).
+ * The alert used to print the raw ids -- "commanded (command)". */
+const STATUS_TEXT: Record<string, { title: string; meaning: string }> = {
+  asleep: { title: "Asleep (Sleep)", meaning: "Cannot move, attack or defend until the spell is broken." },
+  paralyzed: {
+    title: "Paralyzed (Cloud of Chaos)",
+    meaning: "Cannot move, attack or defend until the spell is broken.",
+  },
+  commanded: {
+    title: "Under Zargon's command (Command)",
+    meaning:
+      "No action of their own until the spell breaks. On Zargon's turn, move this hero as a monster and attack a fellow hero as Zargon would -- the app leaves that to you.",
+  },
+  becalmed: { title: "Caught in the Tempest", meaning: "Misses this turn. The whirlwind passes on its own." },
+  afraid: { title: "Afraid (Fear)", meaning: "Attacks with one combat die until the spell is broken." },
+  dazed: { title: "Dazed", meaning: "Still reeling from the side quest: misses this turn." },
+};
 
 /** The 1989 rulebook's between-quests Armory (What Happens Between
  * Quests?) -- shown once a quest is won, whatever the variant. */
@@ -1152,9 +1171,15 @@ export function GameView({ gameId }: GameViewProps) {
                 {activeHero?.name ?? "This hero"} is under a Chaos spell
               </p>
               <div className="panel-stack">
-                <span style={{ color: "#c79ad6" }}>
-                  {activeHeroStatuses.map((s) => `${s.status} (${s.spell})`).join(", ")}
-                </span>
+                {activeHeroStatuses.map((s) => {
+                  const text = STATUS_TEXT[s.status] ?? { title: s.status, meaning: "" };
+                  return (
+                    <div key={s.status}>
+                      <span style={{ color: "#c79ad6" }}>{text.title}</span>
+                      {text.meaning && <div className="hint">{text.meaning}</div>}
+                    </div>
+                  );
+                })}
                 {breakableStatus ? (
                   <>
                     <span className="hint">
@@ -1436,7 +1461,7 @@ export function GameView({ gameId }: GameViewProps) {
                         const reach = attackReach(m);
                         return (
                           <option key={m.id} value={m.id}>
-                            {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                            {prettyType(m.type)} ({m.id}) &mdash; {m.currentBody} BP
                             {reach && ` · ${reach}`}
                           </option>
                         );
@@ -1620,7 +1645,7 @@ export function GameView({ gameId }: GameViewProps) {
                             <option value="">Which monster?</option>
                             {targetableMonsters.map((m) => (
                               <option key={m.id} value={m.id}>
-                                {m.type} ({m.id}) &mdash; {m.currentBody} BP
+                                {prettyType(m.type)} ({m.id}) &mdash; {m.currentBody} BP
                               </option>
                             ))}
                           </select>

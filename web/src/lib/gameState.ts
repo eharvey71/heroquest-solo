@@ -177,3 +177,12 @@ export function revealedSquareKeys(board: Board, revealed: Revealed): Set<string
   }
   return keys;
 }
+
+/** A catalog type id as a name: "chaos_warrior" -> "Chaos Warrior".
+ * Mirrors engine/names.py; ids stay ids everywhere but on screen. */
+export function prettyType(typeId: string): string {
+  return typeId
+    .split("_")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
