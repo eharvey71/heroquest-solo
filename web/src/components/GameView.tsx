@@ -389,8 +389,8 @@ export function GameView({ gameId }: GameViewProps) {
             ? "active"
             : known
               ? "known"
-              : sq.kind === "required"
-                ? "rumour"
+              : sq.kind === "required" && gate?.noticed
+                ? "rumour" // the party has run into the ward or seal, so the Journal may say a way exists
                 : "hidden";
         const canBegin = playable && game.phase === "hero" && !waitingOnReport && !done && here;
         return { sq, progress, status, tier, here, canBegin };
@@ -914,8 +914,8 @@ export function GameView({ gameId }: GameViewProps) {
                   <div className="journal-title">
                     {tier === "rumour" ? (
                       <>
-                        <div>A rumour (required)</div>
-                        <span className="hint">{gate?.text || sq.gateText || "Word of a way to undo it can be found."}</span>
+                        <div>{gate?.kind === "ward" ? "A ward to unmake" : "A seal to break"} (required)</div>
+                        <span className="hint">Word of how lies somewhere in these halls. Keep exploring.</span>
                         <span className="journal-gate">{gateLine(sq)}</span>
                       </>
                     ) : (

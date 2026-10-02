@@ -73,6 +73,7 @@ from engine.side_quests import (
     begin_side_quest as begin_side_quest_engine,
     encounter_updates,
     gate_notice,
+    notice_gate,
     npc_placements,
     seal_blocks,
     ward_blocks,
@@ -1865,6 +1866,7 @@ def _apply_cast_spell(transaction, db, game_ref, hero_id, spell_id, target_monst
     for monster_id, damage in result.monster_damage.items():
         if ward_blocks(game_state, monster_id):
             # The expanded variant's WARD turns spells aside as it does blades.
+            updates.update(notice_gate(game_state))
             new_log_entries.append({"turn": turn, "text": gate_notice(quest, game_state)})
             continue
         monster = game_state["monsters"][monster_id]
@@ -2270,8 +2272,9 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
     # done, the boss takes no damage from hero attacks. The swing still
     # happened (it was the hero's action); the log says why it failed.
     if ward_blocks(game_state, monster_id):
+        noticed = notice_gate(game_state)
         line = gate_notice(quest, game_state)
-        updates = {"log": existing_log + [{"turn": turn, "text": line}]}
+        updates = {"log": existing_log + [{"turn": turn, "text": line}], **noticed}
         _push_undo(transaction, game_ref, before, updates, "the attack")
         transaction.update(game_ref, updates)
         body = monster_state["currentBody"]

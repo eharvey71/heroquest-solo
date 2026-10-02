@@ -128,7 +128,21 @@ def test_a_warded_boss_takes_no_damage_from_a_hero_attack():
     result = main._apply_hero_attack.to_wrap(txn, _DB(), _game(), "M1", 3)
     assert result.damage == 0 and result.body_points_after == 3
     assert "monsters.M1.currentBody" not in txn.updates
-    assert any("warded" in e["text"] and "Journal" in e["text"] for e in txn.updates["log"])
+    line = next(e["text"] for e in txn.updates["log"] if "warded" in e["text"])
+    # The first blocked blow is when the party learns the gate exists:
+    # the Journal may list the required scene from here on. The line
+    # names no scene the party hasn't met.
+    assert txn.updates["gate.noticed"] is True
+    assert "(See the Journal.)" in line and "The Black Candle" not in line
+
+
+def test_the_ward_notice_names_the_scene_once_met():
+    game = _game(sideQuests={"SQ1": {"status": "known"}}, gate={**GAME["gate"], "noticed": True})
+    txn = _Txn()
+    main._apply_hero_attack.to_wrap(txn, _DB(), game, "M1", 3)
+    line = next(e["text"] for e in txn.updates["log"] if "warded" in e["text"])
+    assert "(Journal: " in line
+    assert "gate.noticed" not in txn.updates
 
 
 def test_an_open_gate_lets_the_attack_land():

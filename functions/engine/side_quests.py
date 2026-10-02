@@ -238,14 +238,30 @@ def seal_blocks(game_state: dict) -> bool:
     return gate.get("kind") == "seal" and gate.get("state") == "closed"
 
 
-def gate_notice(quest: dict, game_state: dict) -> str:
+def notice_gate(game_state: dict) -> dict:
+    """First time the party runs into the gate: marks it noticed (the
+    Journal lists the required scene as a rumour from then on, not
+    before) and returns the Firestore update, or {} if already noticed."""
     gate = game_state.get("gate") or {}
-    sq = side_quest_by_id(quest, gate.get("sideQuestId", ""))
-    title = (sq or {}).get("title", "a side quest")
+    if not gate or gate.get("noticed"):
+        return {}
+    gate["noticed"] = True
+    return {"gate.noticed": True}
+
+
+def gate_notice(quest: dict, game_state: dict) -> str:
+    """The log line for a blow turned aside or a goal still sealed. Names
+    the scene only once the party has met it; before that it would hand
+    them a title they haven't found."""
+    gate = game_state.get("gate") or {}
+    sq_id = gate.get("sideQuestId", "")
+    sq = side_quest_by_id(quest, sq_id)
+    met = sq_id in (game_state.get("sideQuests") or {})
+    where = f"(Journal: {sq.get('title', sq_id)})" if sq and met else "(See the Journal.)"
     reason = gate.get("text") or ""
     if gate.get("kind") == "ward":
-        return f"The blow turns aside -- {gate.get('targetName', 'the foe')} is warded. {reason} (Journal: {title})".strip()
-    return f"It cannot be finished yet -- the way is sealed. {reason} (Journal: {title})".strip()
+        return f"The blow turns aside -- {gate.get('targetName', 'the foe')} is warded. {reason} {where}".strip()
+    return f"It cannot be finished yet -- the way is sealed. {reason} {where}".strip()
 
 
 # ---- begin / advance -------------------------------------------------------

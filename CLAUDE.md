@@ -329,7 +329,10 @@ searched.<room>.treasureBy.
     state closed|open|cracked}), copied from quest.gate at create_game
     only for expanded games. WARD: _apply_hero_attack and the spell
     damage path deal 0 to the target while closed and log why (with
-    the Journal title); cracked = +1 Body Point and +1 defend die
+    the Journal title only if the scene is already met, else "See the
+    Journal", engine/side_quests.gate_notice; both ward paths and the
+    seal set gate.noticed via notice_gate); cracked = +1 Body Point
+    and +1 defend die
     (bonusDefend, read wherever hero attacks resolve defend dice).
     SEAL: _mark_objective_if_complete refuses to complete while closed
     and logs the notice once (gate.noticed); cracked = every hero loses
@@ -348,10 +351,14 @@ searched.<room>.treasureBy.
     overlay, not a rail panel -- the rail was running out of room and
     a standing list was the thing giving locations away. Each scene
     sits in one of five tiers (GameView's `journal`): hidden (a
-    room-hooked scene nobody has met: not listed at all), rumour (the
-    REQUIRED scene before it's met: listed as "A rumour (required)"
-    with the gate's backstory text and the gate line, no title and no
-    room), known (a hero has stood in its room, or it's a prologue:
+    room-hooked scene nobody has met: not listed at all -- the REQUIRED
+    scene too, until the party has run into its ward or seal), rumour
+    (the required scene, unmet, once gate.noticed is set by the first
+    turned-aside blow or sealed goal: "A ward to unmake (required)",
+    a line saying word of how lies in these halls, and the gate line
+    -- no title, no room, and never the gate's own notice text, which
+    is written for the moment of the blow; listing it on turn 1 handed
+    the owner the finale's mechanics before the first move), known (a hero has stood in its room, or it's a prologue:
     title, "<npc> in Rn", hook text, Begin -- "Return to Rn to take it
     up" if the party has moved on), active (Resume), done (status).
     `known` is computed live from hero positions as well as read from
