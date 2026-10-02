@@ -358,3 +358,26 @@ def test_defence_from_a_legacy_prompt_without_a_turn_logs_under_now():
     main._apply_record_hero_defense.to_wrap(txn, game_ref, "barbarian", 2, 0, "7:M1")
 
     assert txn.updates["log"][-1]["turn"] == 8
+
+
+def test_a_casters_summon_reaches_the_placement_queue(monkeypatch):
+    # The first live boss to cast a summon crashed the whole turn:
+    # main read placement lines off a ChaosCast that had no such field.
+    from engine import zargon_turn
+    from engine.chaos_spells import ChaosSpellResult
+
+    quest = copy.deepcopy(QUEST)
+    quest["rooms"]["R2"]["monsters"][0]["spells"] = ["summon_orcs"]
+    monkeypatch.setattr(zargon_turn, "choose_spell", lambda **kw: "summon_orcs")
+    monkeypatch.setattr(
+        zargon_turn,
+        "resolve_chaos_spell",
+        lambda **kw: ChaosSpellResult(
+            spell_id="summon_orcs", spell_name="Summon Orcs", caster_id="M1",
+            summons=[{"type": "orc", "pos": [8, 2]}],
+            placement_instructions=["Place the orc mini at square [8,2]."],
+            log=["Vorlag summons an orc."],
+        ),
+    )
+    txn = _run_zargon_turn("normal", quest=quest)
+    assert any("Place the orc mini" in line for line in txn.updates["placementInstructions"])

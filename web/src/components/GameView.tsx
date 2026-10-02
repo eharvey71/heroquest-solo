@@ -176,13 +176,21 @@ export function GameView({ gameId }: GameViewProps) {
     if (list) list.scrollTop = list.scrollHeight;
   }, [game?.log?.length]);
 
+  const prevPendingSceneRef = useRef<string | null>(null);
   useEffect(() => {
     if (!game) return;
     const now = game.log ?? [];
     const prev = prevLogRef.current;
     prevLogRef.current = now;
+    const scenePending = !!game.pendingSideQuest;
+    const sceneWasPending = !!prevPendingSceneRef.current;
+    prevPendingSceneRef.current = game.pendingSideQuest ?? null;
     if (prev === null) return;
-    if (now.length < prev.length) {
+    // A side quest's lines are prose the player is reading on the scene
+    // page itself; replaying the whole scene here on "Back to the
+    // dungeon" buried the board. Every write while a scene is pending,
+    // and the terminal write that clears it, leaves the panel empty.
+    if (scenePending || sceneWasPending || now.length < prev.length) {
       setJustNow([]);
       return;
     }

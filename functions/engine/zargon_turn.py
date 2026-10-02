@@ -57,6 +57,11 @@ class ChaosCast:
     statuses: list = field(default_factory=list)
     summons: list = field(default_factory=list)
     caster_new_pos: tuple | None = None
+    # "Place the orc mini at ..." for each summoned figure -- main.py
+    # queues them for the Place-on-the-board alert. Missing from the
+    # first cut: the first live boss to cast a summon crashed Zargon's
+    # whole turn on this attribute.
+    placement_instructions: list = field(default_factory=list)
 
 
 @dataclass
@@ -358,6 +363,7 @@ def resolve_zargon_turn(
                             monster_damage=spell_result.monster_damage,
                             statuses=spell_result.statuses,
                             summons=spell_result.summons,
+                            placement_instructions=list(spell_result.placement_instructions),
                             caster_new_pos=spell_result.caster_new_pos,
                         )
                     )
