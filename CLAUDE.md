@@ -1007,8 +1007,8 @@ session run, in the repo:
   git config user.name "eharvey71"
   git config user.email "eharvey71@users.noreply.github.com"
 (the sandbox default is "Claude <noreply@anthropic.com>", which is what
-the first 70 commits carry). The Co-Authored-By / Claude-Session
-trailers stay unless the owner says otherwise.
+the first 70 commits carry). No Co-Authored-By or Claude-Session
+trailers: the owner asked for plain commit messages (Oct 2026).
 
 ## Working style (owner preferences)
 - Direct, plain language. Bullets over prose. No performative filler.
