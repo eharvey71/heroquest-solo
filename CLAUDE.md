@@ -862,6 +862,13 @@ do not conflate them:
 Both wandering cases emit a "place the [type] mini at square [x,y]"
 instruction, same convention as trap/secret-door reveals.
 
+EVERY RUNTIME SPAWN (both wanderers, Chaos summons, a side quest's
+spawn_wandering) exists only in game state, with a `type` and no quest
+declaration. engine/zargon_turn._monster_defs(quest, game_state) merges
+them in, so they act on Zargon's turn and can be attacked. Found in
+live play (Oct 2026): the quest-only lookup made a side-quest orc
+visible but unattackable, and Zargon's turn skipped every wanderer.
+
 Those placement instructions are GAME state (placementInstructions), a
 queue the app appends to whenever it reveals something with a physical
 tile or mini -- a sprung trap, a found secret door, an opened room, a

@@ -80,11 +80,16 @@ class ZargonTurnResult:
     log: list[str] = field(default_factory=list)
 
 
-def _monster_defs(quest: dict) -> dict[str, dict]:
-    """monster_id -> {type, overrides, name, spells} from the quest's
-    static declaration -- combat stats don't change at runtime, only
-    position. `spells` has to ride along: the Chaos cards are handed out
-    per monster in quest data, and dropping the field here silently
+def _monster_defs(quest: dict, game_state: dict | None = None) -> dict[str, dict]:
+    """monster_id -> {type, overrides, name, spells}: the quest's static
+    declaration -- combat stats don't change at runtime, only position
+    -- PLUS every monster the game spawned since (treasure-card and
+    turn-roll wanderers, Chaos summons, a side quest's spawn), which
+    exist only in game state with a `type`. Found in live play: a
+    side-quest orc could be seen but not attacked ("monster 'W1' not
+    found in quest"), and Zargon's turn skipped every wanderer for the
+    same reason. `spells` has to ride along: the Chaos cards are handed
+    out per monster in quest data, and dropping the field here silently
     turned every caster back into an ordinary monster.
     """
     defs: dict[str, dict] = {}
@@ -95,6 +100,14 @@ def _monster_defs(quest: dict) -> dict[str, dict]:
                 "overrides": m.get("overrides", {}),
                 "name": m.get("name"),
                 "spells": m.get("spells") or [],
+            }
+    for mid, state in (game_state or {}).get("monsters", {}).items():
+        if mid not in defs and state.get("type"):
+            defs[mid] = {
+                "type": state["type"],
+                "overrides": state.get("overrides", {}),
+                "name": state.get("name"),
+                "spells": [],
             }
     return defs
 
@@ -218,7 +231,7 @@ def resolve_zargon_turn(
     # and not answered -- same rule as targeting.select_cunning_target.
     resolved_lowest_bp = select_cunning_target(heroes, lowest_bp_hero_id) if turn_type == "cunning" else None
 
-    monster_defs = _monster_defs(quest)
+    monster_defs = _monster_defs(quest, game_state)
     objective_room_id = _objective_room_id(quest, game_state, board)
 
     # Sleep and Tempest are Zargon's problem to shake off, and monster

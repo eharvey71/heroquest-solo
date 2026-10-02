@@ -338,3 +338,13 @@ def test_opening_the_door_only_asks_for_the_figure():
     main._apply_open_door.to_wrap(txn, _DB(quest), game, "barbarian", "D1")
     assert any("figure for Old Hessa" in line and "R2" in line for line in txn.updates["placementInstructions"])
     assert "sideQuests.SQ1" not in txn.updates  # nobody has met her yet
+
+
+def test_a_spawned_wanderer_can_be_attacked():
+    # A scene's spawn_wandering (and every other runtime spawn) lives
+    # only in game state; the attack used to fail "not found in quest".
+    game = _game(monsters={**GAME["monsters"], "W1": {"type": "orc", "pos": [2, 2], "currentBody": 1, "alive": True}})
+    txn = _Txn()
+    result = main._apply_hero_attack.to_wrap(txn, _DB(), game, "W1", 3)
+    assert result.monster_name == "orc"
+    assert result.skulls_faced == 3

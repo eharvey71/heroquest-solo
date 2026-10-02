@@ -2248,7 +2248,7 @@ def _apply_hero_attack(transaction, db, game_ref, monster_id, skulls):
             code=https_fn.FunctionsErrorCode.FAILED_PRECONDITION, message="it is not the hero phase"
         )
 
-    monster_def = _monster_defs(quest).get(monster_id)
+    monster_def = _monster_defs(quest, game_state).get(monster_id)
     if monster_def is None:
         raise https_fn.HttpsError(code=https_fn.FunctionsErrorCode.NOT_FOUND, message=f"monster '{monster_id}' not found in quest")
 

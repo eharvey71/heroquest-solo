@@ -363,3 +363,16 @@ def test_a_caster_that_cannot_see_a_hero_fights_normally(catalogs):
     )
     result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
     assert result.chaos_casts == []
+
+
+def test_a_spawned_wanderer_acts_though_the_quest_never_declared_it(catalogs):
+    # Treasure-card and turn-roll wanderers, summons and side-quest spawns
+    # exist only in game state (with a type). They used to be skipped.
+    board, c = catalogs.board, catalogs
+    quest = _quest(monsters=[])
+    game_state = _game_state(monsters={"W1": {"type": "orc", "pos": [8, 3], "currentBody": 1, "alive": True}})
+
+    result = resolve_zargon_turn(board=board, catalogs=c, quest=quest, game_state=game_state, turn_type="normal")
+
+    assert [mr.action for mr in result.monster_results] == ["moved_and_attacked"]
+    assert "W1" in result.updated_monster_positions
