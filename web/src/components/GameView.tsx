@@ -132,6 +132,13 @@ export function GameView({ gameId }: GameViewProps) {
   const [placementsDone, setPlacementsDone] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // A RULING is the engine refusing an action under the rules ("room
+  // still has monsters in it", "not the hero phase") -- Zargon talking,
+  // not the app breaking. It belongs in the rail next to what was
+  // pressed, not in the red system-error slot. The server marks every
+  // rule refusal failed-precondition / invalid-argument / not-found;
+  // anything else (internal, network, auth) is a real error.
+  const [ruling, setRuling] = useState<string | null>(null);
   /** A side quest's ending, held on screen after the server has
    * already cleared pendingSideQuest -- see SideQuestView's header. */
   const [sceneEpilogue, setSceneEpilogue] = useState<SceneEpilogue | null>(null);
@@ -175,10 +182,17 @@ export function GameView({ gameId }: GameViewProps) {
   async function runAction<T>(fn: () => Promise<T>): Promise<T | null> {
     setBusy(true);
     setErrorMsg(null);
+    setRuling(null);
     try {
       return await fn();
     } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+      const code = (e as { code?: unknown } | null)?.code;
+      const message = e instanceof Error ? e.message : String(e);
+      if (code === "functions/failed-precondition" || code === "functions/invalid-argument" || code === "functions/not-found") {
+        setRuling(message.charAt(0).toUpperCase() + message.slice(1));
+      } else {
+        setErrorMsg(message);
+      }
       return null;
     } finally {
       setBusy(false);
@@ -1012,6 +1026,15 @@ export function GameView({ gameId }: GameViewProps) {
         </div>
 
         <div className="rail">
+          {ruling && (
+            <div className="alert alert-ruling">
+              <p className="alert-title">Not allowed</p>
+              <p style={{ margin: 0 }}>{ruling}</p>
+              <button className="quiet" style={{ marginTop: 8 }} onClick={() => setRuling(null)}>
+                OK
+              </button>
+            </div>
+          )}
           {/* Anything the app is WAITING on comes first, before the
               things you might choose to do. */}
           {showPlacements && (

@@ -211,6 +211,15 @@
 /* An instruction for your HANDS, not a decision -- put this tile or
  * mini on the physical board. Green so it reads as "do this", distinct
  * from the amber "the app is waiting on you". */
+/* A rule refusal from the engine -- amber, in the rail, never the red
+   system-error line: the action was understood and declined. */
+.alert-ruling {
+  border-color: #8a6d1f;
+  background: #221c0e;
+}
+.alert-ruling .alert-title {
+  color: #e8c34a;
+}
 .alert-place {
   border-color: #3a6a3a;
   border-left-color: #7fd67f;

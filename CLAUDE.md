@@ -70,7 +70,11 @@ searched.<room>.treasureBy.
   underfoot) sit above things you may choose to do. Hero actions are a
   menu that expands one at a time, because the rulebook gives a hero
   one action per turn; showing six forms at once misrepresented that
-  and buried the log below all of them. Path tracing state lives in
+  and buried the log below all of them. A RULE REFUSAL from the server
+  (failed-precondition / invalid-argument / not-found: "room still has
+  monsters in it") is Zargon declining the action, so GameView shows it
+  as an amber "Not allowed" alert at the top of the rail; only other
+  failures (internal, network, auth) reach the red "Error:" line. Path tracing state lives in
   GameView, not BoardView, so "Confirm move" sits in the rail next to
   the board instead of under it.
   TOKENS WALK THEIR ROUTE (Tokens.tsx): a hero or monster that moved
