@@ -67,7 +67,13 @@ searched.<room>.treasureBy.
   + GameView): the board is sticky on the left, everything you press is
   in a rail on the right, and the rail is ordered by urgency -- things
   the app is WAITING on (defence rolls, a spell holding a hero, a trap
-  underfoot) sit above things you may choose to do. Hero actions are a
+  underfoot) sit above things you may choose to do. The rail is FIVE
+  FIXED SLOTS, always rendered in the same order with steady heights:
+  Needs you (every waiting alert and the side-quest cue, or "Nothing
+  waiting on you"), Just now, Active hero, This turn (move confirm,
+  the action menu, Zargon's turn, or "Quest over"), Log. Panels that
+  appeared and vanished moved the action menu and the Log every turn;
+  the owner asked for boxes that stay put even when empty (Oct 2026). Hero actions are a
   menu that expands one at a time, because the rulebook gives a hero
   one action per turn; showing six forms at once misrepresented that
   and buried the log below all of them. A RULE REFUSAL from the server

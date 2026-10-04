@@ -390,7 +390,7 @@ button.quiet:hover:not(:disabled) {
    own "story so far" panel above, so the log is back to being purely
    the mechanical record -- newest line visible, scroll up for history. */
 .log-list {
-  max-height: 15vh;
+  height: 15vh;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;
@@ -621,7 +621,34 @@ button.quiet:hover:not(:disabled) {
    JUST NOW. */
 .panel-justnow {
   border-left: 3px solid #c9bfa0;
+  min-height: 150px;
 }
 .justnow-list {
-  max-height: 190px;
+  max-height: 150px;
+}
+/* FIXED SLOTS: five boxes, same order, steady heights -- see GameView. */
+.slot-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 72px;
+}
+.slot-attention > .panel-title {
+  margin: 0;
+}
+.slot-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 220px;
+}
+/* The last box in the slot takes the spare height, so a short Zargon
+   panel is a tall box, not a short box over a gap. */
+.slot-turn > .panel:last-child {
+  flex: 1 1 auto;
+}
+.slot-empty {
+  margin: 0;
+  font-style: italic;
+  color: #6f6a5e;
 }
