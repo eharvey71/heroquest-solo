@@ -148,7 +148,13 @@ export function GameView({ gameId }: GameViewProps) {
   const [lowestBpHeroId, setLowestBpHeroId] = useState<string>("");
   const [openAction, setOpenAction] = useState<ActionKey | null>(null);
   // Dismissal of the "Place on the board" alert (see placements below).
-  const [placementsDone, setPlacementsDone] = useState("");
+  // Lines of the "Place on the board" alert the player has ticked off,
+  // keyed by position and text. Per line, not per list: "Done" used to
+  // hide the whole list keyed on its contents, so the next action's one
+  // new line brought every earlier line back with it, placed or not.
+  // Reset when the turn or phase changes (the server clears the queue
+  // at the end of the hero phase) and on undo.
+  const [placedLines, setPlacedLines] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // A RULING is the engine refusing an action under the rules ("room
@@ -188,6 +194,10 @@ export function GameView({ gameId }: GameViewProps) {
   useEffect(() => {
     setOpenAction(null);
   }, [heroId, game?.phase, game?.heroPhaseSegment]);
+
+  useEffect(() => {
+    setPlacedLines(new Set());
+  }, [game?.turn, game?.phase]);
 
   // The newest line is the one you need; without this the log opens
   // scrolled to turn 1 and every entry pushes the interesting end away.
@@ -488,12 +498,11 @@ export function GameView({ gameId }: GameViewProps) {
   const narrationTurns = Object.keys(game.narration ?? {})
     .map(Number)
     .sort((a, b) => a - b);
-  // Keyed on the instruction text so a NEW reveal (different content)
-  // shows again on its own; placementsDone is declared up with the
-  // other hooks -- a useState below the early returns crashed React
-  // (hooks must run unconditionally, every render).
-  const placementsKey = placements.join("|");
-  const showPlacements = placements.length > 0 && placementsDone !== placementsKey;
+  const placementKey = (line: string, i: number) => `${i}|${line}`;
+  const pendingPlacements = placements
+    .map((line, i) => ({ line, key: placementKey(line, i) }))
+    .filter((p) => !placedLines.has(p.key));
+  const showPlacements = pendingPlacements.length > 0;
 
   // Fog of war: hidden monsters must never appear in the attack list --
   // the dropdown otherwise leaks every unrevealed room's contents.
@@ -593,6 +602,7 @@ export function GameView({ gameId }: GameViewProps) {
     setJumpLandingKey(null);
     setSceneEpilogue(null);
     setFreshLog(new Set());
+    setPlacedLines(new Set());
   };
 
   const movingHero = heroes.find((h) => h.id === pathInput.selectedHeroId);
@@ -1103,13 +1113,25 @@ export function GameView({ gameId }: GameViewProps) {
           {showPlacements && (
             <div className="alert alert-place">
               <p className="alert-title">Place on the board</p>
-              <ul className="log-list">
-                {placements.map((line, i) => (
-                  <li key={i}>{line}</li>
+              <ul className="log-list place-list">
+                {pendingPlacements.map(({ line, key }) => (
+                  <li key={key}>
+                    <label className="place-line">
+                      <input
+                        type="checkbox"
+                        aria-label="Placed"
+                        onChange={() => setPlacedLines((prev) => new Set(prev).add(key))}
+                      />
+                      <span>{line}</span>
+                    </label>
+                  </li>
                 ))}
               </ul>
-              <button className="quiet" onClick={() => setPlacementsDone(placementsKey)}>
-                Done
+              <button
+                className="quiet"
+                onClick={() => setPlacedLines((prev) => new Set([...prev, ...pendingPlacements.map((p) => p.key)]))}
+              >
+                All placed
               </button>
             </div>
           )}

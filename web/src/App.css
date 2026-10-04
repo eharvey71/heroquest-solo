@@ -230,6 +230,20 @@
   color: #7fd67f;
 }
 
+.place-list {
+  list-style: none;
+  padding-left: 0;
+}
+.place-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.place-line input {
+  margin-top: 4px;
+  flex: none;
+}
 .alert-place .log-list {
   max-height: none;
   overflow: visible;

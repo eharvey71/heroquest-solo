@@ -915,7 +915,13 @@ prompt names its attacker and the square it stands on, so "3 skulls"
 is never faceless. Game state rather than a response field, for the
 same reasons the defence queue is: undo takes them back, a refresh
 keeps them. Cleared when the hero phase ends -- anything unplaced then
-belonged to a turn that is over.
+belonged to a turn that is over. The client ticks lines off ONE AT A
+TIME (a checkbox per line, "All placed" for the lot; GameView's
+placedLines, keyed by position and text, reset on turn/phase change
+and undo). A single "Done" that hid the whole list keyed on its
+contents was tried first: the next action's one new line brought every
+earlier line back, placed or not, and the owner saw a turn's worth of
+stale instructions.
 
 Ending a quest takes TWO stages (1989 rulebook, Hero Movement: "To
 safely complete a Quest, you must return to the stairway, for it is
