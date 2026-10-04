@@ -162,17 +162,18 @@ export function GameView({ gameId }: GameViewProps) {
    * already cleared pendingSideQuest -- see SideQuestView's header. */
   const [sceneEpilogue, setSceneEpilogue] = useState<SceneEpilogue | null>(null);
   const logRef = useRef<HTMLUListElement>(null);
-  // JUST NOW: the log lines the last action added, shown at the top of
-  // the rail beside the controls. The Log at the bottom is the record,
-  // but the result of the button you just pressed was landing off
-  // screen -- and Zargon's moves and swings are stamped to the turn
-  // that just ended, so no "current turn" filter would catch them.
-  // Diffed against the previous snapshot's log (a multiset diff, since
-  // a defence report splices its line into the middle); an undo, which
-  // shrinks the log, clears it; a fresh load shows nothing.
+  // FRESH LINES: the Log highlights the lines the last action added and
+  // dims the rest, so the result of the button you just pressed stands
+  // out -- Zargon's moves and swings are stamped to the turn that just
+  // ended, so no "current turn" filter would catch them. Diffed against
+  // the previous snapshot's log (a multiset diff, since a defence
+  // report splices its line into the middle); an undo, which shrinks
+  // the log, clears the highlight; a fresh load highlights nothing. A
+  // separate "Just now" panel was tried and folded back in here: too
+  // many boxes in the rail (owner).
   const [narrativeOpen, setNarrativeOpen] = useState(false);
   const prevLogRef = useRef<LogEntry[] | null>(null);
-  const [justNow, setJustNow] = useState<LogEntry[]>([]);
+  const [freshLog, setFreshLog] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     // A hero who has fallen can't be the active one -- hand the
@@ -210,7 +211,7 @@ export function GameView({ gameId }: GameViewProps) {
     // dungeon" buried the board. Every write while a scene is pending,
     // and the terminal write that clears it, leaves the panel empty.
     if (scenePending || sceneWasPending || now.length < prev.length) {
-      setJustNow([]);
+      setFreshLog(new Set());
       return;
     }
     const seen = new Map<string, number>();
@@ -218,16 +219,16 @@ export function GameView({ gameId }: GameViewProps) {
       const k = `${e.turn}|${e.text}`;
       seen.set(k, (seen.get(k) ?? 0) + 1);
     }
-    const fresh: LogEntry[] = [];
-    for (const e of now) {
+    const fresh = new Set<number>();
+    now.forEach((e, idx) => {
       const k = `${e.turn}|${e.text}`;
       const n = seen.get(k) ?? 0;
       if (n > 0) seen.set(k, n - 1);
-      else fresh.push(e);
-    }
+      else fresh.add(idx);
+    });
     // A snapshot that added no lines (a narration arriving) keeps the
-    // panel as it was.
-    if (fresh.length > 0) setJustNow(fresh);
+    // highlight as it was.
+    if (fresh.size > 0) setFreshLog(fresh);
   }, [game]);
 
   // The Story button badges paragraphs written since the overlay was
@@ -591,7 +592,7 @@ export function GameView({ gameId }: GameViewProps) {
     setTrapStop(null);
     setJumpLandingKey(null);
     setSceneEpilogue(null);
-    setJustNow([]);
+    setFreshLog(new Set());
   };
 
   const movingHero = heroes.find((h) => h.id === pathInput.selectedHeroId);
@@ -1323,24 +1324,34 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {justNow.length > 0 && (
-            <div className="panel panel-justnow">
-              <p className="panel-title">Just now</p>
-              <ul className="log-list justnow-list">
-                {justNow.map((entry, i) => (
-                  <li
-                    key={`j${i}`}
-                    className={/\b(Place the|Replace the closed door piece)\b/.test(entry.text) ? "log-tile" : undefined}
-                  >
-                    {entry.text}
-                  </li>
+
+          {journalCues.length > 0 && (
+            <div className="alert alert-place">
+              <p className="alert-title">Someone has something to say</p>
+              <div className="panel-stack">
+                {journalCues.map(({ sq, tier }) => (
+                  <div key={sq.id} className="panel-row">
+                    <span>
+                      {sq.hook.when === "room" ? `${sq.hook.npcName || "Something"} here` : sq.title}
+                      {sq.kind === "required" ? " (required)" : ""}
+                    </span>
+                    <button className="primary" onClick={() => handleBeginSideQuest(sq)} disabled={busy}>
+                      {tier === "active" ? "Resume" : "Begin"}
+                    </button>
+                    <button className="quiet" onClick={() => setJournalOpen(true)} disabled={busy}>
+                      Journal
+                    </button>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           )}
 
-          <div className="panel">
-            <p className="panel-title">Active hero</p>
+          {playable && game.phase === "hero" && (
+            <div className="panel">
+              {/* Who is acting, what they're doing, and the one action:
+                  one box. Active hero and Move were their own panels. */}
+              <div className="hero-row">
             <div className="panel-stack">
               <div className="panel-row" style={{ justifyContent: "space-between" }}>
                 <span className="panel-row">
@@ -1367,40 +1378,36 @@ export function GameView({ gameId }: GameViewProps) {
                 <span className="hint">Fallen: {fallenHeroes.map((h) => h.name).join(", ")}</span>
               )}
             </div>
-          </div>
-
-          {playable && game.phase === "hero" && movingHero && tracedSteps > 0 && (
-            <div className="panel">
-              <p className="panel-title">Move</p>
-              <div className="panel-stack">
-                <span>
-                  {movingHero.name} &mdash; {tracedSteps} step{tracedSteps === 1 ? "" : "s"} traced
-                </span>
-                {pathInput.blockedHint && <span style={{ color: "#e6a23b" }}>{pathInput.blockedHint}</span>}
-                {!pathInput.blockedHint && pathInput.endSquareOccupied && (
-                  <span style={{ color: "#e6a23b" }}>can&apos;t end the move on an occupied square</span>
-                )}
-                {waitingOnReport && (
-                  <span className="hint">Answer the prompt(s) above before confirming a move.</span>
-                )}
-                <div className="panel-row">
-                  <button
-                    className="primary"
-                    onClick={handleConfirmTracedMove}
-                    disabled={busy || !pathInput.canConfirm || waitingOnReport}
-                  >
-                    Confirm move
-                  </button>
-                  <button className="quiet" onClick={pathInput.clear} disabled={busy}>
-                    Cancel
-                  </button>
-                </div>
               </div>
-            </div>
-          )}
-
-          {playable && game.phase === "hero" && (
-            <div className="panel">
+              {movingHero && tracedSteps > 0 && (
+                <div className="move-rows">
+                  <p className="panel-title">Move</p>
+                <div className="panel-stack">
+                  <span>
+                    {movingHero.name} &mdash; {tracedSteps} step{tracedSteps === 1 ? "" : "s"} traced
+                  </span>
+                  {pathInput.blockedHint && <span style={{ color: "#e6a23b" }}>{pathInput.blockedHint}</span>}
+                  {!pathInput.blockedHint && pathInput.endSquareOccupied && (
+                    <span style={{ color: "#e6a23b" }}>can&apos;t end the move on an occupied square</span>
+                  )}
+                  {waitingOnReport && (
+                    <span className="hint">Answer the prompt(s) above before confirming a move.</span>
+                  )}
+                  <div className="panel-row">
+                    <button
+                      className="primary"
+                      onClick={handleConfirmTracedMove}
+                      disabled={busy || !pathInput.canConfirm || waitingOnReport}
+                    >
+                      Confirm move
+                    </button>
+                    <button className="quiet" onClick={pathInput.clear} disabled={busy}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+                </div>
+              )}
               <p className="panel-title">
                 {openAction ? ACTION_LABELS[openAction] : "Action — one per turn"}
               </p>
@@ -1722,28 +1729,6 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {journalCues.length > 0 && (
-            <div className="alert alert-place">
-              <p className="alert-title">Someone has something to say</p>
-              <div className="panel-stack">
-                {journalCues.map(({ sq, tier }) => (
-                  <div key={sq.id} className="panel-row">
-                    <span>
-                      {sq.hook.when === "room" ? `${sq.hook.npcName || "Something"} here` : sq.title}
-                      {sq.kind === "required" ? " (required)" : ""}
-                    </span>
-                    <button className="primary" onClick={() => handleBeginSideQuest(sq)} disabled={busy}>
-                      {tier === "active" ? "Resume" : "Begin"}
-                    </button>
-                    <button className="quiet" onClick={() => setJournalOpen(true)} disabled={busy}>
-                      Journal
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="panel">
             <p className="panel-title">Log</p>
             <ul className="log-list" ref={logRef}>
@@ -1753,8 +1738,14 @@ export function GameView({ gameId }: GameViewProps) {
                 // our own generated wording -- see the engines'
                 // placement_instruction strings.
                 const isTileInstruction = /\b(Place the|Replace the closed door piece)\b/.test(entry.text);
+                const cls = [
+                  isTileInstruction ? "log-tile" : "",
+                  freshLog.has(i) ? "log-fresh" : freshLog.size > 0 ? "log-old" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
                 return (
-                  <li key={`g${i}`} className={isTileInstruction ? "log-tile" : undefined}>
+                  <li key={`g${i}`} className={cls || undefined}>
                     [{entry.turn}] {entry.text}
                   </li>
                 );

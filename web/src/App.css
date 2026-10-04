@@ -390,7 +390,7 @@ button.quiet:hover:not(:disabled) {
    own "story so far" panel above, so the log is back to being purely
    the mechanical record -- newest line visible, scroll up for history. */
 .log-list {
-  max-height: 15vh;
+  max-height: 34vh;
   overflow-y: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.82rem;
@@ -619,9 +619,22 @@ button.quiet:hover:not(:disabled) {
 /* The rail shows only the newest narration paragraph; no scroll box. */
 /* The result of the last action, beside the controls -- see GameView's
    JUST NOW. */
-.panel-justnow {
-  border-left: 3px solid #c9bfa0;
+/* The Log carries the "what just happened" role: the last action's
+   lines are bright, everything older dims. */
+.log-old {
+  opacity: 0.5;
 }
-.justnow-list {
-  max-height: 190px;
+.log-fresh {
+  color: #f0ead8;
+}
+.log-fresh::marker {
+  color: #c9bfa0;
+}
+.hero-row {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #2e2e2e;
+}
+.move-rows {
+  margin-bottom: 12px;
 }

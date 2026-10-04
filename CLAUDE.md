@@ -75,16 +75,21 @@ searched.<room>.treasureBy.
   monsters in it") is Zargon declining the action, so GameView shows it
   as an amber "Not allowed" alert at the top of the rail; only other
   failures (internal, network, auth) reach the red "Error:" line.
-  JUST NOW (GameView): the log lines the last action added, diffed
-  from the previous snapshot's log (a multiset diff -- a defence report
-  splices its line into the middle), shown as a panel at the top of
-  the rail under the waiting alerts and above Active hero. The result
-  of the button you pressed used to land in the Log at the bottom, off
-  screen, and Zargon's moves and swings are stamped to the turn that
-  just ended, so no "current turn" filter would have caught them. An
-  undo clears it; a fresh load shows nothing until you act; a snapshot
-  that adds no lines (a narration arriving) leaves it alone. The Log
-  stays the record. Path tracing state lives in
+  THREE PANELS (owner, after two rounds of trying more): the waiting
+  alerts (only when any, the side-quest cue among them), one ACTION
+  panel whose first row is the hero picker with "Has fallen" and
+  which holds the move-confirm rows while a path is traced, and the
+  LOG directly beneath it, taller, newest at the bottom. The Log
+  carries "what just happened": the lines the last action added are
+  bright and the rest dimmed (GameView's freshLog, a multiset diff
+  against the previous snapshot's log -- a defence report splices its
+  line into the middle; undo clears it; a fresh load highlights
+  nothing; a snapshot that adds no lines leaves it alone). Zargon's
+  moves and swings are stamped to the turn that just ended, so no
+  "current turn" filter would have caught them. Tried and rejected:
+  a separate "Just now" panel (the lines next to the controls, but one
+  more box), then five fixed slots with empty states (steady, but the
+  owner found it too many panels). Path tracing state lives in
   GameView, not BoardView, so "Confirm move" sits in the rail next to
   the board instead of under it.
   TOKENS WALK THEIR ROUTE (Tokens.tsx): a hero or monster that moved
