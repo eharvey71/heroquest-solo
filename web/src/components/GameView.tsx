@@ -864,20 +864,6 @@ export function GameView({ gameId }: GameViewProps) {
     );
   };
 
-  // The "Needs you" slot shows every waiting alert; when none is up it
-  // says so instead of collapsing (see the rail's FIXED SLOTS note).
-  const trapPanelsShown =
-    playable && game.phase === "hero" && !waitingOnReport && (adjacentKnownTraps.length > 0 || !!promptedOpenPit);
-  const needsYou =
-    !!ruling ||
-    showPlacements ||
-    pendingDefenses.length > 0 ||
-    !!pendingTreasureDraw ||
-    activeMoveBoons.length > 0 ||
-    activeHeroStatuses.length > 0 ||
-    trapPanelsShown ||
-    journalCues.length > 0;
-
   return (
     <div className="game-view">
       {game.status === "complete" && narrative && (
@@ -1102,13 +1088,6 @@ export function GameView({ gameId }: GameViewProps) {
         </div>
 
         <div className="rail">
-          {/* FIXED SLOTS (owner's ask): the rail is the same five boxes in
-              the same order whether or not they have anything to say --
-              Needs you, Just now, Active hero, This turn, Log. Panels
-              that came and went moved everything beneath them every
-              turn. Each slot keeps a steady height; an empty one says so. */}
-          <div className="slot slot-attention">
-            <p className="panel-title">Needs you</p>
           {ruling && (
             <div className="alert alert-ruling">
               <p className="alert-title">Not allowed</p>
@@ -1344,33 +1323,9 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {journalCues.length > 0 && (
-            <div className="alert alert-place">
-              <p className="alert-title">Someone has something to say</p>
-              <div className="panel-stack">
-                {journalCues.map(({ sq, tier }) => (
-                  <div key={sq.id} className="panel-row">
-                    <span>
-                      {sq.hook.when === "room" ? `${sq.hook.npcName || "Something"} here` : sq.title}
-                      {sq.kind === "required" ? " (required)" : ""}
-                    </span>
-                    <button className="primary" onClick={() => handleBeginSideQuest(sq)} disabled={busy}>
-                      {tier === "active" ? "Resume" : "Begin"}
-                    </button>
-                    <button className="quiet" onClick={() => setJournalOpen(true)} disabled={busy}>
-                      Journal
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-            {!needsYou && <p className="hint slot-empty">Nothing waiting on you.</p>}
-          </div>
-
-          <div className="panel panel-justnow">
-            <p className="panel-title">Just now</p>
-            {justNow.length > 0 ? (
+          {justNow.length > 0 && (
+            <div className="panel panel-justnow">
+              <p className="panel-title">Just now</p>
               <ul className="log-list justnow-list">
                 {justNow.map((entry, i) => (
                   <li
@@ -1381,10 +1336,8 @@ export function GameView({ gameId }: GameViewProps) {
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="hint slot-empty">The result of your next action shows here.</p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="panel">
             <p className="panel-title">Active hero</p>
@@ -1416,7 +1369,6 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           </div>
 
-          <div className="slot slot-turn">
           {playable && game.phase === "hero" && movingHero && tracedSteps > 0 && (
             <div className="panel">
               <p className="panel-title">Move</p>
@@ -1770,17 +1722,29 @@ export function GameView({ gameId }: GameViewProps) {
             </div>
           )}
 
-          {!playable && (
-            <div className="panel">
-              <p className="panel-title">Quest over</p>
-              <p className="hint" style={{ margin: 0 }}>
-                No more actions. Undo still works if a report was wrong.
-              </p>
+          {journalCues.length > 0 && (
+            <div className="alert alert-place">
+              <p className="alert-title">Someone has something to say</p>
+              <div className="panel-stack">
+                {journalCues.map(({ sq, tier }) => (
+                  <div key={sq.id} className="panel-row">
+                    <span>
+                      {sq.hook.when === "room" ? `${sq.hook.npcName || "Something"} here` : sq.title}
+                      {sq.kind === "required" ? " (required)" : ""}
+                    </span>
+                    <button className="primary" onClick={() => handleBeginSideQuest(sq)} disabled={busy}>
+                      {tier === "active" ? "Resume" : "Begin"}
+                    </button>
+                    <button className="quiet" onClick={() => setJournalOpen(true)} disabled={busy}>
+                      Journal
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-          </div>
 
-          <div className="panel log-slot">
+          <div className="panel">
             <p className="panel-title">Log</p>
             <ul className="log-list" ref={logRef}>
               {(game.log ?? []).map((entry, i) => {
